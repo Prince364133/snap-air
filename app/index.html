@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snap Motion OS</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Virtual Cursor -->
+    <div id="virtual-cursor" class="virtual-cursor"></div>
+
+    <!-- Status HUD -->
+    <div id="status-hud" class="glass-panel hud">
+        <div class="hud-item">
+            <span class="hud-label">FPS</span>
+            <span id="fps-display" class="hud-value">0</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Gesture</span>
+            <span id="gesture-display" class="hud-value active-text">NONE</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">AI Status</span>
+            <span id="ai-status" class="hud-value">Listening...</span>
+        </div>
+    </div>
+
+    <!-- Smart Notes Panel (Hidden by Default) -->
+    <div id="notes-panel" class="glass-panel widget hidden">
+        <h2>Smart Notes</h2>
+        <div class="note-list">
+            <div class="note-item">
+                <h4>Project Ideas</h4>
+                <p>AI presentation controller concept...</p>
+            </div>
+            <div class="note-item">
+                <h4>Meeting at 3PM</h4>
+                <p>Discuss the new startup architecture.</p>
+            </div>
+        </div>
+        <button id="close-notes-btn" class="glass-btn">Close</button>
+    </div>
+
+    <!-- AI Notification Toast -->
+    <div id="ai-toast" class="glass-panel toast hidden">
+        <p id="ai-toast-text">Voice command recognized: "Open Notes"</p>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

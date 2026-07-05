@@ -1,0 +1,12 @@
+{
+  "name": "snap-motion-os",
+  "version": "1.0.0",
+  "description": "AI-Powered Gesture Controlled OS Layer",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.1.0"
+  }
+}

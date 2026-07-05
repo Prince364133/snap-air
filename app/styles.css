@@ -1,0 +1,181 @@
+:root {
+    --bg-glass: rgba(15, 23, 42, 0.6);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --glow-primary: #00f2fe;
+    --glow-secondary: #4facfe;
+    --text-primary: #ffffff;
+    --text-secondary: #94a3b8;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Outfit', sans-serif;
+    /* Make everything non-draggable to prevent accidental interactions */
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: transparent;
+    color: var(--text-primary);
+}
+
+/* Base Glassmorphism Class */
+.glass-panel {
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Virtual Cursor */
+.virtual-cursor {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--glow-primary) 0%, var(--glow-secondary) 100%);
+    box-shadow: 0 0 20px var(--glow-primary);
+    pointer-events: none; /* Let clicks pass through to Windows */
+    transform: translate(-50%, -50%);
+    transition: width 0.1s, height 0.1s, background 0.2s;
+    z-index: 9999;
+    display: none; /* Only show when hand is detected */
+}
+
+.virtual-cursor.pinch {
+    width: 16px;
+    height: 16px;
+    background: radial-gradient(circle, #ff0055 0%, #ff5500 100%);
+    box-shadow: 0 0 30px #ff0055;
+}
+
+/* HUD System */
+.hud {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 30px;
+    padding: 15px 30px;
+    pointer-events: none;
+    animation: slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hud-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.hud-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.active-text {
+    color: var(--glow-primary);
+    text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+}
+
+/* Smart Notes Widget */
+.widget {
+    position: absolute;
+    top: 100px;
+    right: 40px;
+    width: 350px;
+    padding: 24px;
+    pointer-events: auto; /* Allow interaction when open */
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.widget.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(50px);
+}
+
+.widget h2 {
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+    background: -webkit-linear-gradient(45deg, var(--glow-primary), var(--glow-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.note-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s, background 0.2s;
+}
+
+.note-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.note-item h4 {
+    margin-bottom: 5px;
+}
+
+.note-item p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.glass-btn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.glass-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* AI Toast Notification */
+.toast {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 15px 30px;
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.toast.hidden {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+}
+
+/* Animations */
+@keyframes slideDown {
+    from { transform: translate(-50%, -50px); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
