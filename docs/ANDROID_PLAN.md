@@ -253,3 +253,79 @@ mobile/                                   Flutter app (Dart)
   - The app hasn't been seen running: the emulator's system restarted under host memory pressure and then exited.
   - Reel-count accuracy needs real devices with Instagram/YouTube installed (target ±2%).
   - The pill position beside the camera needs checking on real punch-hole and notch phones.
+
+### Phase 2 (AI brain on the phone): built, not yet run on a device
+- **The full Windows Assistant runs on Android** (`src/platform/android.py → SnapyCore`):
+  - memory (remember, recall, forget, background learning)
+  - tasks and reminders, notes
+  - Hinglish, the AI router (on this phone / auto / cloud)
+  - agent commands, emojis, quit
+- **Events, not callbacks:** the brain emits events that `CoreBridge.kt` pumps and routes:
+  - `op` → `OpExecutor` (phone actions)
+  - `speak` → Android TextToSpeech (native Hindi and other Indian voices)
+  - `reminders` → `Reminders.kt` (AlarmManager + notification; exact only if the user allows it)
+  - everything → the Flutter UI over the `snapy/events` stream
+- **API keys:** encrypted with an Android Keystore AES-256-GCM key (`KeyCipher.kt`), plugged into the shared `secrets_store` in place of Windows DPAPI.
+- **Flutter:**
+  - streaming chat (`assistant_panel.dart`) with a Stop button
+  - Settings with the three AI-brain modes, provider + key and permissions (`settings_page.dart`)
+  - tasks and memory lists (`life_section.dart`)
+  - emoji burst
+- **Honest limits in code:**
+  - "take meeting notes" replies that it isn't available on this device yet
+  - on-screen clicking is off on Android until the Phase 4 scripts
+- **Shared fix for Windows too:** "play X, the 4th video" now always searches YouTube instead of trying to click a video on the current screen.
+- **Verified:**
+  - `engine/tests/test_android.py` (6): apps, Hinglish, media, back, nth video, reminder → alarm event, memory recall, the honest meeting reply, Keystore-style key encryption round-trip
+  - all 146 Windows tests
+  - `flutter analyze` clean, 3 widget tests, and the debug APK builds
+- **Not verified yet:** the app on a device or emulator (host memory), and an on-device LLM. "On this phone" currently falls back to the cloud key. Next step: LiteRT-LM (Gemma) or llama.cpp behind the same `LLM` interface.
+
+### Phase 3 (voice): built, not yet run on a device
+- **Push-to-talk** (`VoiceController.kt`): mic button in the chat and sheet.
+  - Android `SpeechRecognizer`, on-device/offline when the phone supports it (Android 13+).
+  - Live words while you speak.
+  - Locale from Settings (English/Hinglish → en-IN, Hindi → hi-IN, Marathi, Bengali, Telugu, Tamil; table in `app.json → android.speech_locales`).
+- **Pauses:** after a final result, the shared brain's `sounds_unfinished` (the same rule as Windows) decides whether to keep listening with a longer silence window and join the phrases into one command.
+- **Barge-in:** starting to talk stops Snapy's voice (Android TTS) and interrupts its current answer.
+- **Spoken replies:** voice turns are sent with `source="voice"`, so the brain answers out loud through Android TextToSpeech.
+- **"Hey Snapy"** (`WakeWordService.kt`, opt-in in Settings → Voice):
+  - Runs in a foreground microphone service with **Vosk 0.3.75 (Apache-2.0)** in grammar mode, so only the wake phrases can match.
+  - Phrases follow `agent_name` (rename → new wake word, no training).
+  - The 36 MB model downloads once, with progress shown in Settings.
+  - Wake → the pill shows "Listening…" and live words over any app, then Snapy answers by voice.
+  - Restarted when Snapy is opened, so the foreground service always starts from the foreground.
+- **Verified:**
+  - shared voice logic tests: 7 Android-mode tests in total
+  - all 146 Windows tests
+  - `flutter analyze` clean, 3 widget tests
+  - the debug APK builds (198 MB debug)
+  - **all 12 native libraries (Vosk, JNA, Python, Flutter) use 16 KB ELF LOAD alignment**, as Google Play requires
+- **Not verified yet:**
+  - speech on a real device
+  - wake-word accuracy and false wakes (a custom name only works if it's in the Vosk model's vocabulary; otherwise "Hey Snapy" stays the wake word)
+  - whether Android lets the speech recognizer use the mic after a background wake on every OEM
+  - Play declaration for the microphone foreground service
+
+### Phase 4 (phone control): built, not yet run on a device
+- **Understanding (shared, `engine/src/brain/phone_intents.py`):** English and Hinglish phrases → one action from a fixed catalog:
+  - `whatsapp` "WhatsApp Rahul I'm late" / "Rahul ko whatsapp karo ki…"
+  - `sms` "text Priya I'm home"
+  - `call` "call mom" / "Rahul ko call karo" / "video call Anjali"
+  - `alarm` "wake me up at 6 am" / "7 baje ka alarm laga do"
+  - `timer` "10 minute ka timer laga do"
+  - `navigate` "take me to the airport" / "airport ka rasta batao"
+  - `torch`, `panel` (Wi-Fi, internet, Bluetooth, NFC, volume), `type` "type I'll be there soon"
+  - `tap` "tap the second video" / "click subscribe"
+  - "go to settings", "open WhatsApp", "play…", "volume up", "go back" and reminders are explicitly **not** phone intents (tested).
+- **Confirmation:** WhatsApp, SMS and calls always ask first ("Send to Rahul Sharma: '…'? Say yes to send."). Yes/no works in English and Hindi ("haan bhej do", "nahi").
+- **Contacts** (`Contacts.kt`, read-only, on device): exact > starts-with > word > close spelling. Family words from `app.json → android.contact_aliases` ("mom" also finds "Mummy", "Maa"…).
+- **Scripts** (`OpExecutor.kt`):
+  - WhatsApp: `wa.me` deep link with the text filled in, then one scripted tap on Send. The selector list lives in `app.json → android.selectors`, so it can be updated without code changes.
+  - SMS: opens Messages with the text ready. The user taps Send, because Play restricts `SEND_SMS` to default SMS apps.
+  - Calls: direct if the user allowed calls, otherwise the dialler.
+  - Clock: alarm and timer intents. Maps: navigation intent. Torch: CameraManager.
+  - Wi-Fi/Bluetooth: opens the settings panel, because Android doesn't let apps switch them.
+- **Screen taps:** the accessibility node tree is converted to the same element model as Windows UI Automation (class map in `app.json → android.view_types`; unlabelled cards are named from their children, e.g. video titles). The shared `screen.find()` picks the target, then one click. These are user-invoked, single-step actions, and they never act on Snapy's own window.
+- **Verified:** 9 Android-mode tests, all 146 Windows tests, `flutter analyze` clean, 3 widget tests, and the debug APK builds.
+- **Not verified yet:** everything on a real phone, including the WhatsApp Send selector on the current WhatsApp version, screen-tap accuracy on YouTube/Instagram layouts, and the OEM dialler/clock apps that handle the intents.

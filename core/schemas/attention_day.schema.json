@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/attention_day.schema.json",
+  "title": "Attention day",
+  "description": "One day of phone attention data (Real Count): screen time, per-app time, opens and reels/shorts. Merges realcount/YYYY-MM-DD.json (counter) and usage-YYYY-MM-DD.json (usage stats).",
+  "x-schema-version": 1,
+  "x-synced": true,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Record format version (this file's x-schema-version)."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id, unique per record type (10 lowercase hex chars from new records; any string accepted)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last change time (ISO). Sync: the newer 'updated' wins; ties -> the lexically greater 'device'."
+    },
+    "device": {
+      "type": "string",
+      "description": "Device that made the last change, e.g. 'windows-<hash>' or 'android-<hash>'."
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tombstone: true = deleted. Kept (not removed) so the deletion syncs."
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "screen_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "per_app_ms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "opens": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "apps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "reels": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reel_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "description": "package -> reels/shorts counted and time spent in the short-video feed."
+    },
+    "nudges": {
+      "type": "object",
+      "properties": {
+        "shown": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dismissed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "description": "Nudges shown/dismissed this day (drives softer copy)."
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "updated",
+    "device",
+    "deleted",
+    "date"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Web endpoints both apps use."
+  },
+  "web": {
+    "youtube_search": "https://www.youtube.com/results?search_query=",
+    "connectivity_check": "https://www.google.com"
+  }
+}

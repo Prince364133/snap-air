@@ -1,0 +1,109 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Word tables the parsers use: ordinals, number words, time words, wake-word data, emoji sets, language names. Order inside objects is significant where noted."
+  },
+  "ordinals": {
+    "first": 1,
+    "1st": 1,
+    "second": 2,
+    "2nd": 2,
+    "third": 3,
+    "3rd": 3,
+    "fourth": 4,
+    "4th": 4,
+    "fifth": 5,
+    "5th": 5,
+    "sixth": 6,
+    "6th": 6,
+    "seventh": 7,
+    "7th": 7,
+    "eighth": 8,
+    "8th": 8,
+    "ninth": 9,
+    "9th": 9,
+    "tenth": 10,
+    "10th": 10,
+    "pehla": 1,
+    "pehli": 1,
+    "doosra": 2,
+    "doosri": 2,
+    "dusra": 2,
+    "teesra": 3,
+    "teesri": 3,
+    "chautha": 4,
+    "chauthi": 4,
+    "paanchva": 5,
+    "paanchvi": 5
+  },
+  "emoji_sets": {
+    "default": ["😄", "🎉", "✨", "😎", "🚀", "💙", "🌟", "🥳"],
+    "party|celebrat|birthday|congrat": ["🎉", "🥳", "🎊", "🎂", "🍾", "✨"],
+    "love|heart|romantic|pyaar": ["❤️", "😍", "💖", "💕", "🥰", "💘"],
+    "happy|smile|khush": ["😄", "😊", "😁", "🌞", "✨"],
+    "fire|lit|hot|awesome": ["🔥", "⚡", "💥", "🚀", "😎"],
+    "sad|cry|dukhi": ["😢", "💧", "🫂", "💙"],
+    "rain|baarish": ["🌧️", "☔", "💧", "🌈"],
+    "food|hungry|bhookh": ["🍕", "🍔", "🍩", "🍜", "🍰"]
+  },
+  "vocab": {
+    "numbers": {
+      "_comment": "phone: timer counts in phone intents. time: relative times (key ORDER is the regex alternation order, keep it). count: repeat counts for desktop commands (includes speech-recognition homophones 'to'/'for').",
+      "phone": {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+        "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty five": 45, "sixty": 60, "ek": 1, "do": 2,
+        "teen": 3, "char": 4, "paanch": 5, "das": 10, "pandrah": 15, "bees": 20, "tees": 30, "half an": 30,
+        "an": 1, "a": 1,
+        "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "दस": 10, "पंद्रह": 15, "बीस": 20, "तीस": 30
+      },
+      "time": {
+        "half an": 0.5, "half a": 0.5, "couple of": 2, "forty five": 45, "an": 1, "a": 1, "one": 1, "two": 2,
+        "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "fifteen": 15,
+        "twenty": 20, "thirty": 30, "forty": 40, "few": 3
+      },
+      "count": {
+        "one": 1, "two": 2, "to": 2, "too": 2, "three": 3, "four": 4, "for": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "once": 1, "twice": 2, "a couple": 2, "a few": 3, "fifteen": 15,
+        "twenty": 20
+      }
+    },
+    "timer_units": {
+      "_comment": "Phone timer unit -> seconds: the first entry whose prefixes start the (lower-cased) unit wins; otherwise default_seconds.",
+      "rules": [
+        {"prefixes": ["hour", "hr", "ghant", "घंट"], "seconds": 3600},
+        {"prefixes": ["sec", "सेकंड"], "seconds": 1}
+      ],
+      "default_seconds": 60
+    },
+    "time": {
+      "weekdays": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+      "unit_minutes": {"s": 0.016666666666666666, "sec": 0.016666666666666666, "second": 0.016666666666666666,
+                       "m": 1, "min": 1, "minute": 1, "h": 60, "hr": 60, "hour": 60},
+      "day_offsets": {"tomorrow": 1, "kal": 1, "day after tomorrow": 2},
+      "day_default_hours": {"tonight": 20, "this evening": 18, "shaam ko": 18, "this afternoon": 15,
+                            "this morning": 9, "subah": 9, "aaj raat": 20, "raat ko": 20},
+      "part_of_day_hours": {"subah": 9, "morning": 9, "dopahar": 14, "afternoon": 14, "shaam": 18,
+                            "evening": 18, "raat": 21, "night": 21},
+      "fallback_hour": 9,
+      "past_day_fallback_min": 30,
+      "afternoon_first_hours": [1, 6]
+    },
+    "wake": {
+      "_comment": "builtin: always-accepted wake variants (plus the user's wake_words and the assistant's name). Fuzzy match of custom names uses the phonetic rewrite pairs, in order.",
+      "builtin": ["hey snap", "hi snap", "ok snap", "okay snap", "snap air", "snapair", "snap", "snapy", "snappy",
+                  "snappie", "snapey"],
+      "optional_suffix": " air",
+      "fuzzy_min_ratio": 0.8,
+      "fuzzy_min_name_len": 4,
+      "phonetic": [["ee", "i"], ["ii", "i"], ["oo", "u"], ["aa", "a"], ["ph", "f"], ["w", "v"], ["ck", "k"],
+                   ["q", "k"], ["y", "i"], ["z", "s"], ["th", "t"], ["sh", "s"]]
+    },
+    "hallucinations": ["", "you", "thank you", "thanks for watching", "thank you for watching", "bye", "okay", "ok",
+                       "so", "uh", "um", "hmm", "the end", "subscribe"],
+    "language_names": {
+      "en": "English", "hinglish": "Hinglish (Hindi-English mix, Latin script)", "hi": "Hindi", "es": "Spanish",
+      "fr": "French", "de": "German", "pt": "Portuguese", "it": "Italian", "ja": "Japanese", "zh": "Chinese",
+      "ar": "Arabic", "bn": "Bengali", "ta": "Tamil", "te": "Telugu", "mr": "Marathi"
+    }
+  }
+}

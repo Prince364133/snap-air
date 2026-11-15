@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Load order of the shared core. 'config' fragments are deep-merged (in this order) into one config tree that both runtimes read by dotted path, e.g. config('android.social_apps'). A leaf may be defined by only one fragment."
+  },
+  "config": [
+    "rules/vocab.json",
+    "rules/web.json",
+    "rules/cloud.json",
+    "rules/phone.json",
+    "rules/social.json",
+    "rules/nudges.json",
+    "rules/limits.json"
+  ],
+  "intents": "intents/index.json",
+  "tools": "tools/tools.json",
+  "prompts": "prompts",
+  "schemas": "schemas",
+  "i18n": {"dir": "i18n", "default": "en", "languages": ["en", "hi", "ta", "te", "mr", "bn"]},
+  "conformance": "conformance"
+}

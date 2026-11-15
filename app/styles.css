@@ -434,3 +434,6 @@ option:disabled { color: var(--text-3); }
 .logo img { display: block; }
 .logo.big { margin: 0 auto 6px; justify-content: center; width: 100%; }
 .logo.hero { justify-content: center; width: 100%; margin-bottom: 12px; }
+
+/* cloud preview: the (masked) text that would be sent */
+.cp-sample { max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Consolas, monospace; background: rgba(127, 127, 127, 0.12); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }

@@ -225,6 +225,21 @@
         </div>
     </div>
 
+    <!-- One-time "what goes to the cloud" dialog (before the first cloud request ever) -->
+    <div id="cloud-preview" class="sheet-backdrop interactive hidden">
+        <div class="sheet">
+            <h3>Send this to <span id="cp-provider"></span>?</h3>
+            <p class="caption">With a cloud brain, what you ask (plus context Snapy adds, like open tasks and what it remembers about you) goes to this provider to be answered. Commands, reminders, notes, memory learning and your files stay on this PC.</p>
+            <p id="cp-redacted" class="caption"></p>
+            <pre id="cp-sample" class="cp-sample"></pre>
+            <p class="caption">You can change this any time in Settings → AI brain.</p>
+            <footer class="sheet-foot"><div class="spacer"></div>
+                <button id="cp-local" class="btn">Use local only</button>
+                <button id="cp-allow" class="btn primary">Allow</button>
+            </footer>
+        </div>
+    </div>
+
     <!-- Confirm dialog -->
     <div id="confirm" class="sheet-backdrop interactive hidden">
         <div class="sheet small">

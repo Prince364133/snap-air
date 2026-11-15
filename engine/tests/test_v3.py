@@ -184,5 +184,9 @@ class EngineImportTest(unittest.TestCase):
         import sys
         os.environ["SNAP_AIR_SETTINGS"] = os.path.join(TMP, "settings_import.json")
         mod = sys.modules.get("main") or importlib.import_module("main")
-        self.assertIn(mod.state["brain"], ("local", "cloud"))   # earlier tests may have stored a cloud key
+        # "none" is valid too: a machine with no Ollama and no cloud key has no brain yet
+        self.assertIn(mod.state["brain"], ("local", "cloud", "none"))
         self.assertTrue(hasattr(mod, "brain") and hasattr(mod, "assistant"))
+        for t in ("chat", "execute_command", "request", "cloud_preview_ack", "cancel_setup", "model_select"):
+            self.assertIn(t, mod.router.handlers)
+        self.assertTrue(mod.cloud.require_ack)                   # no cloud call before the user allows it

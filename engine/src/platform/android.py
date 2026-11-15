@@ -172,10 +172,20 @@ class SnapyCore:
         except Exception:
             web = None
         self.speaker = AndroidSpeaker(self.emit)
+        # meeting notes: the phone's speech recognizer supplies text (microphone only — Play forbids call audio)
+        from src.life.meeting import MeetingRecorder
+        from src.life.realcount import RealCount
+        self.meeting = MeetingRecorder(transcribe_fn=None, llm=self.brain, notes=self.notes, tasks=self.tasks,
+                                       memory=self.memory, on_update=lambda st: self.emit({"type": "meeting", **st}),
+                                       on_auto_stop=lambda: self.assistant._finish_meeting("en", False))
+        self.meeting.capture_devices = False
+        self.realcount = RealCount()
         self.assistant = Assistant(self.settings, self.agent, self.memory, self.tasks, self.notes, self.activity,
-                                   self.briefing, AndroidMeeting(), self.brain, self.speaker, emit=self._assistant_emit,
+                                   self.briefing, self.meeting, self.brain, self.speaker, emit=self._assistant_emit,
                                    web=web)
-        self.assistant.screen_available = False   # on-screen clicking arrives with Phase 4 scripts
+        self.assistant.screen_available = False   # phone screen taps go through PhoneSkills (accessibility)
+        self.contacts = None                       # Kotlin: find(name) -> JSON [{name, number}]
+        self.pending = None                        # an action waiting for "yes"
         self._sync_reminders()
 
     # ------------------------------------------------------------ events
@@ -214,22 +224,201 @@ class SnapyCore:
 
     # ------------------------------------------------------------ API for Kotlin / Dart
     def set_apps(self, apps_json):
-        self.apps.set(json.loads(apps_json))
+        items = json.loads(apps_json)
+        self.apps.set(items)
+        for i in items:                                  # app names for "how long on Instagram?"
+            self.realcount.labels.setdefault(i["package"], i["label"])
         return len(self.apps.apps)
 
     def set_clipboard(self, text):
         self.os.clip = text or ""
 
     def send(self, text, source="typed"):
-        """A user message (typed in the sheet, or spoken in Phase 3). Replies arrive as events."""
+        """A user message (typed or spoken). Phone actions are handled here; everything else
+        goes to the shared Assistant. Replies arrive as events."""
         text = (text or "").strip()
-        if text:
-            self.assistant.handle(text, source)
+        if not text:
+            return "ok"
+        speak = source == "voice"
+        clean = self.agent.strip_wake_original(text) if self.agent.strip_wake_word(text)[0] else text
+        answer = self.realcount.answer(clean)            # "how many reels did I watch this week?"
+        if answer:
+            self.emit({"type": "chat_message", "id": f"rc{len(answer)}{id(answer)}", "role": "assistant",
+                       "text": answer, "final": True, "ts": 0})
+            if speak:
+                self.speaker.say(answer)
+            return "ok"
+        if self._phone(text, speak):
+            return "ok"
+        self.assistant.handle(text, source)
         return "ok"
+
+    # ------------------------------------------------------------ phone actions
+    def _say(self, text, speak, error=False):
+        self.emit({"type": "chat_message", "id": f"p{id(text)}{len(text)}", "role": "assistant", "text": text,
+                   "final": True, "error": error, "ts": 0})
+        if speak:
+            self.speaker.say(text)
+
+    def _op(self, op, **kwargs):
+        self.emit({"type": "op", "op": op, "args": [], "kwargs": kwargs})
+
+    def _lookup(self, name):
+        if self.contacts is None:
+            return None, "Contacts aren't available."
+        from src import appdata
+        tries = (appdata.get("android.contact_aliases", {}) or {}).get(name.lower(), [name])
+        found = []
+        for n in tries:                                  # "mom" also finds "Mummy" / "Maa"
+            try:
+                found = json.loads(str(self.contacts.find(n)))
+            except Exception as e:
+                return None, f"I couldn't read your contacts ({e})."
+            if isinstance(found, dict) and found.get("error") == "permission":
+                return None, "Allow Contacts for Snapy (Settings → Permissions), then try again."
+            if found:
+                break
+        if not found:
+            return None, f"I couldn't find “{name}” in your contacts."
+        return found[0], None
+
+    def _phone(self, text, speak):
+        """Returns True if the message was a phone action (or a yes/no to one)."""
+        from src.brain import phone_intents as P
+        clean = self.agent.strip_wake_original(text) if self.agent.strip_wake_word(text)[0] else text
+
+        if self.pending:
+            act, self.pending = self.pending, None
+            if P.YES.match(clean.strip()):
+                self._run(act, speak)
+                return True
+            if P.NO.match(clean.strip()):
+                self._say("Okay, cancelled.", speak)
+                return True
+            # anything else: forget the pending action and treat this as a new request
+
+        intent = P.parse(clean)
+        if not intent:
+            return False
+        k = intent["kind"]
+        if k in ("whatsapp", "sms", "call"):
+            who, err = self._lookup(intent["contact"])
+            if err:
+                self._say(err, speak, error=True)
+                return True
+            intent.update(name=who["name"], number=who["number"])
+            if k == "call":
+                q = f"Call {who['name']}?"
+            else:
+                q = f"Send to {who['name']}{' on WhatsApp' if k == 'whatsapp' else ''}: “{intent['text']}”?"
+            self.pending = intent
+            self._say(q + " Say yes to send." if k != "call" else q, speak)
+            return True
+        self._run(intent, speak)
+        return True
+
+    def _run(self, a, speak):
+        k = a["kind"]
+        if k == "whatsapp":
+            self._op("whatsapp_send", number=a["number"], text=a["text"])
+            self._say(f"Sending to {a['name']} on WhatsApp.", speak)
+        elif k == "sms":
+            self._op("sms", number=a["number"], text=a["text"])
+            self._say(f"Your message to {a['name']} is ready — tap Send.", speak)
+        elif k == "call":
+            self._op("call", number=a["number"], video=bool(a.get("video")))
+            self._say(f"Calling {a['name']}.", speak)
+        elif k == "alarm":
+            self._op("alarm", hour=a["hour"], minute=a["minute"], label=a["label"])
+            h = a["hour"] % 12 or 12
+            self._say(f"Alarm set for {h}:{a['minute']:02d} {'am' if a['hour'] < 12 else 'pm'}.", speak)
+        elif k == "timer":
+            self._op("timer", seconds=a["seconds"])
+            mins = a["seconds"] // 60
+            self._say(f"Timer set for {mins} minute{'s' if mins != 1 else ''}." if mins else f"Timer set for {a['seconds']} seconds.", speak)
+        elif k == "navigate":
+            self._op("navigate", place=a["place"])
+            self._say(f"Getting directions to {a['place']}.", speak)
+        elif k == "torch":
+            self._op("torch", on=a["on"])
+            self._say("Torch on." if a["on"] else "Torch off.", speak)
+        elif k == "panel":
+            self._op("panel", panel=a["panel"])
+            self._say(f"Here are your {a['panel'].replace('internet', 'internet').title()} settings.", speak)
+        elif k == "type":
+            self._op("type_text", text=a["text"])
+        elif k == "tap":
+            self._op("screen_tap", query=a["target"])
+
+    # ------------------------------------------------------------ Real Count, briefing, meetings
+    def update_usage(self, usage_json):
+        """Today's screen time from Android's usage stats (Kotlin, about once a minute)."""
+        self.realcount.save_usage(json.loads(usage_json))
+        return "ok"
+
+    def limits_json(self):
+        return json.dumps({"limits": self.settings.get("app_limits") or {}, "break": bool(self.settings.get("break_screen"))})
+
+    def set_limit(self, package, minutes):
+        limits = dict(self.settings.get("app_limits") or {})
+        if int(minutes) > 0:
+            limits[package] = int(minutes)
+        else:
+            limits.pop(package, None)
+        self.settings.update({"app_limits": limits})
+        return self.limits_json()
+
+    def weekly_summary(self):
+        return self.realcount.weekly_summary()
+
+    def morning_brief(self):
+        """The same greeting as Windows, as notification text: {"title", "text"} or {} if already greeted."""
+        if not self.briefing.should_greet():
+            return "{}"
+        b = self.briefing.build(include_weather=False)
+        self.briefing.mark_greeted()
+        return json.dumps({"title": b.get("title") or "Good morning", "text": " ".join(b.get("lines") or [])[:400]})
+
+    def add_meeting_text(self, text):
+        """A transcribed phrase while meeting notes are on (from the phone's recognizer)."""
+        return "ok" if self.meeting.add_text("Room", text) else "ignored"     # the phone mic hears everyone
+
+    def find_on_screen(self, query, nodes_json):
+        """Kotlin sends the accessibility nodes of the current screen; the same matcher as
+        Windows (screen.find: name, type, ordinal, corner) picks one. -> index or -1."""
+        from src.os_control import screen
+        nodes = json.loads(nodes_json)
+        els = [screen.Element(n.get("name", ""), n.get("type", "ButtonControl"), tuple(n["rect"]), i, n.get("depth", 5))
+               for i, n in enumerate(nodes)]
+        el, why = screen.find(query, els)
+        return json.dumps({"index": el.control if el is not None else -1, "why": why})
 
     def interrupt(self):
         self.assistant.interrupt()
         return "ok"
+
+    # ------------------------------------------------------------ voice
+    def sounds_unfinished(self, text):
+        """Same pause logic as Windows: "open youtube and…" waits for the rest of the sentence."""
+        from src.voice.voice_listener import sounds_unfinished
+        return bool(sounds_unfinished(text))
+
+    def voice_config(self):
+        """Recognizer locale, wake phrases (follow the assistant's name) and pause timing."""
+        from src import appdata
+        lang = (self.settings.get("voice_language") or "auto").lower()
+        locales = appdata.get("android.speech_locales", {}) or {}
+        name = (self.settings.get("agent_name") or "Snapy").strip().lower()
+        phrases = list(appdata.get("android.wake_phrases", []) or [])
+        if name and name not in ("snapy", "snappy"):
+            phrases = [name, f"hey {name}", f"hi {name}", f"okay {name}"] + phrases
+        return json.dumps({
+            "locale": locales.get(lang, locales.get("auto", "en-IN")),
+            "wake_phrases": phrases,
+            "continuation_wait_ms": int(float(self.settings.get("continuation_wait_s") or 1.5) * 1000),
+            "wake_enabled": bool(self.settings.get("android_wake_word")),
+            "wake_model": appdata.get("android.wake_model"),
+        })
 
     def set_api_key(self, provider, key):
         from src import secrets_store
@@ -244,7 +433,8 @@ class SnapyCore:
 
     def brain_status(self):
         from src.brain.cloud import PROVIDERS
-        return {"mode": self.settings.get("ai_provider"), "local_ready": bool(self.local.ready()),
+        return {"mode": self.settings.get("ai_provider"), "voice_language": self.settings.get("voice_language") or "auto",
+                "local_ready": bool(self.local.ready()),
                 "cloud_configured": self.cloud.configured(), "provider": self.cloud.provider, "model": self.cloud.model,
                 "providers": {k: v["label"] for k, v in PROVIDERS.items()}, "error": self.cloud.last_error}
 
@@ -276,8 +466,9 @@ _core = None
 _lock = threading.Lock()
 
 
-def init(data_dir, cipher=None):
-    """Entry point for Kotlin (Chaquopy). `cipher` = Kotlin object with encrypt(bytes)/decrypt(bytes)."""
+def init(data_dir, cipher=None, contacts=None):
+    """Entry point for Kotlin (Chaquopy). `cipher` = object with encrypt(bytes)/decrypt(bytes);
+    `contacts` = object with find(name) -> JSON [{name, number}] (or {"error": "permission"})."""
     global _core
     with _lock:
         if _core is None:
@@ -285,6 +476,7 @@ def init(data_dir, cipher=None):
                 from src import secrets_store
                 secrets_store.set_cipher(lambda b: bytes(cipher.encrypt(b)), lambda b: bytes(cipher.decrypt(b)))
             _core = SnapyCore(data_dir)
+            _core.contacts = contacts
     return "ok"
 
 

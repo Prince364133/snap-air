@@ -13,7 +13,7 @@ import time
 
 import requests
 
-from src import appdata, secrets_store
+from src import appdata, diag, secrets_store
 from src.brain.llm import LLM, ThinkFilter
 
 
@@ -36,6 +36,78 @@ _KEY_BAD = re.compile(r"api[ _-]?key.{0,30}(not valid|invalid|incorrect)|(invali
 # Phrases providers use when a model ID is retired or not available to this key
 _MODEL_GONE = re.compile(r"not[ _]found|does not exist|decommission|deprecat|retired|no longer|"
                          r"unknown model|invalid model|model.{0,40}(not supported|unsupported|not available)", re.I)
+
+
+class CloudConsentRequired(RuntimeError):
+    """A cloud call was attempted before the user answered the "what's sent" preview."""
+
+
+# ---------------------------------------------------------------- redaction
+# Before anything leaves the PC, obvious personal identifiers are swapped for
+# placeholders. Order matters: keys first (they contain digit runs that look like
+# cards or phones), then emails, user folders, cards, phone numbers.
+_KEYLIKE = re.compile(
+    r"\b(?:sk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{30,}|gsk_[A-Za-z0-9]{20,}"
+    r"|xai-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}"
+    r"|AKIA[0-9A-Z]{16}|pplx-[A-Za-z0-9]{20,}|sk-or-[A-Za-z0-9-]{20,}|xox[abpr]-[A-Za-z0-9-]{10,})")
+# a long unbroken run of letters AND digits (tokens, secrets); plain long words don't qualify
+_LONG_TOKEN = re.compile(r"(?<![A-Za-z0-9_\-])(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{32,}")
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+# C:\Users\<name>\..., C:/Users/<name>, /home/<name>, /Users/<name> -> keep the shape, hide the name
+_USER_PATH = re.compile(r"(?i)((?:\b[A-Z]:)?[\\/]+(?:Users|home|Documents and Settings)[\\/]+)([^\\/:*?\"<>|\r\n\s]+)")
+_CARD = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+_PHONE = re.compile(r"(?<![\w.])\+?\(?\d[\d\s().-]{7,}\d(?![\w.])")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_SKIP_USER = {"public", "default", "all users", "[user]"}
+
+
+def _luhn(digits):
+    total, alt = 0, False
+    for ch in reversed(digits):
+        d = int(ch)
+        if alt:
+            d = d * 2 - 9 if d > 4 else d * 2
+        total, alt = total + d, not alt
+    return total % 10 == 0
+
+
+def _card(m):
+    digits = re.sub(r"\D", "", m.group())
+    return "[card]" if 13 <= len(digits) <= 19 and _luhn(digits) else m.group()
+
+
+def _phone(m):
+    s = m.group()
+    if _DATE.search(s):                       # "2026-11-15 10" is a date and time, not a phone
+        return s
+    n = len(re.sub(r"\D", "", s))
+    return "[phone]" if 10 <= n <= 15 else s
+
+
+def _user_path(m):
+    return m.group(1) + ("[user]" if m.group(2).lower() not in _SKIP_USER else m.group(2))
+
+
+def redact(text):
+    """Mask emails, phone and card numbers, API-key-like strings and user names in paths."""
+    if not text or not isinstance(text, str):
+        return text
+    text = _KEYLIKE.sub("[key]", text)
+    text = _LONG_TOKEN.sub("[key]", text)
+    text = _EMAIL.sub("[email]", text)
+    text = _USER_PATH.sub(_user_path, text)
+    text = _CARD.sub(_card, text)
+    text = _PHONE.sub(_phone, text)
+    return text
+
+
+def redact_messages(messages, enabled=True):
+    """A redacted copy of chat messages (the originals, kept locally, are untouched)."""
+    if not enabled or not messages:
+        return messages
+    return [{**m, "content": redact(m["content"])} if isinstance(m.get("content"), str) else m for m in messages]
+
+
 JSON_HINT = ('\nRespond with a JSON object whose keys appear in this order: "say", "tool", "args". '
              'No text outside the JSON.')
 
@@ -50,6 +122,9 @@ class CloudLLM:
         self._online = (0.0, False)
         self._rejected = None                # (provider, key) the provider answered 401/403 for
         self._model_idx = {}                 # provider -> index of the model in use (see _advance_model)
+        self.require_ack = False             # True: no cloud call until the user allows it (see preview)
+        self.on_preview = None               # fn(sample): show the one-time "what's sent" dialog
+        self.preview_sample = None           # the preview waiting for an answer, if any
 
     def _s(self, k, d=""):
         v = self.settings.get(k) if self.settings else None
@@ -99,8 +174,40 @@ class CloudLLM:
     def key(self):
         return secrets_store.get_key(f"cloud_{self.provider}")
 
-    def configured(self):
+    def has_key(self):
+        """A key and a model are set (whether or not the user has allowed cloud calls yet)."""
         return bool(self.key() and self.model)
+
+    def consent_pending(self):
+        """The one-time "what's sent" preview hasn't been answered with Allow yet.
+        Only enforced where a UI can ask (the Windows engine sets require_ack)."""
+        return bool(self.require_ack) and not self._s("cloud_preview_ack", False)
+
+    def configured(self):
+        """Usable now: a key is set and, where asked for, the user has allowed cloud calls."""
+        return self.has_key() and not self.consent_pending()
+
+    def preview(self, messages):
+        """What a request would send, after redaction, cut down to fit a dialog."""
+        n = int(appdata.get("cloud.preview_chars", 600) or 600)
+        sample = []
+        for m in redact_messages(messages, self._s("cloud_redact", True)) or []:
+            c = m.get("content")
+            c = c if isinstance(c, str) else "[non-text content]"
+            sample.append({"role": m.get("role"), "content": c if len(c) <= n else c[:n] + " …"})
+        return {"provider": self._info.get("label", self.provider), "model": self.model,
+                "redacted": bool(self._s("cloud_redact", True)), "messages": sample}
+
+    def request_preview(self, messages):
+        """Called instead of a cloud call while consent is pending: show the preview once."""
+        if not self.consent_pending() or self.preview_sample is not None:
+            return
+        self.preview_sample = self.preview(messages)
+        if self.on_preview:
+            try:
+                self.on_preview(self.preview_sample)
+            except Exception as e:                    # noqa: BLE001 - the HUD gets it in hello instead
+                diag.record("cloud.preview", e)
 
     def key_rejected(self):
         """True when the provider refused the current key (wrong or revoked), until it is replaced."""
@@ -118,7 +225,8 @@ class CloudLLM:
             try:
                 requests.head("https://1.1.1.1", timeout=2)
                 ok = True
-            except Exception:
+            except Exception as e:                    # noqa: BLE001 - offline is an answer, not an error
+                diag.record("cloud.online_check", e, quiet=True)
                 ok = False
         self._online = (time.time(), ok)
         return ok
@@ -197,7 +305,12 @@ class CloudLLM:
         detail = err or d.get("message") or d.get("detail")        # Mistral: {"detail": "..."}
         return str(detail if isinstance(detail, str) else d)[:200]
 
-    def _request(self, messages, json_mode, max_tokens, temperature, stream):
+    def _request(self, messages, json_mode, max_tokens, temperature, stream, probe=False):
+        # probe = the key check ("Reply with exactly: OK"): carries no user data, so it may run
+        # before the user has allowed cloud calls; everything else waits for that answer
+        if self.consent_pending() and not probe:
+            raise CloudConsentRequired("cloud calls not allowed yet")
+        messages = redact_messages(messages, self._s("cloud_redact", True))
         if json_mode:
             messages = [dict(m) for m in messages]
             messages[0] = {**messages[0], "content": messages[0]["content"] + JSON_HINT}
@@ -293,8 +406,9 @@ class CloudLLM:
 
     def test(self):
         t0 = time.time()
-        out = self.chat_text([{"role": "system", "content": "Reply with exactly: OK"},
-                              {"role": "user", "content": "ping"}], max_tokens=5, temperature=0)
+        r = self._request([{"role": "system", "content": "Reply with exactly: OK"},
+                           {"role": "user", "content": "ping"}], False, 5, 0, False, probe=True)
+        out = LLM._clean(self._full_text(r, self.provider))
         return round(time.time() - t0, 2), out.strip()
 
 
@@ -322,6 +436,21 @@ class Brain:
             return self.cloud
         return self.local
 
+    def _wants_cloud_but_waiting(self):
+        """The router would pick the cloud, except the user hasn't allowed it yet."""
+        if not getattr(self.cloud, "consent_pending", lambda: False)():
+            return False
+        mode = self._mode()
+        cloud_ok = self.purpose != "memory" or bool(self.settings.get("cloud_for_memory"))
+        if not (cloud_ok and mode in ("cloud", "auto") and self.cloud.has_key() and not self.cloud.key_rejected()):
+            return False
+        return mode == "cloud" or self.cloud.online()
+
+    def _gate(self, a, k):
+        """Before the first cloud call ever, show what would be sent; this call runs locally."""
+        if self._wants_cloud_but_waiting():
+            self.cloud.request_preview(a[0] if a else k.get("messages"))
+
     @property
     def is_cloud(self):
         return self.active() is self.cloud
@@ -340,6 +469,7 @@ class Brain:
         return a.ready() or (a is self.cloud and self.local.ready())
 
     def stream(self, *a, **k):
+        self._gate(a, k)
         target = self.active()
         if target is self.cloud:
             try:
@@ -352,20 +482,24 @@ class Brain:
         yield from self.local.stream(*a, **k)
 
     def chat_json(self, *a, **k):
+        self._gate(a, k)
         target = self.active()
         try:
             return target.chat_json(*a, **k)
-        except Exception:
+        except Exception as e:
             if target is self.cloud and self.local.ready():
+                diag.record("brain.cloud_fallback", e, quiet=True, call="chat_json")
                 return self.local.chat_json(*a, **k)
             raise
 
     def chat_text(self, *a, **k):
+        self._gate(a, k)
         target = self.active()
         try:
             return target.chat_text(*a, **k)
-        except Exception:
+        except Exception as e:
             if target is self.cloud and self.local.ready():
+                diag.record("brain.cloud_fallback", e, quiet=True, call="chat_text")
                 return self.local.chat_text(*a, **k)
             raise
 

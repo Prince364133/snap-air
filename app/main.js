@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog, shell, Noti
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 
 let mainWindow;
 let tray = null;
@@ -18,6 +19,26 @@ function logDir() {
     const d = path.join(process.env.APPDATA || app.getPath('userData'), 'SnapAir');
     fs.mkdirSync(d, { recursive: true });
     return d;
+}
+
+// ---------------------------------------------------------------- engine auth
+// The engine's WebSocket only accepts the HUD: a random per-launch token plus an
+// Origin allow-list (engine/src/server/auth.py). When we spawn the engine we make
+// the token and pass it in SNAPY_WS_TOKEN. When the engine runs on its own
+// (SNAP_AIR_EXTERNAL_ENGINE=1, e.g. `pnpm dev`) it makes one and writes it to
+// <data dir>/ws_token, which we read each time the page (re)connects.
+const WS_TOKEN = crypto.randomBytes(32).toString('base64url');
+
+function dataDir() {
+    // same rule as engine/src/storage.py data_dir()
+    if (process.env.SNAP_AIR_DATA) return process.env.SNAP_AIR_DATA;
+    return process.env.APPDATA ? path.join(process.env.APPDATA, 'SnapAir') : path.join(require('os').homedir(), '.snap-air');
+}
+
+function engineToken() {
+    if (process.env.SNAP_AIR_EXTERNAL_ENGINE !== '1') return WS_TOKEN;
+    try { return fs.readFileSync(path.join(dataDir(), 'ws_token'), 'utf8').trim(); }
+    catch (e) { return ''; }            // engine not up yet: the page retries
 }
 
 function startEngine() {
@@ -40,7 +61,7 @@ function startEngine() {
         cwd: engineDir,
         windowsHide: true,
         stdio: ['ignore', log, log],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', SNAP_AIR_AUTOSTART: AUTOSTART ? '1' : '0' },
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', SNAP_AIR_AUTOSTART: AUTOSTART ? '1' : '0', SNAPY_WS_TOKEN: WS_TOKEN },
     });
     engineProc.on('exit', (code) => {
         engineProc = null;
@@ -221,6 +242,8 @@ ipcMain.handle('pick-folder', async () => {
 });
 
 ipcMain.on('quit', () => app.quit());
+// Only our own HUD page may ask for the engine token
+ipcMain.handle('ws-token', (event) => (mainWindow && event.sender === mainWindow.webContents ? engineToken() : ''));
 ipcMain.on('set-login-item', (_e, enabled) => setLoginItem(enabled));
 ipcMain.on('notify', (_e, msg) => { if (msg && msg.title) notify(String(msg.title), String(msg.body || '')); });
 ipcMain.on('open-external', (_e, url) => {

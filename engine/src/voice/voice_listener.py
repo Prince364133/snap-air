@@ -14,11 +14,14 @@ import sys
 import threading
 import time
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 try:
     import sounddevice as sd
-except Exception as e:  # pragma: no cover - missing PortAudio etc.
+except Exception as e:  # pragma: no cover - missing PortAudio etc. (and on Android)
     sd = None
     _SD_ERR = e
 

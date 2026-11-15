@@ -1,0 +1,151 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "language": "en",
+    "description": "English patterns, plus code-mixed patterns whose English and Hinglish alternatives cannot be split into separate entries without changing what they match (see README 'Why some Hinglish lives in en.json')."
+  },
+  "flags": {"ignore_case": true},
+  "macros": {
+    "NAME": "(?<name>[a-z][a-z .'-]{0,40}?)",
+    "TEXT": "(?<text>.+)",
+    "SEP": "(?:\\s*[,:]\\s*|\\s+(?:saying|that|ki|ke|bolo|likho|kaho)\\s+|\\s+)",
+    "ORD_NOUN": "(?:one|video|result|link|song|wala|wali)",
+    "MUSIC": "\\b(?:gaane|gaana|gana|songs?|music|bhajan|lofi|playlist|podcast|album|mix|video|movie|trailer)\\b",
+    "NONWORD_LEAD": "[^A-Za-z0-9_\\u0080-\\uFFFF]*"
+  },
+  "domains": {
+    "phone": [
+      {"id": "whatsapp.send_to", "order": 10, "intent": "whatsapp", "pattern": "^(?:send (?:a )?)?(?:whatsapp|whats app|wa)(?: message| msg)?(?: to)? {{NAME}}{{SEP}}{{TEXT}}$"},
+      {"id": "whatsapp.message_on", "order": 20, "intent": "whatsapp", "pattern": "^(?:send (?:a )?)?(?:message|msg|text) (?:to )?{{NAME}} on (?:whatsapp|whats app){{SEP}}{{TEXT}}$"},
+      {"id": "whatsapp.message_trailing", "order": 30, "intent": "whatsapp", "pattern": "^(?:send (?:a )?)?(?:message|msg|text) (?:to )?{{NAME}}{{SEP}}{{TEXT}} on (?:whatsapp|whats app)$"},
+      {"id": "sms.send", "order": 50, "intent": "sms", "pattern": "^(?:send (?:an? )?)?(?:sms|text message|text) (?:to )?{{NAME}}{{SEP}}{{TEXT}}$"},
+      {"id": "call.verb_name", "order": 70, "intent": "call", "pattern": "^(?:call|phone|ring|dial|video call) {{NAME}}(?: on (?:the )?phone)?$"},
+      {"id": "alarm.set", "order": 90, "intent": "alarm", "pattern": "^(?:wake me(?: up)?|set (?:an? )?alarm|alarm)(?: for| at)? (?<when>.+)$"},
+      {"id": "timer.set", "order": 110, "intent": "timer", "pattern": "^(?:set (?:a )?|start (?:a )?)?timer (?:for )?(?<n>\\d+|[a-z ]+?) ?(?<unit>seconds?|secs?|minutes?|mins?|hours?|hrs?|ghante?|minute)$"},
+      {"id": "navigate.to", "order": 130, "intent": "navigate", "pattern": "^(?:navigate|take me|directions|drive|route|get me) to (?<place>.+)$"},
+      {"id": "torch.state_first", "order": 150, "intent": "torch", "pattern": "^(?:turn |switch )?(?<state>on|off) (?:the )?(?:torch|flash ?light)$"},
+      {"id": "torch.state_last", "order": 160, "intent": "torch", "pattern": "^(?:turn |switch )?(?:the )?(?:torch|flash ?light) (?<state>on|off|jalao|band karo|band)$"},
+      {"id": "panel.open", "order": 170, "intent": "panel", "pattern": "^(?:turn |switch )?(?:on |off )?(?:the )?(?<panel>wi-?fi|wifi|internet|mobile data|data|bluetooth|nfc|volume)(?: on| off)?$"},
+      {"id": "type.text", "order": 180, "intent": "type", "pattern": "^(?:type|write|likho)\\s+(?<text>.+)$"},
+      {"id": "tap.target", "order": 190, "intent": "tap", "pattern": "^(?:tap|click|press|select|open)(?: on)?(?: the)? (?<target>.+?)(?: on (?:the )?screen)?$"}
+    ],
+    "phone_tap_open_ok": [
+      {"id": "tap_open_ok", "pattern": "\\b(?:video|result|link|button|tab|first|second|third|last|\\d+(?:st|nd|rd|th))\\b"}
+    ],
+    "phone_yes": [
+      {"id": "en", "pattern": "^(?:yes|yeah|yep|yup|sure|ok|okay|send|send it|do it|go ahead|confirm)\\b"}
+    ],
+    "phone_no": [
+      {"id": "en", "pattern": "^(?:no|nope|cancel|stop|don't|do not)\\b"}
+    ],
+    "assistant_yes": [
+      {"id": "en", "pattern": "^(?:yes|yeah|yep|yup|sure|ok|okay|please|go ahead|do it|start|let's go|lets go|absolutely|of course)\\b"}
+    ],
+    "assistant_no": [
+      {"id": "en", "pattern": "^(?:no|nope|nah|not now|later|cancel|skip|don't|dont|never mind)\\b"}
+    ],
+    "assistant_stop": [
+      {"id": "en", "pattern": "^(?:stop|stop it|stop talking|quiet|be quiet|shut up|enough|cancel)[\\s.,!?;:'\"…।-]*$"}
+    ],
+    "assistant_risky": [
+      {"id": "en", "pattern": "\\b(?:close|lock|shut ?down|restart|delete|log ?off|sign out)\\b"}
+    ],
+    "assistant_polite": [
+      {"id": "en", "pattern": "^(?:(?:hey |ok )?snap{{NONWORD_LEAD}})?(?:(?:can|could|would|will) you (?:please )?|please )"}
+    ],
+    "polite_prefix": [
+      {"id": "en", "pattern": "^(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+"}
+    ],
+    "polite_suffix": [
+      {"id": "mixed", "pattern": "\\s+(?:please|for me|now|yaar|na|bhai)$"}
+    ],
+    "polite_prefix_original": [
+      {"id": "en", "pattern": "^{{NONWORD_LEAD}}(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+"}
+    ],
+    "wake_filler": [
+      {"id": "en", "pattern": "(?:(?:uh|um|so|and|oh|yo|hey|hi|ok|okay|alright|right|hello) ){0,2}"}
+    ],
+    "ordinal": [
+      {"id": "trailing_ordinal", "order": 10, "pattern": "[, ]*(?:and )?(?:play |open |click )?(?:the )?(?<n>{{ORDINALS}})(?: {{ORD_NOUN}})?$"},
+      {"id": "trailing_number", "order": 20, "pattern": "[, ]*(?:the )?(?:video|result|song) (?:number |no )?(?<n>\\d+)$"},
+      {"id": "play_nth_of", "order": 30, "pattern": "\\b(?<keep>play )(?:the )?(?<n>{{ORDINALS}}) {{ORD_NOUN}} (?:of|for|from|on) "},
+      {"id": "play_nth", "order": 40, "pattern": "\\b(?<keep>play )(?:the )?(?<n>{{ORDINALS}}) "}
+    ],
+    "play": [
+      {"id": "youtube_then_play", "order": 10, "pattern": "^(?:open |go to |on )?youtube (?:and |then )?(?:play|search(?: for)?|find|put on|search and play) (?<q>.+)$"},
+      {"id": "play_on_youtube", "order": 20, "pattern": "^(?:play|put on|search for|find|watch) (?<q>.+?) (?:on|in) youtube$"},
+      {"id": "listen_music", "order": 40, "pattern": "^(?:listen to|listen|hear) (?<q>.*{{MUSIC}}.*)$"},
+      {"id": "play_music", "order": 50, "pattern": "^(?:play) (?<q>.*{{MUSIC}}.*)$"}
+    ],
+    "play_filler_prefix": [
+      {"id": "mixed", "pattern": "^(?:(?:some|a few|me|kuch|koi|mujhe|mere liye|hume|humein|thode|achhe)\\s+)+"}
+    ],
+    "play_suffix": [
+      {"id": "mixed", "pattern": "\\s+(?:on youtube|youtube (?:pe|par))$"}
+    ],
+    "play_fixes": [
+      {"id": "hindu_hindi", "pattern": "\\bhindu\\b(?=\\s+(?:romantic|sad|old|new|love|party|devotional|songs?|music|gaane|gana))", "replace": "hindi"}
+    ],
+    "play_topicless_words": ["the", "one", "video", "videos", "result", "link", "wala", "wali", "number", "no"],
+    "play_reject": ["it", "that", "this", "music", "something", "kuch", "video", "youtube"],
+    "question_or_creative": [
+      {"id": "question_mark", "pattern": "\\?\\s*$"},
+      {"id": "creative", "pattern": "^(?:write|draft|compose|create|generate|make|give) (?:me|us|a|an|some)\\b"},
+      {"id": "explain", "pattern": "^(?:explain|describe|summari[sz]e|translate|why|how|what|who|when|where|which|can you|could you|tell me|help me)\\b"}
+    ],
+    "unfinished": [
+      {"id": "en", "pattern": "(?:\\b(?:and|or|but|to|the|a|an|of|for|with|by|in|at|from|about|into|after|before|then|so|because|like|that|which|my|your|um+|uh+|hmm+)|,|-|\\.\\.\\.|…)\\s*$"}
+    ],
+    "realcount_period": [
+      {"id": "mixed", "order": 10, "pattern": "\\b(?<period>today|aaj|this week|is hafte|week|yesterday|kal)\\b"}
+    ],
+    "realcount_app": [
+      {"id": "how_long_on", "order": 10, "pattern": "\\b(?:how (?:much time|long)|kitna time|kitni der)\\b.*?\\b(?:on|in|pe|par)\\s+(?<app>[a-z][a-z ]+?)\\b(?:\\s+(?:today|aaj|this week|yesterday|kal|pe|par|spent|bitaya))?\\s*[?.!]*$"}
+    ],
+    "realcount_reels": [
+      {"id": "count_then_noun", "pattern": "\\b(?:how many|kitni|kitne|count)\\b.*\\b(?:reels?|shorts?|videos?)\\b"},
+      {"id": "noun_then_count", "pattern": "\\b(?:reels?|shorts?)\\b.*\\b(?:kitni|kitne|count|how many)\\b"}
+    ],
+    "realcount_screen": [
+      {"id": "en", "pattern": "\\b(?:screen ?time|phone (?:time|usage)|how (?:long|much) (?:have|did) i (?:use|used|been on) (?:my|the) phone)\\b"}
+    ],
+    "memory_extract": [
+      {"id": "name", "pattern": "\\b(?:my name is|i am called|mera naam)\\s+([A-Za-z][A-Za-z]{1,20})", "template": "Name is {0}", "category": "fact", "importance": 5, "key": "name"},
+      {"id": "call_me", "pattern": "\\bcall me\\s+([A-Za-z][A-Za-z]{1,20})", "template": "Prefers to be called {0}", "category": "preference", "importance": 5, "key": "call_me"},
+      {"id": "role", "pattern": "\\bi (?:work as|am working as)\\s+(?:an? )?([a-z][a-z ]{2,40}?)(?:\\s+at\\b|[.,!]|$)", "template": "Works as {0}", "category": "work", "importance": 4, "key": "role"},
+      {"id": "company", "pattern": "\\bi work at\\s+([A-Za-z0-9][\\w &.-]{1,40}?)(?:[.,!]|$)", "template": "Works at {0}", "category": "work", "importance": 4, "key": "company"},
+      {"id": "start_time", "pattern": "\\bi (?:start|begin) (?:work|working|my day|office)(?: at| around| by)?\\s+(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)", "template": "Usually starts work at {0}", "category": "routine", "importance": 4, "key": "start_time"},
+      {"id": "usually", "pattern": "\\bi (?:usually|always|normally|generally)\\s+(.{4,80}?)(?:[.!]|$)", "template": "Usually {0}", "category": "routine", "importance": 3, "key": null},
+      {"id": "likes", "pattern": "\\bi (?:love|really like|prefer|enjoy)\\s+(.{3,60}?)(?:[.!]|$)", "template": "Likes {0}", "category": "preference", "importance": 3, "key": null},
+      {"id": "dislikes", "pattern": "\\bi (?:hate|dislike|don't like|do not like)\\s+(.{3,60}?)(?:[.!]|$)", "template": "Dislikes {0}", "category": "preference", "importance": 3, "key": null},
+      {"id": "editor", "pattern": "\\bi use\\s+(antigravity|vs ?code|cursor|windsurf|pycharm|intellij|vim|neovim|sublime|zed)\\b", "template": "Uses {0} for coding", "category": "project", "importance": 3, "key": "editor"},
+      {"id": "goal", "pattern": "\\bmy (?:goal|plan) is to\\s+(.{4,80}?)(?:[.!]|$)", "template": "Goal: {0}", "category": "goal", "importance": 4, "key": null}
+    ],
+    "memory_explicit": [
+      {"id": "mixed", "order": 10, "pattern": "^\\s*(?:please\\s+)?(?:remember|don't forget|do not forget|note that|keep in mind|yaad rakhna|yaad rakho)(?:\\s+that)?[\\s,:]+(?<fact>.+)$"}
+    ],
+    "memory_secret": [
+      {"id": "words", "pattern": "\\b(?:password|passwd|passcode|pin|otp|one[- ]time code|cvv|secret|api[ _-]?key|token|private key|ssh key|card number|account number|ifsc|aadhaar|aadhar|pan number|social security|ssn)\\b"},
+      {"id": "card_digits", "pattern": "\\b\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?\\d{1,7}\\b"},
+      {"id": "key_prefix", "pattern": "\\b(?:sk|pk|ghp|gho|xox[bp]|AKIA|AIza)[-_A-Za-z0-9]{12,}"}
+    ],
+    "memory_self": [
+      {"id": "en", "pattern": "\\b(?:i|i'm|im|i've|i'd|i'll|my|me|mine|myself|we|our|us|prefer|like|love|hate|enjoy|always|usually|never|every|daily|favourite|favorite|remember|call me|i am)\\b"}
+    ],
+    "meeting_action_hint": [
+      {"id": "en", "pattern": "\\b(?:i'll|i will|i can|let me|i'm going to|we need to|we should|can you|could you|action item|todo|follow up|by (?:monday|tuesday|wednesday|thursday|friday|tomorrow|tonight|eod|end of day)|deadline)\\b"}
+    ],
+    "meeting_decision_hint": [
+      {"id": "en", "pattern": "\\b(?:we decided|we agreed|agreed|decision|let's go with|we'll go with)\\b"}
+    ],
+    "meeting_mine": [
+      {"id": "en", "pattern": "\\b(?:i'll|i will|i can|let me|i'm going to)\\b"}
+    ],
+    "task_title_prefix": [
+      {"id": "mixed", "pattern": "^(?:please\\s+)?(?:remind me (?:to|that|about)?|reminder (?:to|for)?|set a reminder (?:to|for)?|add (?:a )?task(?: to)?|create (?:a )?task(?: to)?|todo|to do|i need to|i have to|remember to|yaad dilana(?: ki)?)\\s*"}
+    ],
+    "task_title_suffix": [
+      {"id": "hinglish", "pattern": "\\s+(?:ka|ki|ke) reminder(?: lagao| laga do| set karo)?$"}
+    ]
+  }
+}

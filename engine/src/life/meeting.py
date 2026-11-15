@@ -14,7 +14,10 @@ import re
 import threading
 import time
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:                     # Android: text arrives from the phone's speech recognizer
+    np = None
 
 SR = 16000
 WINDOW_S = 20
@@ -129,6 +132,16 @@ class MeetingRecorder:
         self.bookmarks.append(b)
         self.on_update(self.state())
         return b
+
+    def add_text(self, source, text):
+        """Already-transcribed speech (e.g. Android's recognizer) -> a transcript line."""
+        text = (text or "").strip()
+        if not self.recording or not re.search(r"[^\W_]{2,}", text):
+            return False
+        self.last_speech = time.time()
+        self.segments.append({"t": self.elapsed(), "who": LABELS.get(source, source), "text": text})
+        self.on_update(self.state())
+        return True
 
     def feed(self, source, audio):
         """Push 16 kHz mono float32 audio (used by capture threads and tests)."""

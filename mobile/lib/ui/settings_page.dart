@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
+import '../i18n/i18n.dart';
+import 'battery_guide.dart';
+import 'chip_settings.dart';
+import 'onboarding.dart';
+import 'privacy_page.dart';
 
 /// AI brain (same three modes as Windows: on this phone / auto / cloud) and permissions.
 class SettingsPage extends StatefulWidget {
@@ -16,18 +23,35 @@ class _SettingsPageState extends State<SettingsPage> {
   String _provider = 'gemini';
   final _key = TextEditingController();
   bool _saving = false;
+  String _voiceLang = 'auto';
+  String? _wakeProgress;
+  StreamSubscription? _sub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // "Hey Snapy" model download progress (36 MB, once)
+    _sub = SnapyCore.events.listen((e) {
+      if (e['type'] != 'setup' || !mounted) return;
+      final it = ((e['items'] as List?) ?? const []).cast<Map>().firstWhere((i) => i['id'] == 'wake', orElse: () => const {});
+      if (it.isEmpty) return;
+      final total = (it['total'] as num?)?.toInt() ?? 0, done = (it['done'] as num?)?.toInt() ?? 0;
+      setState(() => _wakeProgress = it['state'] == 'done' ? null : 'Downloading “Hey Snapy” model… ${total > 0 ? (done * 100 ~/ total) : 0}%');
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
     try {
       final b = await SnapyCore.brainStatus();
       final p = await SnapyCore.status();
-      if (mounted) setState(() { _brain = b; _perm = p; _provider = (b['provider'] ?? 'gemini') as String; });
+      if (mounted) setState(() { _brain = b; _perm = p; _provider = (b['provider'] ?? 'gemini') as String; _voiceLang = (b['voice_language'] ?? 'auto') as String; });
     } catch (_) {}
   }
 
@@ -109,7 +133,54 @@ class _SettingsPageState extends State<SettingsPage> {
             ]),
           ),
         ]),
+        group('Voice', [
+          SwitchListTile(
+            title: const Text('“Hey Snapy”'),
+            subtitle: Text(_wakeProgress ??
+                'Say its name any time, even in other apps. Listens on your phone only; shows a small notification while on.'),
+            value: _perm['wake'] ?? false,
+            onChanged: (on) async {
+              final ok = await SnapyCore.setWakeWord(on);
+              if (!ok && on && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Allow the microphone, then turn this on again.')));
+              }
+              _load();
+            },
+          ),
+          ListTile(
+            title: const Text('Language I speak'),
+            trailing: DropdownButton<String>(
+              value: _voiceLang,
+              underline: const SizedBox(),
+              items: const [
+                DropdownMenuItem(value: 'auto', child: Text('English / Hinglish')),
+                DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)')),
+                DropdownMenuItem(value: 'mr', child: Text('मराठी (Marathi)')),
+                DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)')),
+                DropdownMenuItem(value: 'te', child: Text('తెలుగు (Telugu)')),
+                DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
+              ],
+              onChanged: (v) async {
+                if (v == null) return;
+                setState(() => _voiceLang = v);
+                await SnapyCore.updateSettings({'voice_language': v});
+              },
+            ),
+          ),
+        ]),
         group('Permissions', [
+          SwitchListTile(
+            title: const Text('Contacts'),
+            subtitle: const Text('For “call Mom” and “WhatsApp Rahul …”. Read on your phone only.'),
+            value: _perm['contacts'] ?? false,
+            onChanged: (_) async { await SnapyCore.requestPermission('contacts'); _load(); },
+          ),
+          SwitchListTile(
+            title: const Text('Place calls directly'),
+            subtitle: const Text('Otherwise Snapy opens the dialler with the number ready.'),
+            value: _perm['calls'] ?? false,
+            onChanged: (_) async { await SnapyCore.requestPermission('calls'); _load(); },
+          ),
           SwitchListTile(
             title: const Text('Reminder notifications'),
             value: _perm['notifications'] ?? false,
@@ -126,6 +197,34 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: Text((_perm['usage'] ?? false) ? 'On' : 'Off'),
             trailing: const Icon(Icons.chevron_right),
             onTap: SnapyCore.openUsageAccess,
+          ),
+          ListTile(
+            title: Text(tr('perm.overlay.title')),
+            subtitle: Text((_perm['overlay'] ?? false) ? tr('common.on') : tr('common.off')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: SnapyCore.openOverlaySettings,
+          ),
+          ListTile(
+            title: Text(tr('rcset.permissions')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionFlow())).then((_) => _load()),
+          ),
+        ]),
+        group(tr('home.real_count'), [
+          ListTile(
+            title: Text(tr('rcset.title')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChipSettingsPage())),
+          ),
+          ListTile(
+            title: Text(tr('rcset.battery')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BatteryGuidePage())),
+          ),
+          ListTile(
+            title: Text(tr('rcset.privacy')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyReceiptsPage())),
           ),
         ]),
         const SizedBox(height: 24),

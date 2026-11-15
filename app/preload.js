@@ -11,4 +11,6 @@ contextBridge.exposeInMainWorld('snap', {
     invoke: (channel, ...args) => (INVOKE.has(channel) ? ipcRenderer.invoke(channel, ...args) : Promise.reject(new Error('blocked'))),
     on: (channel, cb) => { if (ON.has(channel)) ipcRenderer.on(channel, (_e, ...args) => cb(null, ...args)); },
     clipboardWrite: (text) => navigator.clipboard.writeText(text),
+    // per-launch token for the engine's WebSocket (see main.js "engine auth"); a Promise<string>
+    wsToken: () => ipcRenderer.invoke('ws-token'),
 });

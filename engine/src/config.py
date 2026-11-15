@@ -60,13 +60,18 @@ DEFAULTS = {
     "end_of_speech_s": 0.8,        # quiet needed before a phrase counts as finished
     "continuation_wait_s": 1.5,    # an unfinished-sounding phrase waits this long for the rest
     "max_utterance_s": 20,
-    "agent_name": "Snapy",         # users can rename their assistant; it answers to this name
+    "agent_name": "Snapy",
+    "android_wake_word": False,
+    "app_limits": {},              # Real Count daily limits, {package: minutes} (off unless set)
+    "break_screen": False,         # at a limit, show a 10-second breathing break (opt-in)    # Android: listen for "Hey Snapy" in the background (opt-in)         # users can rename their assistant; it answers to this name
     "llm_model": "qwen3:1.7b",
     "ai_provider": "auto",         # local | cloud | auto (cloud when an API key is set and online)
     "cloud_provider": "gemini",    # gemini | openai | compatible
     "cloud_model": "",             # empty = provider default
     "cloud_base_url": "",          # for OpenAI-compatible endpoints
     "cloud_for_memory": False,     # memory learning stays on-device unless allowed
+    "cloud_redact": True,          # mask emails, phone/card numbers, keys and user paths before anything goes to the cloud
+    "cloud_preview_ack": False,    # the user has seen "what's sent" and allowed cloud calls (asked once, before the first one)
     "llm_keep_alive": "15m",       # unload the model from RAM after this much idle time
     "internet_tools": True,        # web search / weather when you ask for them
 

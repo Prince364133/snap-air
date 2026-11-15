@@ -50,6 +50,10 @@ object SnapyChannels {
                     "usage" to usage.hasAccess(),
                     "realcount" to isAccessibilityOn(activity),
                     "pill" to (SnapyAccessibilityService.instance != null),
+                    "microphone" to (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED),
+                    "contacts" to (activity.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED),
+                    "calls" to (activity.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED),
+                    "wake" to WakeWordService.enabled,
                     "notifications" to (Build.VERSION.SDK_INT < 33 ||
                         activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED),
                 ))
@@ -69,6 +73,36 @@ object SnapyChannels {
                     activity.runOnUiThread { result.success(out.toString()) }
                 }.start()
                 "closeSheet" -> { activity.finish(); result.success(true) }
+                // ---- voice
+                "startListening" -> {
+                    if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
+                        result.success(false)
+                    } else { VoiceController.start(activity, "voice"); result.success(true) }
+                }
+                "stopListening" -> { VoiceController.stop(); result.success(true) }
+                "requestPermission" -> {
+                    val perm = when (str("which")) {
+                        "contacts" -> Manifest.permission.READ_CONTACTS
+                        "calls" -> Manifest.permission.CALL_PHONE
+                        "microphone" -> Manifest.permission.RECORD_AUDIO
+                        else -> null
+                    }
+                    if (perm != null) activity.requestPermissions(arrayOf(perm), 43)
+                    result.success(perm != null)
+                }
+                "setWakeWord" -> {
+                    val on = call.argument<Boolean>("on") ?: false
+                    if (on && activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
+                        result.success(false)
+                    } else {
+                        core.call("update_settings", JSONObject().put("android_wake_word", on).toString()) {
+                            WakeWordService.enable(activity.applicationContext, on)   // started while Snapy is open
+                            result.success(true)
+                        }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

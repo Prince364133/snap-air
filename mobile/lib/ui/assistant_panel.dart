@@ -34,6 +34,9 @@ class _AssistantPanelState extends State<AssistantPanel> {
         '“YouTube kholo” or “play Arijit songs, the 4th video”.')
   ];
   String _state = 'idle';
+  String _voice = 'idle';          // listening / partial / thinking / idle / error
+  String _heard = '';
+  double _level = 0;
   StreamSubscription? _sub;
 
   @override
@@ -66,6 +69,23 @@ class _AssistantPanelState extends State<AssistantPanel> {
             _msgs.add(_Msg(id, (e['text'] ?? '').toString(), ok: e['error'] != true, done: e['final'] != false));
           }
         });
+      case 'voice':
+        final st = (e['state'] ?? 'idle').toString();
+        if (st == 'level') {
+          setState(() => _level = ((e['level'] ?? 0) as num).toDouble());
+          return;
+        }
+        setState(() {
+          _voice = st;
+          _heard = (e['text'] ?? '').toString();
+          if (st == 'thinking' && _heard.isNotEmpty) {
+            _msgs.add(_Msg('v${DateTime.now().microsecondsSinceEpoch}', _heard, mine: true));
+            _heard = '';
+          }
+        });
+        if (st == 'error' && e['error'] != null) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(e['error'].toString())));
+        }
       case 'assistant_state':
         setState(() => _state = (e['state'] ?? 'idle').toString());
       case 'op':
@@ -94,6 +114,7 @@ class _AssistantPanelState extends State<AssistantPanel> {
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
     final thinking = _state == 'thinking';
+    final listening = _voice == 'listening' || _voice == 'partial';
     return Column(children: [
       Expanded(
         child: ListView.builder(
@@ -103,6 +124,23 @@ class _AssistantPanelState extends State<AssistantPanel> {
           itemBuilder: (_, i) => i < _msgs.length ? _Bubble(_msgs[i]) : const _Typing(),
         ),
       ),
+      if (listening)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: Row(children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: 10 + 14 * _level,
+              height: 10 + 14 * _level,
+              decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(_heard.isEmpty ? 'Listening…' : _heard,
+                  style: TextStyle(fontSize: 17, color: _heard.isEmpty ? c.text2 : c.text)),
+            ),
+          ]),
+        ),
       SizedBox(
         height: 44,
         child: ListView(
@@ -141,6 +179,22 @@ class _AssistantPanelState extends State<AssistantPanel> {
             ),
           ),
           const SizedBox(width: 8),
+          IconButton(
+            tooltip: listening ? 'Stop listening' : 'Talk to Snapy',
+            onPressed: () async {
+              if (listening) {
+                await SnapyCore.stopListening();
+              } else if (!await SnapyCore.startListening()) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Allow the microphone, then tap the mic again.')));
+              }
+            },
+            style: IconButton.styleFrom(backgroundColor: listening ? c.accent : c.fill),
+            icon: Icon(listening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
+                color: listening ? Colors.white : c.text),
+          ),
+          const SizedBox(width: 4),
           thinking
               ? IconButton.filledTonal(onPressed: SnapyCore.interrupt, icon: const Icon(Icons.stop_rounded), tooltip: 'Stop')
               : IconButton.filled(onPressed: _send, icon: const Icon(Icons.arrow_upward_rounded), tooltip: 'Send'),

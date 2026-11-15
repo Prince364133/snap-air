@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
+import '../i18n/i18n.dart';
 import 'assistant_panel.dart';
+import 'daily_three.dart';
 import 'life_section.dart';
 import 'orb.dart';
 import 'realcount.dart';
@@ -35,7 +37,7 @@ class HomePage extends StatelessWidget {
               Text('Snapy', style: Theme.of(context).textTheme.headlineMedium),
               const Spacer(),
               IconButton(
-                tooltip: 'Settings',
+                tooltip: tr('home.settings'),
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsPage())),
               ),
@@ -43,17 +45,18 @@ class HomePage extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text('Tap the pill — here or at the top of any app — to talk to Snapy.',
+            child: Text(tr('home.tagline'),
                 style: Theme.of(context).textTheme.bodySmall),
           ),
           const RealCountSection(),
+          const DailyThreeCard(),
           const LifeSection(),
           Padding(
             padding: const EdgeInsets.all(16),
             child: FilledButton.icon(
               onPressed: () => _openAssistant(context),
               icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text('Ask Snapy'),
+              label: Text(tr('home.ask')),
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
             ),
           ),
@@ -79,7 +82,8 @@ class _HeaderPillState extends State<HeaderPill> {
     SnapyCore.status().then((s) async {
       if (s['usage'] ?? false) {
         final t = await SnapyCore.today();
-        if (mounted) setState(() => _value = formatMs(t.screenMs));
+        // same text as the chip over other apps: "5h 16m · ▶ 42"
+        if (mounted) setState(() => _value = tr('chip.text', {'time': formatMs(t.screenMs), 'reels': '${t.totalReels}'}));
       }
     }).catchError((_) {});
   }
@@ -99,7 +103,7 @@ class _HeaderPillState extends State<HeaderPill> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         const Orb(size: 28),
         const SizedBox(width: 10),
-        const Text('Real Count', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        Text(tr('home.real_count'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         const SizedBox(width: 10),
         Container(width: 1, height: 16, color: c.hair),
         const SizedBox(width: 10),

@@ -34,6 +34,11 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # Material/Cupertino strings for Hindi, Tamil, Telugu, Marathi, Bengali (SDK package)
+  flutter_localizations:
+    sdk: flutter
+  # SHA-512 for verifying the signed Real Count rules file (Ed25519)
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +61,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Copied from ../core by `dart run tool/sync_core.dart` (assets can't live outside the package).
+  # Kotlin reads the same files from the APK (flutter_assets/assets/...).
+  assets:
+    - assets/i18n/
+    - assets/rules/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

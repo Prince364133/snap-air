@@ -1,0 +1,111 @@
+{
+  "_comment": "Real Count rules (android.realcount). Source of truth: core/rules — copied by tool/sync_core.dart. Bundled so the Kotlin counter has the same defaults.",
+  "version": 0,
+  "chip": {
+    "sizes": {
+      "small": 0.85,
+      "normal": 1.0,
+      "large": 1.25
+    },
+    "simple_mode_size": "large",
+    "height_dp": 26,
+    "camera_gap_dp": 8,
+    "wide_cutout_fraction": 0.25,
+    "amber_at": 1.0,
+    "card_ms": 6000
+  },
+  "nudges": {
+    "min_gap_min": 20,
+    "session_reels": 30,
+    "session_gap_min": 10,
+    "opens_per_hour": 10,
+    "soften_after_dismissals": 2,
+    "bedtime": "23:00",
+    "wake": "06:00",
+    "focus_min": 25,
+    "reset_s": 120,
+    "break_s": 10,
+    "pause_counting_min": 60,
+    "navigation_apps": [
+      "com.google.android.apps.maps",
+      "com.google.android.apps.mapslite",
+      "com.waze",
+      "com.mappls.app",
+      "com.olacabs.customer",
+      "com.ubercab",
+      "com.ubercab.driver",
+      "in.swiggy.deliveryapp",
+      "com.application.zomato.ordering"
+    ]
+  },
+  "intention": {
+    "enabled": true,
+    "ask_cooldown_min": 30,
+    "options": [
+      {
+        "id": "dms",
+        "minutes": 5
+      },
+      {
+        "id": "post",
+        "minutes": 10
+      },
+      {
+        "id": "browse",
+        "minutes": 10
+      }
+    ]
+  },
+  "health": {
+    "stale_after_s": 180
+  },
+  "creator": {
+    "keywords": [
+      "camera",
+      "capture",
+      "creation",
+      "editor",
+      "composer",
+      "direct",
+      "thread",
+      "inbox",
+      "upload",
+      "share"
+    ],
+    "apps": {
+      "com.instagram.android": {
+        "feed_view_ids": [
+          "com.instagram.android:id/clips_viewer_view_pager"
+        ],
+        "keywords": [
+          "direct",
+          "camera",
+          "creation",
+          "clips_editor"
+        ]
+      },
+      "com.google.android.youtube": {
+        "feed_view_ids": [
+          "com.google.android.youtube:id/reel_recycler"
+        ],
+        "keywords": [
+          "upload",
+          "camera",
+          "editor"
+        ]
+      }
+    }
+  },
+  "habits": {
+    "report_weekday": 7,
+    "three_ask_until": "12:00",
+    "three_recap_after": "20:00",
+    "streak_min_done": 1,
+    "streak_forgive_per_week": 1
+  },
+  "rules_update": {
+    "url": "",
+    "public_key": "",
+    "interval_days": 7
+  }
+}

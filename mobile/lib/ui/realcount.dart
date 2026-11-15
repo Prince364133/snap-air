@@ -2,11 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/files.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
+import '../i18n/i18n.dart';
+import '../realcount/counter_report.dart';
+import '../realcount/habits.dart' show isReportDay;
+import '../realcount/nudges.dart' show clock;
+import '../realcount/realcount_data.dart';
+import '../realcount/rules.dart';
+import '../realcount/signed_rules.dart' show RulesUpdate;
+import 'chip_settings.dart';
+import 'onboarding.dart';
+import 'report_page.dart';
+import 'reset_page.dart';
 
-/// Real Count on the home screen: the setup steps (with the disclosure Google Play requires)
-/// until permissions are on, then today's numbers.
+/// Real Count on the home screen: setup (step-by-step permission flow) until usage access is
+/// on, then today's numbers, focus, the reset, the weekly report and the chip settings.
 class RealCountSection extends StatefulWidget {
   const RealCountSection({super.key});
   @override
@@ -17,6 +29,9 @@ class _RealCountSectionState extends State<RealCountSection> with WidgetsBinding
   Map<String, bool> _status = const {};
   Today? _today;
   Map<String, String> _labels = const {};
+  Map<String, String> _shortVideo = const {};
+  Map<String, dynamic> _state = const {};
+  RealCountRules _rules = RealCountRules.fallback;
   Timer? _timer;
 
   @override
@@ -27,9 +42,14 @@ class _RealCountSectionState extends State<RealCountSection> with WidgetsBinding
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
     SnapyCore.config('android.social_apps').then((apps) {
       if (apps is List && mounted) {
-        setState(() => _labels = {for (final a in apps) a['package'] as String: a['label'] as String});
+        setState(() {
+          _labels = {for (final a in apps) a['package'] as String: a['label'] as String};
+          _shortVideo = {for (final a in apps) if (a['short_video'] != null) a['package'] as String: a['label'] as String};
+        });
       }
     }).catchError((_) {});
+    RealCountRepo.rules().then((r) { if (mounted) setState(() => _rules = r); }).catchError((_) {});
+    RealCountRepo.checkRules().catchError((_) => RulesUpdate.failed);    // weekly, no-op until configured
   }
 
   @override
@@ -48,52 +68,36 @@ class _RealCountSectionState extends State<RealCountSection> with WidgetsBinding
     try {
       final st = await SnapyCore.status();
       final t = (st['usage'] ?? false) ? await SnapyCore.today() : null;
-      if (mounted) setState(() { _status = st; _today = t; });
+      final rs = await SnapyCore.rcState().catchError((_) => <String, dynamic>{});
+      if (mounted) setState(() { _status = st; _today = t; _state = rs; });
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     final usage = _status['usage'] ?? false;
-    final rc = _status['realcount'] ?? false;
-    if (!usage || !rc) return _Setup(usage: usage, realcount: rc);
-    return _Dashboard(today: _today, labels: _labels);
+    if (!usage) return _Setup(usage: usage, realcount: _status['realcount'] ?? false, onDone: _refresh);
+    return _Dashboard(
+      today: _today,
+      labels: _labels,
+      shortVideo: _shortVideo,
+      counterOn: _status['realcount'] ?? false,
+      state: _state,
+      rules: _rules,
+      onChanged: _refresh,
+    );
   }
 }
 
 class _Setup extends StatelessWidget {
   final bool usage, realcount;
-  const _Setup({required this.usage, required this.realcount});
-
-  Future<void> _disclose(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Allow Real Count?'),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Snapy uses Android’s Accessibility permission to:\n\n'
-            '• see which app is open, to show your screen time in the pill at the top\n'
-            '• count swipes in short-video feeds (Instagram Reels, YouTube Shorts, Facebook, Snapchat, Moj, Josh and more)\n'
-            '• go Back, Home or open Recents when you ask by voice\n\n'
-            'Everything is counted on your phone. Snapy never reads, stores or sends your messages, posts, '
-            'passwords or anything else on your screen, and nothing is uploaded.\n\n'
-            'On the next screen, tap “Snapy Real Count” and turn it on.',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Agree and continue')),
-        ],
-      ),
-    );
-    if (ok == true) await SnapyCore.openRealCountSettings();
-  }
+  final VoidCallback onDone;
+  const _Setup({required this.usage, required this.realcount, required this.onDone});
 
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
-    Widget step(int n, String title, String sub, bool done, VoidCallback onTap) => ListTile(
+    Widget step(int n, String title, String sub, bool done) => ListTile(
           leading: CircleAvatar(
             radius: 14,
             backgroundColor: done ? c.green : c.accent,
@@ -101,31 +105,46 @@ class _Setup extends StatelessWidget {
           ),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(sub),
-          trailing: done ? null : const Icon(Icons.chevron_right),
-          onTap: done ? null : onTap,
         );
     return _Card(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text('Turn on Real Count', style: Theme.of(context).textTheme.titleMedium),
+        child: Text(tr('rc.setup_title'), style: Theme.of(context).textTheme.titleMedium),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text('See your screen time and how many reels you’ve watched, right beside your camera.',
-            style: Theme.of(context).textTheme.bodySmall),
+        child: Text(tr('rc.setup_sub'), style: Theme.of(context).textTheme.bodySmall),
       ),
       const SizedBox(height: 8),
-      step(1, 'Usage access', 'Screen time per app, the same data as Digital Wellbeing', usage, SnapyCore.openUsageAccess),
-      step(2, 'Snapy Real Count', 'Counts reels and shows the pill over other apps', realcount, () => _disclose(context)),
-      const SizedBox(height: 8),
+      step(1, tr('rc.step_usage'), tr('rc.step_usage_sub'), usage),
+      step(2, tr('rc.step_counter'), tr('rc.step_counter_sub'), realcount),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: FilledButton(
+          onPressed: () async {
+            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionFlow()));
+            onDone();
+          },
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+          child: Text(tr('rc.start_setup')),
+        ),
+      ),
     ]);
   }
 }
 
 class _Dashboard extends StatelessWidget {
   final Today? today;
-  final Map<String, String> labels;
-  const _Dashboard({required this.today, required this.labels});
+  final Map<String, String> labels, shortVideo;
+  final bool counterOn;
+  final Map<String, dynamic> state;
+  final RealCountRules rules;
+  final VoidCallback onChanged;
+  const _Dashboard({required this.today, required this.labels, required this.shortVideo, required this.counterOn,
+      required this.state, required this.rules, required this.onChanged});
+
+  void _push(BuildContext context, Widget page) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => page)).then((_) => onChanged());
 
   @override
   Widget build(BuildContext context) {
@@ -135,12 +154,49 @@ class _Dashboard extends StatelessWidget {
         ? <MapEntry<String, int>>[]
         : (t.perAppMs.entries.where((e) => labels.containsKey(e.key) || t.reels.containsKey(e.key)).toList()
           ..sort((a, b) => b.value.compareTo(a.value)));
+    final focusUntil = (state['focus_until'] as num?)?.toInt() ?? 0;
+    final focusOn = focusUntil > DateTime.now().millisecondsSinceEpoch;
+    final focusMin = rules.i('nudges.focus_min');
     return _Card(children: [
+      if (isReportDay(DateTime.now(), rules.i('habits.report_weekday')))
+        ListTile(
+          leading: Icon(Icons.insights_outlined, color: c.accent),
+          title: Text(tr('report.sunday')),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _push(context, const ReportPage()),
+        ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(child: _Stat(label: 'Screen time today', value: t == null ? '—' : formatMs(t.screenMs))),
-          Expanded(child: _Stat(label: 'Reels & shorts', value: t == null ? '—' : '${t.totalReels}')),
+          Expanded(child: _Stat(label: tr('rc.screen_today'), value: t == null ? '—' : formatMs(t.screenMs))),
+          Expanded(child: _Stat(label: tr('rc.reels_today'), value: t == null || !counterOn ? '—' : '${t.totalReels}')),
+        ]),
+      ),
+      if (!counterOn)
+        ListTile(
+          dense: true,
+          leading: Icon(Icons.play_circle_outline, color: c.accent),
+          title: Text(tr('rc.counter_off')),
+          onTap: () => _push(context, const PermissionFlow()),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(spacing: 8, runSpacing: 8, children: [
+          if (focusOn)
+            ActionChip(
+              avatar: const Icon(Icons.center_focus_strong, size: 18),
+              label: Text('${tr('rc.focus_running', {'until': clock(DateTime.fromMillisecondsSinceEpoch(focusUntil))})} · ${tr('rc.focus_stop')}'),
+              onPressed: () async { await SnapyCore.stopFocus().catchError((_) {}); onChanged(); },
+            )
+          else
+            ActionChip(
+              avatar: const Icon(Icons.center_focus_weak, size: 18),
+              label: Text(tr('rc.focus', {'min': '$focusMin'})),
+              onPressed: () async { await SnapyCore.startFocus(focusMin).catchError((_) {}); onChanged(); },
+            ),
+          ActionChip(avatar: const Icon(Icons.self_improvement, size: 18), label: Text(tr('rc.reset')), onPressed: () => _push(context, const ResetPage())),
+          ActionChip(avatar: const Icon(Icons.insights_outlined, size: 18), label: Text(tr('rc.report')), onPressed: () => _push(context, const ReportPage())),
+          ActionChip(avatar: const Icon(Icons.tune, size: 18), label: Text(tr('rc.chip_settings')), onPressed: () => _push(context, const ChipSettingsPage())),
         ]),
       ),
       if (social.isNotEmpty) Divider(color: c.hair, height: 24),
@@ -149,13 +205,105 @@ class _Dashboard extends StatelessWidget {
         return ListTile(
           dense: true,
           title: Text(labels[e.key] ?? e.key, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('${t.opens[e.key] ?? 0} opens'),
+          subtitle: Text(tr('rc.opens', {'n': '${t.opens[e.key] ?? 0}'})),
           trailing: Text(reels > 0 ? '$reels · ${formatMs(e.value)}' : formatMs(e.value),
               style: TextStyle(color: c.text2, fontFeatures: const [FontFeature.tabularFigures()])),
         );
       }),
+      if (counterOn)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: () => showDialog(context: context, builder: (_) => CounterWrongDialog(shortVideo: shortVideo, paused: state['paused_apps'])),
+            child: Text(tr('rc.looks_wrong')),
+          ),
+        ),
       const SizedBox(height: 8),
     ]);
+  }
+}
+
+/// "Counter looks wrong?" — opt-in; prepares an anonymous fingerprint locally (not sent: no endpoint yet).
+class CounterWrongDialog extends StatefulWidget {
+  final Map<String, String> shortVideo;
+  final dynamic paused;
+  const CounterWrongDialog({super.key, required this.shortVideo, this.paused});
+  @override
+  State<CounterWrongDialog> createState() => _CounterWrongDialogState();
+}
+
+class _CounterWrongDialogState extends State<CounterWrongDialog> {
+  String _app = '';
+  bool? _optIn;
+  Map<String, dynamic>? _report;
+  String? _msg;
+
+  @override
+  void initState() {
+    super.initState();
+    RealCountRepo.prefs().then((p) { if (mounted) setState(() => _optIn = p.b('counter_reports')); });
+  }
+
+  Future<void> _prepare() async {
+    try {
+      final device = await SnapyCore.device();
+      final versions = await SnapyCore.appVersions(widget.shortVideo.keys.toList());
+      final prefs = await RealCountRepo.prefs();
+      final rules = await RealCountRepo.rules();
+      final r = buildCounterReport(
+        device: device,
+        appVersions: versions,
+        app: _app,
+        pausedApps: [for (final p in (widget.paused as List? ?? const [])) '$p'],
+        rulesVersion: rules.get('version'),
+        creatorMode: prefs.b('creator_mode'),
+      );
+      await SnapyFiles.writeJson('reports/counter-${DateTime.now().millisecondsSinceEpoch}.json', r);
+      final sent = await sendCounterReport(r);        // TODO hook: always false until an endpoint exists
+      if (mounted) setState(() { _report = r; _msg = sent ? null : tr('wrong.prepared'); });
+    } catch (e) {
+      if (mounted) setState(() => _msg = '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(tr('wrong.title')),
+      content: SingleChildScrollView(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(tr('wrong.body')),
+          const SizedBox(height: 12),
+          if (_optIn == false) Text(tr('wrong.opt_in'), style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (_optIn == true && _report == null)
+            DropdownButton<String>(
+              isExpanded: true,
+              value: _app,
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('wrong.not_sure'))),
+                for (final e in widget.shortVideo.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ],
+              onChanged: (v) => setState(() => _app = v ?? ''),
+            ),
+          if (_report != null) ...[
+            const SizedBox(height: 8),
+            Text(prettyReport(_report!), style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+          ],
+          if (_msg != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg!)),
+        ]),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            final r = await RealCountRepo.checkRules(force: true).catchError((_) => RulesUpdate.failed);
+            if (mounted) setState(() => _msg = '${tr('wrong.check_now')}: ${r.name}');
+          },
+          child: Text(tr('wrong.check_now')),
+        ),
+        if (_optIn == true && _report == null) FilledButton(onPressed: _prepare, child: Text(tr('wrong.prepare'))),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('common.close'))),
+      ],
+    );
   }
 }
 

@@ -33,7 +33,7 @@ class CoreBridge private constructor(private val ctx: Context) {
             if (!Python.isStarted()) Python.start(AndroidPlatform(ctx))
             val py = Python.getInstance()
             val module = py.getModule("src.platform.android")
-            module.callAttr("init", ctx.filesDir.absolutePath + "/snapy", KeyCipher())
+            module.callAttr("init", ctx.filesDir.absolutePath + "/snapy", KeyCipher(), Contacts(ctx))
             core = module.callAttr("core")
             appdata = py.getModule("src.appdata")
             core!!.callAttr("set_apps", installedApps().toString())
@@ -78,6 +78,28 @@ class CoreBridge private constructor(private val ctx: Context) {
     }
 
     fun reminderFired(id: String) = worker.execute { core?.callAttr("reminder_fired", id) }
+
+    /** Screen taps: the shared matcher (same as Windows) picks a node. Off the main thread. */
+    fun findOnScreen(query: String, nodes: String, done: (Int) -> Unit) = worker.execute {
+        val r = try { JSONObject(core?.callAttr("find_on_screen", query, nodes)?.toString() ?: "{}") } catch (_: Exception) { JSONObject() }
+        main.post { done(r.optInt("index", -1)) }
+    }
+
+    // ---------------------------------------------------------------- voice
+    fun stopSpeaking() = speech.stop()
+
+    /** Synchronous call for small answers (pause logic, voice config). Never call from the worker thread. */
+    fun configNowCall(method: String): String =
+        worker.submit<String> { core?.callAttr(method)?.toString() ?: "{}" }.get()
+
+    fun isUnfinished(text: String): Boolean =
+        worker.submit<Boolean> { core?.callAttr("sounds_unfinished", text)?.toBoolean() ?: false }.get()
+
+    /** Native events (voice, downloads…) go to the same Flutter stream as the brain's. */
+    fun publish(e: JSONObject) {
+        val batch = JSONArray().put(e).toString()
+        main.post { listeners.forEach { it(batch) } }
+    }
 
     /** Central data (src/data/app.json) for Kotlin and Dart: no copies, no hardcoding. */
     fun configAsync(path: String, done: (String) -> Unit) = worker.execute {

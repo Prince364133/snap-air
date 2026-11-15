@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Real Count nudges: when Snapy may nudge, when it must stay quiet, and which copy it uses. Copy values are i18n keys (core/i18n/*.json), never literal text."
+  },
+  "android": {
+    "realcount": {
+      "nudges": {
+        "min_gap_min": 20,
+        "session_reels": 30,
+        "session_gap_min": 10,
+        "opens_per_hour": 10,
+        "soften_after_dismissals": 2,
+        "bedtime": "23:00",
+        "wake": "06:00",
+        "focus_min": 25,
+        "reset_s": 120,
+        "break_s": 10,
+        "pause_counting_min": 60,
+        "app_card_cooldown_min": 30,
+        "navigation_apps": [
+          "com.google.android.apps.maps",
+          "com.google.android.apps.mapslite",
+          "com.waze",
+          "com.mappls.app",
+          "com.olacabs.customer",
+          "com.ubercab",
+          "com.ubercab.driver",
+          "in.swiggy.deliveryapp",
+          "com.application.zomato.ordering"
+        ],
+        "quiet": {
+          "_comment": "No nudge while any condition holds. during_call/driving/media_casting are device states; focus = a Snapy focus session; between bedtime and wake only the bedtime nudge may show.",
+          "during_call": true,
+          "navigation_app_foreground": true,
+          "focus_session": true,
+          "screen_off": true,
+          "first_minutes_after_unlock": 1
+        }
+      },
+      "intention": {
+        "enabled": true,
+        "ask_cooldown_min": 30,
+        "options": [
+          {"id": "dms", "minutes": 5},
+          {"id": "post", "minutes": 10},
+          {"id": "browse", "minutes": 10}
+        ]
+      },
+      "nudge_copy": {
+        "_comment": "Per trigger: 'normal' variants until the user has dismissed soften_after_dismissals nudges today, then 'soft'. Pick variants round-robin by the day's nudge count. Placeholders: {app} {reels} {minutes} {limit}.",
+        "session_reels": {
+          "normal": ["nudge.session_reels.1", "nudge.session_reels.2"],
+          "soft": ["nudge.session_reels.soft.1"]
+        },
+        "opens_per_hour": {
+          "normal": ["nudge.opens.1"],
+          "soft": ["nudge.opens.soft.1"]
+        },
+        "limit_near": {
+          "normal": ["nudge.limit_near.1"],
+          "soft": ["nudge.limit_near.soft.1"]
+        },
+        "limit_over": {
+          "normal": ["nudge.limit_over.1", "nudge.limit_over.2"],
+          "soft": ["nudge.limit_over.soft.1"]
+        },
+        "bedtime": {
+          "normal": ["nudge.bedtime.1"],
+          "soft": ["nudge.bedtime.soft.1"]
+        },
+        "app_card": {
+          "normal": ["nudge.app_card.reels", "nudge.app_card.time"],
+          "soft": ["nudge.app_card.time"]
+        }
+      }
+    }
+  }
+}

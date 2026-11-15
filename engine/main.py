@@ -16,11 +16,13 @@ import sys
 import threading
 import time
 
+from src import diag  # noqa: E402  (tiny, no dependencies: records errors that used to be swallowed)
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)   # engine.log updates live
-    except Exception:
-        pass
+    except Exception as _e:                   # no console (windowed build): nothing to reconfigure
+        diag.record("startup.stdio", _e, quiet=True)
 
 
 def _probe(stage):
@@ -43,6 +45,8 @@ import websockets
 
 from src import storage, appdata
 from src.config import Settings
+from src.server import auth as ws_auth
+from src.server.router import Router
 from src.ai.agent_controller import AgentController
 _probe("agent (pyautogui)")
 from src.brain.assistant import Assistant
@@ -68,6 +72,7 @@ _probe("all imports")
 PREVIEW_TITLE = "Snapy - Camera"
 PORT = int(os.environ.get("SNAP_AIR_PORT") or appdata.get("server.port"))
 
+storage.migrate()                     # upgrade data files written by older versions before anything reads them
 settings = Settings()
 clients = set()
 ws_loop = None
@@ -92,8 +97,8 @@ def send_all(payload):
 async def _safe_send(c, msg):
     try:
         await c.send(msg)
-    except Exception:
-        pass
+    except Exception as e:                    # a client that just disconnected; the handler drops it
+        diag.record("ws.send", e, quiet=True)
 
 
 def toast(message, ok=True, source=""):
@@ -106,6 +111,9 @@ def toast(message, ok=True, source=""):
 llm = LLM(settings)                    # local model (Ollama)
 cloud = CloudLLM(settings)             # optional cloud model (user's API key)
 brain = Brain(llm, cloud, settings)    # routes each request: local / cloud / auto
+# Nothing goes to a cloud provider until the user has seen what would be sent and allowed it
+cloud.require_ack = True
+cloud.on_preview = lambda sample: send_all({"type": "cloud_preview", "sample": sample})
 memory = MemoryStore(llm=brain.for_purpose("memory"), settings=settings)
 tasks = TaskStore()
 notes = NoteStore()
@@ -406,8 +414,8 @@ def llm_prewarm():
                 from src.brain.assistant import SYSTEM, ACTION_SCHEMA
                 list(llm.stream([{"role": "system", "content": SYSTEM}, {"role": "user", "content": "hi"}],
                                 schema=ACTION_SCHEMA, max_tokens=1))
-        except Exception:
-            pass
+        except Exception as e:            # only a warm-up: the real request reports its own errors
+            diag.record("llm.prewarm", e)
     threading.Thread(target=go, daemon=True).start()
 
 
@@ -446,14 +454,18 @@ def models_payload():
     st["installing_ollama"] = _ollama_install
     try:
         st["native_voices"] = speaker.voice_status()
-    except Exception:
+    except Exception as e:
+        diag.record("models.native_voices", e, quiet=True)   # sent every ~5 s: count, don't spam the log
         st["native_voices"] = {}
     try:
         st["vision"] = vision.status()
-    except Exception:
+    except Exception as e:
+        diag.record("models.vision", e, quiet=True)
         st["vision"] = {}
+    # "configured" = a key is saved (the UI's meaning); "consent_pending" = not yet allowed to use it
     st["cloud"] = {"provider": cloud.provider, "model": cloud.model, "base_url": cloud.base_url,
-                   "configured": cloud.configured(), "key": secrets_store.masked(f"cloud_{cloud.provider}"),
+                   "configured": cloud.has_key(), "consent_pending": cloud.consent_pending(),
+                   "key": secrets_store.masked(f"cloud_{cloud.provider}"),
                    "providers": PROVIDERS, "active": brain.is_cloud, "error": cloud.last_error}
     return {"type": "models", **st}
 
@@ -628,8 +640,8 @@ def install_ollama(progress_item=None):
             # a half-downloaded installer is useless (and must never be run): remove it
             try:
                 os.remove(dest)
-            except OSError:
-                pass
+            except OSError as e:
+                diag.record("setup.remove_partial_installer", e)
             _ollama_install.update(status="cancelled", pct=0)
             send_all(models_payload())
             return
@@ -686,6 +698,7 @@ def full_hello():
         "focus": assistant.focus.state(), "contexts": assistant.contexts.items,
         "autostarted": "--autostart" in sys.argv or os.environ.get("SNAP_AIR_AUTOSTART") == "1",
         "data_dir": storage.data_dir(), "setup": setup.state(),
+        "cloud_preview": cloud.preview_sample if cloud.consent_pending() else None,
         **{k: v for k, v in models_payload().items() if k != "type"},
     }
 
@@ -806,14 +819,348 @@ def scheduler():
 
 
 # --------------------------------------------------------------- websocket
+# One handler per message type (src/server/router.py). A handler gets (msg, ctx) and
+# may return a dict that goes back to the asking client only; ctx.bg runs slow work
+# off the event loop. Unknown types are ignored, as before.
+router = Router()
+on = router.on
+
+
+class _Ctx:
+    def __init__(self, ws, loop):
+        self.ws = ws
+        self.loop = loop
+
+    def bg(self, fn, *a):
+        self.loop.run_in_executor(None, fn, *a)
+
+
+@on("chat", "execute_command")
+def _h_chat(d, ctx):
+    text = (d.get("text") or d.get("command") or "").strip()
+    if text:
+        llm_prewarm()
+        assistant.handle(text, "typed")
+
+
+@on("interrupt")
+def _h_interrupt(d, ctx):
+    assistant.interrupt()
+
+
+@on("tts_test")
+def _h_tts_test(d, ctx):
+    speaker.interrupt()
+    name = memory.profile.get("preferred_name") or memory.profile.get("name") or ""
+    speaker.say(f"Hi{' ' + name if name else ''}! This is how I sound. I'm ready when you are.")
+
+
+@on("push_to_talk")
+def _h_push_to_talk(d, ctx):
+    assistant.interrupt()
+    voice.arm(float(d.get("seconds", 7)))
+    llm_prewarm()
+
+
+@on("cancel_listen")
+def _h_cancel_listen(d, ctx):
+    voice.disarm()
+    state["voice_status"] = "Ready"
+
+
+@on("toggle_gestures")
+def _h_toggle_gestures(d, ctx):
+    if not settings["gestures_enabled"]:
+        settings.update({"gestures_enabled": True})
+        toast("Gestures on — camera starting", True, "gestures")
+    else:
+        set_gestures_paused(not state["gestures_paused"])
+        toast("Gestures paused" if state["gestures_paused"] else "Gestures resumed", True, "gestures")
+
+
+@on("update_settings")
+def _h_update_settings(d, ctx):
+    settings.update(d.get("settings", {}))
+
+
+@on("request")
+def _h_request(d, ctx):
+    what = d.get("what")
+    if what == "today":
+        return today_payload()
+    if what == "activity":
+        return {"type": "activity", "summary": activity.summary(d.get("day")),
+                "routine": memory.profile.get("routine", {})}
+    if what == "models":
+        return models_payload()
+    if what == "diagnostics":                    # trust centre: what went wrong, how often
+        return {"type": "diagnostics", **diag.summary()}
+    if what == "briefing":
+        ctx.bg(lambda: send_all({"type": "briefing", "show": True, **briefing.build()}))
+    elif what == "wrapup":
+        ctx.bg(lambda: send_all({"type": "wrapup", **briefing.wrap_up()}))
+
+
+# tasks
+@on("task_add")
+def _h_task_add(d, ctx):
+    if not d.get("text"):
+        return
+    task = tasks.add_from_text(d["text"], source="typed")
+    send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+    toast(f"Added “{task['title']}”" + (f" — {human_time(task['remind_at'])}" if task["remind_at"] else ""))
+
+
+@on("task_update")
+def _h_task_update(d, ctx):
+    tasks.update(d.get("id"), **{k: v for k, v in d.items() if k in ("title", "done", "remind_at")})
+    send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+
+
+@on("task_delete")
+def _h_task_delete(d, ctx):
+    tasks.delete(d.get("id"))
+    send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+
+
+@on("task_snooze")
+def _h_task_snooze(d, ctx):
+    tasks.snooze(d.get("id"), int(d.get("minutes") or appdata.get("timings.snooze_default_min")))
+    send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+
+
+# notes
+@on("note_add", "add_note")
+def _h_note_add(d, ctx):
+    if d.get("text"):
+        on_agent_note(d["text"].strip())
+
+
+@on("note_delete", "delete_note")
+def _h_note_delete(d, ctx):
+    notes.delete(d.get("id"))
+    send_all({"type": "notes", "notes": notes.items})
+
+
+# memory & profile
+@on("memory_add")
+def _h_memory_add(d, ctx):
+    if d.get("text"):
+        memory.add(d["text"], d.get("category", "fact"), int(d.get("importance", 4)), source="manual")
+
+
+@on("memory_update")
+def _h_memory_update(d, ctx):
+    memory.update(d.get("id"), **{k: v for k, v in d.items() if k in ("text", "importance", "category", "pinned")})
+
+
+@on("memory_delete")
+def _h_memory_delete(d, ctx):
+    memory.delete(d.get("id"))
+
+
+@on("memory_forget_all")
+def _h_memory_forget_all(d, ctx):
+    memory.forget_all()
+
+
+@on("profile_update")
+def _h_profile_update(d, ctx):
+    memory.update_profile(d.get("profile", {}))
+
+
+@on("export_data")
+def _h_export_data(d, ctx):
+    p = storage.path(f"export-{storage.today()}.json")
+    storage.write_json(p, {**memory.export(), "tasks": tasks.items, "notes": notes.items})
+    os.startfile(os.path.dirname(p))
+
+
+@on("open_privacy_mic")
+def _h_open_privacy_mic(d, ctx):
+    os.startfile("ms-settings:privacy-microphone")
+
+
+@on("open_data_folder")
+def _h_open_data_folder(d, ctx):
+    os.startfile(storage.data_dir())
+
+
+@on("delete_all_data")
+def _h_delete_all_data(d, ctx):
+    ctx.bg(delete_all_data)
+
+
+# meeting
+@on("meeting_start")
+def _h_meeting_start(d, ctx):
+    if not meeting.recording:
+        meeting.start(d.get("title"))
+        toast("Taking meeting notes", True, "meeting")
+
+
+@on("meeting_stop")
+def _h_meeting_stop(d, ctx):
+    if meeting.recording:
+        ctx.bg(assistant._finish_meeting, "en", False)
+
+
+@on("meeting_bookmark")
+def _h_meeting_bookmark(d, ctx):
+    if meeting.recording:
+        meeting.bookmark(d.get("label", ""))
+
+
+# routine
+@on("start_my_day")
+def _h_start_my_day(d, ctx):
+    assistant.pending = None
+    assistant.handle("start my day", "typed")
+
+
+@on("action_review")
+def _h_action_review(d, ctx):
+    note = next((n for n in notes.items if n["id"] == d.get("note_id")), None)
+    if note:
+        task = meeting.review_action(note, d.get("action_id"), d.get("decision", "dismiss"))
+        send_all({"type": "notes", "notes": notes.items})
+        if task:
+            send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+            toast(f"Added “{task['title']}” to your tasks")
+
+
+@on("voice_onboarding")
+def _h_voice_onboarding(d, ctx):
+    assistant.begin_voice_onboarding()
+    voice.arm(10)
+
+
+@on("focus_stop")
+def _h_focus_stop(d, ctx):
+    assistant.focus.stop()
+    send_all({"type": "focus", **assistant.focus.state()})
+
+
+@on("context_delete")
+def _h_context_delete(d, ctx):
+    assistant.contexts.delete(d.get("id"))
+    send_all({"type": "contexts", "contexts": assistant.contexts.items})
+
+
+@on("clear_activity")
+def _h_clear_activity(d, ctx):
+    shutil.rmtree(os.path.join(storage.data_dir(), "activity"), ignore_errors=True)
+    os.makedirs(os.path.join(storage.data_dir(), "activity"), exist_ok=True)
+    activity.day, activity.data = None, None
+    toast("Activity history cleared", True, "privacy")
+
+
+@on("dismiss_briefing")
+def _h_dismiss_briefing(d, ctx):
+    assistant.pending = None
+
+
+@on("shutdown", "quit")
+def _h_shutdown(d, ctx):
+    print("[Engine] Shutdown requested by client")
+
+    def _do_exit():
+        time.sleep(0.15)
+        os._exit(0)
+    threading.Thread(target=_do_exit, daemon=True).start()
+
+
+# onboarding & models
+@on("scan_system")
+def _h_scan_system(d, ctx):
+    ctx.bg(lambda: send_all({"type": "scan", **system_scan.scan(agent.apps)}))
+
+
+@on("onboarding_complete")
+def _h_onboarding_complete(d, ctx):
+    ctx.bg(complete_onboarding, d)
+
+
+@on("set_api_key")
+def _h_set_api_key(d, ctx):
+    ctx.bg(save_api_key, d.get("provider") or cloud.provider, (d.get("key") or "").strip())
+
+
+@on("cloud_preview_ack")
+def _h_cloud_preview_ack(d, ctx):
+    """Answer to the one-time "what's sent to the cloud" dialog."""
+    cloud.preview_sample = None
+    if d.get("allow"):
+        settings.update({"cloud_preview_ack": True})
+        toast("Cloud brain allowed — personal details are masked before sending", True, "cloud")
+    else:
+        settings.update({"ai_provider": "local"})
+        toast("Staying on this PC — nothing goes to the cloud", True, "cloud")
+    refresh_brain_state()
+
+
+@on("cancel_pull", "cancel_install", "cancel_setup")
+def _h_cancel(d, ctx):
+    cancel_job(d["type"])
+
+
+@on("cloud_test")
+def _h_cloud_test(d, ctx):
+    def _test():
+        try:
+            secs, out = cloud.test()
+            toast(f"Cloud brain works — answered in {secs}s", True, "cloud")
+        except Exception as e:
+            toast(f"Cloud test failed: {e}", False, "cloud")
+        send_all(models_payload())
+    ctx.bg(_test)
+
+
+@on("open_speech_settings")
+def _h_open_speech_settings(d, ctx):
+    os.startfile("ms-settings:speech")
+
+
+@on("vision_install")
+def _h_vision_install(d, ctx):
+    ctx.bg(pull_model, appdata.get("vision.install_model"))
+
+
+@on("setup_retry")
+def _h_setup_retry(d, ctx):
+    ctx.bg(run_setup)
+
+
+@on("install_ollama")
+def _h_install_ollama(d, ctx):
+    ctx.bg(install_ollama)
+
+
+@on("model_pull")
+def _h_model_pull(d, ctx):
+    if d.get("name"):
+        ctx.bg(pull_model, d["name"])
+
+
+@on("model_select")
+def _h_model_select(d, ctx):
+    if not d.get("name"):
+        return
+    ok, reason = is_compatible(d["name"])
+    if ok:
+        settings.update({"llm_model": d["name"]})
+    else:
+        toast(f"Your system isn't compatible with {d['name']}. {reason}", False, "model")
+
+
 async def ws_handler(ws):
     clients.add(ws)
     print("[HUD] connected")
     await ws.send(json.dumps(full_hello(), default=str))
-    loop = asyncio.get_running_loop()
+    ctx = _Ctx(ws, asyncio.get_running_loop())
 
-    def bg(fn, *a):
-        loop.run_in_executor(None, fn, *a)
+    async def reply(payload):
+        await ws.send(json.dumps(payload, default=str))
 
     try:
         async for message in ws:
@@ -821,164 +1168,8 @@ async def ws_handler(ws):
                 d = json.loads(message)
             except ValueError:
                 continue
-            t = d.get("type")
-            if t in ("chat", "execute_command"):
-                text = (d.get("text") or d.get("command") or "").strip()
-                if text:
-                    llm_prewarm()
-                    assistant.handle(text, "typed")
-            elif t == "interrupt":
-                assistant.interrupt()
-            elif t == "tts_test":
-                speaker.interrupt()
-                name = memory.profile.get("preferred_name") or memory.profile.get("name") or ""
-                speaker.say(f"Hi{' ' + name if name else ''}! This is how I sound. I'm ready when you are.")
-            elif t == "push_to_talk":
-                assistant.interrupt()
-                voice.arm(float(d.get("seconds", 7)))
-                llm_prewarm()
-            elif t == "cancel_listen":
-                voice.disarm()
-                state["voice_status"] = "Ready"
-            elif t == "toggle_gestures":
-                if not settings["gestures_enabled"]:
-                    settings.update({"gestures_enabled": True})
-                    toast("Gestures on — camera starting", True, "gestures")
-                else:
-                    set_gestures_paused(not state["gestures_paused"])
-                    toast("Gestures paused" if state["gestures_paused"] else "Gestures resumed", True, "gestures")
-            elif t == "update_settings":
-                settings.update(d.get("settings", {}))
-            elif t == "request":
-                what = d.get("what")
-                if what == "today":
-                    await ws.send(json.dumps(today_payload(), default=str))
-                elif what == "activity":
-                    await ws.send(json.dumps({"type": "activity", "summary": activity.summary(d.get("day")),
-                                              "routine": memory.profile.get("routine", {})}, default=str))
-                elif what == "models":
-                    await ws.send(json.dumps(models_payload(), default=str))
-                elif what == "briefing":
-                    bg(lambda: send_all({"type": "briefing", "show": True, **briefing.build()}))
-                elif what == "wrapup":
-                    bg(lambda: send_all({"type": "wrapup", **briefing.wrap_up()}))
-            # tasks
-            elif t == "task_add" and d.get("text"):
-                task = tasks.add_from_text(d["text"], source="typed")
-                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
-                toast(f"Added “{task['title']}”" + (f" — {human_time(task['remind_at'])}" if task["remind_at"] else ""))
-            elif t == "task_update":
-                tasks.update(d.get("id"), **{k: v for k, v in d.items() if k in ("title", "done", "remind_at")})
-                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
-            elif t == "task_delete":
-                tasks.delete(d.get("id"))
-                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
-            elif t == "task_snooze":
-                tasks.snooze(d.get("id"), int(d.get("minutes") or appdata.get("timings.snooze_default_min")))
-                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
-            # notes
-            elif t in ("note_add", "add_note") and d.get("text"):
-                on_agent_note(d["text"].strip())
-            elif t in ("note_delete", "delete_note"):
-                notes.delete(d.get("id"))
-                send_all({"type": "notes", "notes": notes.items})
-            # memory & profile
-            elif t == "memory_add" and d.get("text"):
-                memory.add(d["text"], d.get("category", "fact"), int(d.get("importance", 4)), source="manual")
-            elif t == "memory_update":
-                memory.update(d.get("id"), **{k: v for k, v in d.items() if k in ("text", "importance", "category", "pinned")})
-            elif t == "memory_delete":
-                memory.delete(d.get("id"))
-            elif t == "memory_forget_all":
-                memory.forget_all()
-            elif t == "profile_update":
-                memory.update_profile(d.get("profile", {}))
-            elif t == "export_data":
-                p = storage.path(f"export-{storage.today()}.json")
-                storage.write_json(p, {**memory.export(), "tasks": tasks.items, "notes": notes.items})
-                os.startfile(os.path.dirname(p))
-            elif t == "open_privacy_mic":
-                os.startfile("ms-settings:privacy-microphone")
-            elif t == "open_data_folder":
-                os.startfile(storage.data_dir())
-            elif t == "delete_all_data":
-                bg(delete_all_data)
-            # meeting
-            elif t == "meeting_start" and not meeting.recording:
-                meeting.start(d.get("title"))
-                toast("Taking meeting notes", True, "meeting")
-            elif t == "meeting_stop" and meeting.recording:
-                bg(assistant._finish_meeting, "en", False)
-            # routine
-            elif t == "start_my_day":
-                assistant.pending = None
-                assistant.handle("start my day", "typed")
-            elif t == "action_review":
-                note = next((n for n in notes.items if n["id"] == d.get("note_id")), None)
-                if note:
-                    task = meeting.review_action(note, d.get("action_id"), d.get("decision", "dismiss"))
-                    send_all({"type": "notes", "notes": notes.items})
-                    if task:
-                        send_all({"type": "tasks", "tasks": tasks.open_tasks()})
-                        toast(f"Added “{task['title']}” to your tasks")
-            elif t == "meeting_bookmark" and meeting.recording:
-                meeting.bookmark(d.get("label", ""))
-            elif t == "voice_onboarding":
-                assistant.begin_voice_onboarding()
-                voice.arm(10)
-            elif t == "focus_stop":
-                assistant.focus.stop()
-                send_all({"type": "focus", **assistant.focus.state()})
-            elif t == "context_delete":
-                assistant.contexts.delete(d.get("id"))
-                send_all({"type": "contexts", "contexts": assistant.contexts.items})
-            elif t == "clear_activity":
-                shutil.rmtree(os.path.join(storage.data_dir(), "activity"), ignore_errors=True)
-                os.makedirs(os.path.join(storage.data_dir(), "activity"), exist_ok=True)
-                activity.day, activity.data = None, None
-                toast("Activity history cleared", True, "privacy")
-            elif t == "dismiss_briefing":
-                assistant.pending = None
-            elif t in ("shutdown", "quit"):
-                print("[Engine] Shutdown requested by client")
-                def _do_exit():
-                    time.sleep(0.15)
-                    os._exit(0)
-                threading.Thread(target=_do_exit, daemon=True).start()
-            # onboarding & models
-            elif t == "scan_system":
-                bg(lambda: send_all({"type": "scan", **system_scan.scan(agent.apps)}))
-            elif t == "onboarding_complete":
-                bg(complete_onboarding, d)
-            elif t == "set_api_key":
-                bg(save_api_key, d.get("provider") or cloud.provider, (d.get("key") or "").strip())
-            elif t in ("cancel_pull", "cancel_install", "cancel_setup"):
-                cancel_job(t)
-            elif t == "cloud_test":
-                def _test():
-                    try:
-                        secs, out = cloud.test()
-                        toast(f"Cloud brain works — answered in {secs}s", True, "cloud")
-                    except Exception as e:
-                        toast(f"Cloud test failed: {e}", False, "cloud")
-                    send_all(models_payload())
-                bg(_test)
-            elif t == "open_speech_settings":
-                os.startfile("ms-settings:speech")
-            elif t == "vision_install":
-                bg(pull_model, appdata.get("vision.install_model"))
-            elif t == "setup_retry":
-                bg(run_setup)
-            elif t == "install_ollama":
-                bg(install_ollama)
-            elif t == "model_pull" and d.get("name"):
-                bg(pull_model, d["name"])
-            elif t == "model_select" and d.get("name"):
-                ok, reason = is_compatible(d["name"])
-                if ok:
-                    settings.update({"llm_model": d["name"]})
-                else:
-                    toast(f"Your system isn't compatible with {d['name']}. {reason}", False, "model")
+            if isinstance(d, dict):
+                await router.dispatch(d, ctx, reply)
     except websockets.ConnectionClosed:
         pass
     finally:
@@ -1012,7 +1203,11 @@ async def run_server():
     ws_loop = asyncio.get_running_loop()
     try:
         host = appdata.get("server.host")
-        async with websockets.serve(ws_handler, host, PORT, max_size=int(appdata.get("server.max_message_mb")) * 1024 * 1024):
+        # Only the HUD may connect: a per-launch token plus an Origin allow-list, so a web
+        # page in the user's browser can't drive Snapy through localhost (src/server/auth.py)
+        token = ws_auth.load_or_create_token()
+        async with websockets.serve(ws_handler, host, PORT, process_request=ws_auth.process_request(token),
+                                    max_size=int(appdata.get("server.max_message_mb")) * 1024 * 1024):
             print(f"[HUD] WebSocket server on ws://{host}:{PORT}")
             await broadcast_state()
     except OSError as e:
@@ -1140,8 +1335,8 @@ def close_osk():
     try:
         subprocess.run(["taskkill", "/f", "/im", "osk.exe"], capture_output=True,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("startup.close_osk", e, quiet=True)
 
 
 def startup():

@@ -1,0 +1,92 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "language": "hinglish",
+    "description": "Hinglish (Hindi in Latin script) patterns. The Hinglish normaliser turns everyday commands into the English command grammar."
+  },
+  "flags": {"ignore_case": true},
+  "macros": {},
+  "domains": {
+    "phone": [
+      {"id": "whatsapp.ko", "order": 40, "intent": "whatsapp", "pattern": "^{{NAME}} ko (?:whatsapp|whats app|message|msg)(?: (?:karo|kar do|bhejo|bhej do))?{{SEP}}{{TEXT}}$"},
+      {"id": "sms.ko", "order": 60, "intent": "sms", "pattern": "^{{NAME}} ko (?:sms|text)(?: (?:karo|kar do|bhejo|bhej do))?{{SEP}}{{TEXT}}$"},
+      {"id": "call.ko", "order": 80, "intent": "call", "pattern": "^{{NAME}} ko (?:call|phone|fone)(?: (?:karo|kar do|lagao|laga do|milao))?$"},
+      {"id": "alarm.laga_do", "order": 100, "intent": "alarm", "pattern": "^(?<when>.+?) (?:ka|ke liye|par|pe) alarm (?:laga do|lagao|set karo)$"},
+      {"id": "timer.ka_timer", "order": 120, "intent": "timer", "pattern": "^(?<n>\\d+|[a-z ]+?) ?(?<unit>seconds?|minutes?|mins?|hours?|ghante?|minute) ka timer (?:laga do|lagao|set karo)$"},
+      {"id": "navigate.rasta", "order": 140, "intent": "navigate", "pattern": "^(?<place>.+?) (?:ka|ke) (?:rasta|raasta|route) (?:batao|dikhao)$"}
+    ],
+    "phone_yes": [
+      {"id": "hinglish", "pattern": "^(?:haan|haa|ha|ji|ji haan|kar do|bhej do|theek hai|thik hai)\\b"}
+    ],
+    "phone_no": [
+      {"id": "hinglish", "pattern": "^(?:nahi|nahin|mat|rehne do|ruk)\\b"}
+    ],
+    "assistant_yes": [
+      {"id": "hinglish", "pattern": "^(?:haan|ha|han|haa|ji|theek hai|thik hai|chalo|kar do)\\b"}
+    ],
+    "assistant_no": [
+      {"id": "hinglish", "pattern": "^(?:nahi|nahin|mat)\\b"}
+    ],
+    "assistant_stop": [
+      {"id": "hinglish", "pattern": "^(?:chup|bas|ruk|ruko)[\\s.,!?;:'\"…।-]*$"}
+    ],
+    "play": [
+      {"id": "youtube_pe_chalao", "order": 30, "pattern": "^youtube (?:pe|par) (?<q>.+?) (?:chalao|chala do|chalado|lagao|laga do|play karo|play kar do|dikhao)$"},
+      {"id": "bajao", "order": 60, "pattern": "^(?<q>.+?) (?:bajao|baja do|bajado)$"},
+      {"id": "music_chalao", "order": 70, "pattern": "^(?<q>.*{{MUSIC}}.*?) (?:chalao|chala do|chalado|sunao|suna do|lagao|laga do|play karo|play kar do)$"}
+    ],
+    "normalize_punct": [
+      {"id": "punct", "pattern": "[।.!,]+", "replace": " "}
+    ],
+    "normalize_prefix": [
+      {"id": "lead", "pattern": "^(?:yaar|please|zara|jaldi|snap)\\s+"}
+    ],
+    "normalize_suffix": [
+      {"id": "trail", "pattern": "\\s+(?:na|please|yaar|zara)$"}
+    ],
+    "normalize": [
+      {"id": "play_on_app", "order": 10, "pattern": "^(.+?) (?:pe|par|mein) (.+?) (?:chalao|chala do|lagao|laga do|bajao|baja do|play karo)$", "replace": "play $2 on $1"},
+      {"id": "play", "order": 20, "pattern": "^(.+?) (?:chalao|chala do|bajao|baja do|play karo|laga do|lagao)$", "replace": "play $1"},
+      {"id": "scroll_down", "order": 30, "pattern": "^(?:thoda )?(?:neeche|niche) (?:scroll )?(?:karo|kar do|jao|le jao)$|^scroll (?:neeche|niche) karo$", "replace": "scroll down"},
+      {"id": "scroll_up", "order": 40, "pattern": "^(?:thoda )?(?:upar|oopar) (?:scroll )?(?:karo|kar do|jao|le jao)$|^scroll upar karo$", "replace": "scroll up"},
+      {"id": "volume_up", "order": 50, "pattern": "^(?:awaaz|awaz|volume|aawaz) (?:badhao|badha do|tez karo|zyada karo|upar karo)$", "replace": "volume up"},
+      {"id": "volume_down", "order": 60, "pattern": "^(?:awaaz|awaz|volume|aawaz) (?:kam karo|kam kar do|dheere karo|ghatao|neeche karo)$", "replace": "volume down"},
+      {"id": "mute", "order": 70, "pattern": "^(?:awaaz|awaz|volume|aawaz) band (?:karo|kar do)$|^mute (?:karo|kar do)$", "replace": "mute"},
+      {"id": "pause", "order": 80, "pattern": "^(?:gaana|video|music) (?:roko|rok do|band karo|pause karo)$|^(?:roko|ruko)$", "replace": "pause"},
+      {"id": "next_song", "order": 90, "pattern": "^(?:agla|next) (?:gaana|song|video)(?: chalao| lagao)?$|^agla gaana$", "replace": "next song"},
+      {"id": "next_tab", "order": 100, "pattern": "^(?:agla|next) tab(?: pe jao| kholo)?$", "replace": "next tab"},
+      {"id": "previous_tab", "order": 110, "pattern": "^(?:pichla|previous|pichhla) tab(?: pe jao)?$", "replace": "previous tab"},
+      {"id": "new_tab", "order": 120, "pattern": "^(?:naya|new) tab (?:kholo|khol do)$", "replace": "new tab"},
+      {"id": "close_tab", "order": 130, "pattern": "^tab band (?:karo|kar do)$", "replace": "close tab"},
+      {"id": "go_back", "order": 140, "pattern": "^wapas (?:jao|chalo)$|^peeche jao$", "replace": "go back"},
+      {"id": "switch_to", "order": 150, "pattern": "^(.+?) (?:pe|par) (?:jao|switch karo|le chalo)$", "replace": "switch to $1"},
+      {"id": "open", "order": 160, "pattern": "^(.+?) (?:kholo|khol do|open karo|chalu karo|start karo)$", "replace": "open $1"},
+      {"id": "close", "order": 170, "pattern": "^(.+?) band (?:karo|kar do)$", "replace": "close $1"},
+      {"id": "search", "order": 180, "pattern": "^(.+?) (?:search karo|dhoondo|google karo)$", "replace": "search for $1"},
+      {"id": "screenshot", "order": 190, "pattern": "^screenshot (?:lo|le lo|lena)$", "replace": "screenshot"},
+      {"id": "show_desktop", "order": 200, "pattern": "^desktop dikhao$|^sab minimize karo$", "replace": "show desktop"}
+    ],
+    "normalize_fillers": [
+      {"id": "fillers", "pattern": "\\b(?:kuch|koi|thoda|zara|accha sa|achha sa|ek|wala|waala)\\s+", "replace": ""}
+    ],
+    "question_or_creative": [
+      {"id": "hinglish_ask", "pattern": "\\b(?:samjhao|batao|kya hai|kaise)\\b"}
+    ],
+    "hinglish_markers": ["hai", "hain", "kya", "kyu", "kyun", "mujhe", "mera", "meri", "mere", "karna", "karo", "kar", "do",
+                         "yaar", "aaj", "kal", "nahi", "nahin", "haan", "chala", "chalao", "lagao", "bata", "batao", "kitna",
+                         "kaise", "kaun", "accha", "acha", "theek", "thik", "baad", "pe", "par", "mein", "ko", "se", "hoon",
+                         "hu", "tum", "aap", "hum", "samjhao", "bolo", "dekho"],
+    "unfinished": [
+      {"id": "hinglish", "pattern": "\\b(?:aur|ya|ki|ke|ka|ko|mein|se|toh|phir|par|pe|jo)\\s*$"}
+    ],
+    "realcount_app": [
+      {"id": "kitna_time_pe", "order": 20, "pattern": "(?:kitna time|kitni der)\\s+(?<app>[a-z][a-z ]*?)\\s+(?:pe|par)\\b|\\b(?<app2>[a-z][a-z ]*?)\\s+(?:pe|par)\\s+(?:kitna time|kitni der)"}
+    ],
+    "realcount_screen": [
+      {"id": "hinglish", "pattern": "\\b(?:phone kitna (?:chalaya|use kiya)|kitna phone)\\b"}
+    ],
+    "memory_self": [
+      {"id": "hinglish", "pattern": "\\b(?:mera|meri|mere|mujhe|main|hum|hamara|pasand|yaad)\\b"}
+    ]
+  }
+}

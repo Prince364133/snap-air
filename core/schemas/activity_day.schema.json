@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/activity_day.schema.json",
+  "title": "Activity day",
+  "description": "One day of desktop/app activity (activity/YYYY-MM-DD.json). Local only; not synced as individual records.",
+  "x-schema-version": 1,
+  "x-synced": false,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "apps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "seconds": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "titles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "seconds"
+        ]
+      },
+      "description": "Executable or package -> time."
+    },
+    "projects": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Project -> seconds."
+    },
+    "sites": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Site -> seconds."
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number",
+            "description": "start, epoch s"
+          },
+          {
+            "type": "number",
+            "description": "end, epoch s"
+          },
+          {
+            "type": "string",
+            "description": "exe/package"
+          },
+          {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "label"
+          }
+        ]
+      }
+    },
+    "first_active": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "last_active": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "apps",
+    "projects",
+    "sites",
+    "timeline"
+  ],
+  "additionalProperties": true
+}

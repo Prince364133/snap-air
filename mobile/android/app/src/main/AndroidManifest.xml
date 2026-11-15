@@ -7,10 +7,20 @@
     <!-- Reminders: notifications (Android 13+ asks the user) and on-time alarms (user-granted) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Voice: talk to Snapy; optional "Hey Snapy" listening in a foreground service -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Phone actions: "call Mom", "WhatsApp Rahul …" (asked when first needed), alarms/timers in Clock -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <application
         android:label="Snapy"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -44,6 +54,12 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- "Hey Snapy" (opt-in): offline wake word, audio never leaves the phone -->
+        <service
+            android:name=".WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- Shows reminder notifications at their time, even if Snapy isn't running -->
         <receiver android:name=".ReminderReceiver" android:exported="false" />
@@ -82,6 +98,18 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+        <!-- Phone actions: dialler, messages, maps, clock -->
+        <intent><action android:name="android.intent.action.DIAL"/><data android:scheme="tel"/></intent>
+        <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="smsto"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="google.navigation"/></intent>
+        <intent><action android:name="android.intent.action.SET_ALARM"/></intent>
+        <intent><action android:name="android.intent.action.SET_TIMER"/></intent>
+        <package android:name="com.whatsapp"/>
+        <package android:name="com.whatsapp.w4b"/>
+        <!-- Android speech recognition (talking to Snapy) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
         <!-- Android TextToSpeech engines (Snapy's voice) -->
         <intent>

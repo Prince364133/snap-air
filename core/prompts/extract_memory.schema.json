@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "memories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "update",
+              "delete"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "enum is injected at load time from schemas/memory_fact.schema.json properties.category.enum"
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          }
+        },
+        "required": [
+          "op",
+          "text",
+          "category",
+          "importance"
+        ]
+      }
+    }
+  },
+  "required": [
+    "memories"
+  ]
+}

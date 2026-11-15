@@ -82,9 +82,15 @@ function send(obj) {
     return false;
 }
 
-function connect() {
+// The engine only accepts this page: it checks the Origin (file://) and a per-launch
+// token that Electron hands over through the preload bridge (main.js "engine auth").
+// The token goes in ?token= because browsers can't set headers on a WebSocket. It is
+// fetched on every attempt: with an external engine (pnpm dev) it may appear later.
+async function connect() {
     const port = new URLSearchParams(location.search).get('port') || '8765';
-    socket = new WebSocket(`ws://localhost:${port}`);
+    let token = '';
+    try { token = (window.snap && window.snap.wsToken) ? (await window.snap.wsToken()) || '' : ''; } catch (e) { token = ''; }
+    socket = new WebSocket(`ws://localhost:${port}/?token=${encodeURIComponent(token)}`);
     socket.onopen = () => { connected = true; renderIsland(); };
     socket.onclose = () => { connected = false; renderIsland(); setTimeout(connect, 1500); };
     socket.onerror = () => {};
@@ -106,7 +112,9 @@ const HANDLERS = {
         ipcRenderer.send('set-login-item', !!S.start_at_login);
         renderAll();
         if (d.onboarding_needed) openOnboarding();
+        if (d.cloud_preview) showCloudPreview(d.cloud_preview);
     },
+    cloud_preview(d) { showCloudPreview(d.sample); },
     state_update(d) { eng = d; renderIsland(); renderCursor(); updateMeters(); },
     settings(d) { S = d.settings; renderName(); bindSettings(); if (activeTab === 'settings') renderSettings(); renderSuggestions(); },
     memory(d) { profile = d.profile; memories = d.memories; renderMemory(); },
@@ -1314,6 +1322,24 @@ $('ob-next').onclick = () => {
     closeOnboarding();
     openDrawer('assistant');
 };
+
+// ------------------------------------------------------------ cloud preview
+// Shown once, before the first request ever goes to a cloud provider: what would be
+// sent (already masked by the engine) and a clear choice. Until "Allow", the engine
+// keeps every request on this PC.
+function showCloudPreview(sample) {
+    if (!sample) return;
+    $('cp-provider').textContent = (sample.provider || 'your cloud provider') + (sample.model ? ` (${sample.model})` : '');
+    $('cp-redacted').textContent = sample.redacted
+        ? 'Emails, phone and card numbers, API keys and your Windows user name are replaced with placeholders like [email] before anything is sent.'
+        : 'Masking of personal details is turned off.';
+    const msgs = (sample.messages || []).filter((m) => m.role !== 'system').slice(-3);
+    $('cp-sample').textContent = msgs.map((m) => `${m.role}: ${m.content}`).join('\n\n') || '(your message)';
+    $('cloud-preview').classList.remove('hidden');
+    const answer = (allow) => { $('cloud-preview').classList.add('hidden'); send({ type: 'cloud_preview_ack', allow }); };
+    $('cp-allow').onclick = () => answer(true);
+    $('cp-local').onclick = () => answer(false);
+}
 
 // ------------------------------------------------------------ confirm/toast
 function confirmDo(title, text, fn) {

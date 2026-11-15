@@ -1,8 +1,13 @@
-"""Product data (download sources, model names, timings, limits) from src/data/app.json.
+"""Product data by dotted path, e.g. get("ollama.installer_url") or get("android.social_apps").
 
-Nothing product-specific is hardcoded in the engine: code asks for a value by its
-dotted path, e.g. get("ollama.installer_url"). An override file next to the user's
-data (%APPDATA%\\SnapAir\\app.json) can change any value without rebuilding.
+One tree, three layers (later wins):
+  1. src/data/app.json      Windows-engine data (installers, model names, timings, camera…)
+  2. core/rules/*.json      data shared with the Android app (social apps, phone rules, nudges,
+                            limits, ordinals, cloud providers…), see core/README.md
+  3. %APPDATA%\\SnapAir\\app.json   optional user override, changes any value without rebuilding
+
+Every fact lives in exactly one of 1 or 2 (load() warns if both define a path). Nothing
+product-specific is hardcoded in the engine: code asks for a value by its path.
 """
 import json
 import os
@@ -28,12 +33,37 @@ def _merge(base, extra):
     return base
 
 
+def _overlaps(a, b, where=""):
+    """Leaf paths defined in both trees (a fact must have one source)."""
+    out = []
+    for k, v in b.items():
+        if k in ("_comment", "_meta") or k not in a:
+            continue
+        p = f"{where}.{k}" if where else k
+        if isinstance(v, dict) and isinstance(a[k], dict):
+            out += _overlaps(a[k], v, p)
+        else:
+            out.append(p)
+    return out
+
+
 def load(reload=False):
     global _cache
     if _cache is not None and not reload:
         return _cache
     with open(_base_file(), encoding="utf-8") as f:
         data = json.load(f)
+    try:
+        from src import core_loader
+        if reload:
+            core_loader.reload()
+        shared = json.loads(json.dumps(core_loader.config_tree()))
+        dup = _overlaps(data, shared)
+        if dup:
+            print("[AppData] defined in both app.json and core/ (core wins):", ", ".join(dup))
+        _merge(data, shared)
+    except Exception as e:                                   # never stop Snapy, but say why
+        print("[AppData] couldn't load core/:", e)
     try:
         from src import storage
         override = os.path.join(storage.data_dir(), "app.json")

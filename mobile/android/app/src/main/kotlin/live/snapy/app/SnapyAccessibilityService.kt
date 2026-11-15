@@ -14,7 +14,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONArray
@@ -43,6 +45,8 @@ class SnapyAccessibilityService : AccessibilityService() {
     private var socialApps = mapOf<String, JSONObject>()        // package -> {label, short_video}
     private var minDwellMs = 700L
     private var refreshMs = 60_000L
+    private var viewTypes = JSONObject()                 // Android class -> matcher type (app.json)
+    private var lastNodes = listOf<AccessibilityNodeInfo>()
 
     private var currentPkg = ""
     private var lastReelAt = HashMap<String, Long>()
@@ -74,6 +78,7 @@ class SnapyAccessibilityService : AccessibilityService() {
                 socialApps = m
                 minDwellMs = core.configNow("android.min_reel_dwell_ms").toLongOrNull() ?: minDwellMs
                 refreshMs = (core.configNow("android.screen_time_refresh_s").toLongOrNull() ?: 60) * 1000
+                viewTypes = JSONObject(core.configNow("android.view_types"))
             } catch (_: Exception) { }
         }.start()
     }
@@ -273,6 +278,107 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     private fun openSheet() {
         startActivity(Intent(this, SheetActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    // ------------------------------------------------------------------ screen actions (Phase 4)
+    /** Visible, named, actionable nodes of the app on screen, in the same shape as the Windows
+     *  UI Automation snapshot, so the shared screen.find() can choose one. */
+    fun snapshotNodes(): JSONArray {
+        val out = JSONArray()
+        val keep = ArrayList<AccessibilityNodeInfo>()
+        val root = rootInActiveWindow ?: return out
+        if (root.packageName == packageName) return out             // never act on Snapy itself
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || keep.size >= 300 || depth > 40) return
+            if (n.isVisibleToUser) {
+                val name = (n.text ?: n.contentDescription ?: "").toString().trim()
+                val cls = n.className?.toString()?.substringAfterLast('.') ?: ""
+                val actionable = n.isClickable || n.isEditable || n.isCheckable
+                if (actionable && (name.isNotEmpty() || n.isEditable)) {
+                    val type = viewTypes.optString(cls, "").ifEmpty {
+                        if (n.isEditable) "EditControl" else if (n.childCount > 0) viewTypes.optString("_clickable_group", "ListItemControl") else "ButtonControl"
+                    }
+                    // a clickable card often has no text itself: name it from its children (video titles)
+                    val label = name.ifEmpty { childText(n) }.ifEmpty { if (n.isEditable) "text field" else "" }
+                    if (label.isNotEmpty()) {
+                        val r = Rect(); n.getBoundsInScreen(r)
+                        if (r.width() > 4 && r.height() > 4) {
+                            out.put(JSONObject().put("name", label.take(160)).put("type", type)
+                                .put("rect", JSONArray(listOf(r.left, r.top, r.right, r.bottom))).put("depth", depth))
+                            keep.add(n)
+                        }
+                    }
+                }
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        lastNodes = keep
+        return out
+    }
+
+    private fun childText(n: AccessibilityNodeInfo, max: Int = 3): String {
+        val parts = ArrayList<String>()
+        fun go(c: AccessibilityNodeInfo?, d: Int) {
+            if (c == null || d > 6 || parts.size >= max) return
+            val t = (c.text ?: c.contentDescription ?: "").toString().trim()
+            if (t.isNotEmpty()) parts.add(t)
+            for (i in 0 until c.childCount) go(c.getChild(i), d + 1)
+        }
+        for (i in 0 until n.childCount) go(n.getChild(i), 1)
+        return parts.joinToString(" · ")
+    }
+
+    fun clickNode(i: Int): Boolean {
+        var n: AccessibilityNodeInfo? = lastNodes.getOrNull(i) ?: return false
+        while (n != null && !n.isClickable) n = n.parent
+        return n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+    }
+
+    fun typeIntoFocused(text: String): Boolean {
+        val f = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        if (!f.isEditable) return false
+        val existing = f.text?.toString().orEmpty().let { if (f.isShowingHintText) "" else it }
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, if (existing.isEmpty()) text else "$existing $text")
+        }
+        return f.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    /** Fixed script step: wait (up to timeout) for a known button (view ID or description) and tap it once. */
+    fun tapWhenVisible(selectors: JSONArray, timeoutMs: Long) {
+        val until = System.currentTimeMillis() + timeoutMs
+        fun attempt() {
+            val root = rootInActiveWindow
+            if (root != null) {
+                for (i in 0 until selectors.length()) {
+                    val sel = selectors.getString(i)
+                    val hits = if (sel.contains(":id/")) root.findAccessibilityNodeInfosByViewId(sel)
+                               else root.findAccessibilityNodeInfosByText(sel).filter { it.contentDescription?.toString() == sel }
+                    val target = hits.firstOrNull { it.isVisibleToUser && it.isEnabled }
+                    if (target != null) {
+                        var n: AccessibilityNodeInfo? = target
+                        while (n != null && !n.isClickable) n = n.parent
+                        if (n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return
+                    }
+                }
+            }
+            if (System.currentTimeMillis() < until) main.postDelayed({ attempt() }, 400)
+        }
+        main.postDelayed({ attempt() }, 900)
+    }
+
+    /** Voice feedback in the pill (wake word or push-to-talk while another app is open). */
+    fun showVoice(state: String, text: String) = main.post {
+        val p = pill ?: return@post
+        p.visibility = View.VISIBLE
+        when (state) {
+            "listening" -> pillText?.text = if (text.isBlank()) "Listening…" else text.takeLast(28)
+            "partial" -> pillText?.text = text.takeLast(28)
+            "thinking" -> pillText?.text = "Thinking…"
+            else -> updatePill()
+        }
+        if (state == "thinking") main.postDelayed({ updatePill() }, 6000)
     }
 
     /** Today's numbers for the app/dashboard and the AI. */

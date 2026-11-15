@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "language": "hi-Deva",
+    "description": "Hindi in Devanagari script. Devanagari words are not ASCII word characters, so these patterns never use \\b next to Devanagari; they use whitespace/punctuation lookaheads instead."
+  },
+  "flags": {"ignore_case": true},
+  "macros": {
+    "DEV_NAME": "(?<name>[^\\s,]+(?: [^\\s,]+)?)",
+    "DEV_SEP": "(?:\\s*[,:]\\s*|\\s+(?:कि|बोलो|लिखो|कहो)\\s+|\\s+)",
+    "DEV_END": "(?=$|[\\s,.!?।])"
+  },
+  "domains": {
+    "phone": [
+      {"id": "whatsapp.ko", "order": 1010, "intent": "whatsapp", "pattern": "^{{DEV_NAME}} को (?:व्हाट्सएप|व्हाट्सऐप|वॉट्सऐप|whatsapp|मैसेज)(?: (?:करो|कर दो|भेजो|भेज दो))?{{DEV_SEP}}(?<text>.+)$"},
+      {"id": "sms.ko", "order": 1020, "intent": "sms", "pattern": "^{{DEV_NAME}} को (?:एसएमएस|sms|टेक्स्ट)(?: (?:करो|कर दो|भेजो|भेज दो))?{{DEV_SEP}}(?<text>.+)$"},
+      {"id": "call.ko", "order": 1030, "intent": "call", "pattern": "^{{DEV_NAME}} को (?:कॉल|काल|फ़ोन|फोन|call)(?: (?:करो|कर दो|लगाओ|लगा दो|मिलाओ))?$"},
+      {"id": "timer.ka_timer", "order": 1040, "intent": "timer", "pattern": "^(?<n>\\d+|[^\\s\\d]+) ?(?<unit>सेकंड|मिनट|घंटे|घंटा) का टाइमर (?:लगाओ|लगा दो|सेट करो)$"},
+      {"id": "navigate.rasta", "order": 1050, "intent": "navigate", "pattern": "^(?<place>.+?) (?:का|के) (?:रास्ता|रूट) (?:बताओ|दिखाओ)$"},
+      {"id": "torch.state", "order": 1060, "intent": "torch", "pattern": "^(?:टॉर्च|फ्लैशलाइट) (?<state>जलाओ|चालू करो|ऑन करो|बंद करो|बंद)$"}
+    ],
+    "phone_yes": [
+      {"id": "deva", "pattern": "^(?:हाँ|हां|हा|जी|जी हाँ|ठीक है|भेज दो|कर दो){{DEV_END}}"}
+    ],
+    "phone_no": [
+      {"id": "deva", "pattern": "^(?:नहीं|नही|मत|रहने दो|रुको|कैंसल){{DEV_END}}"}
+    ],
+    "assistant_yes": [
+      {"id": "deva", "pattern": "^(?:हाँ|हां|हा|जी|ठीक है|चलो|कर दो){{DEV_END}}"}
+    ],
+    "assistant_no": [
+      {"id": "deva", "pattern": "^(?:नहीं|नही|मत|अभी नहीं){{DEV_END}}"}
+    ],
+    "assistant_stop": [
+      {"id": "deva", "pattern": "^(?:चुप|बस|रुको|रुक)[\\s.,!?।]*$"}
+    ],
+    "question_or_creative": [
+      {"id": "deva_ask", "pattern": "(?:^|\\s)(?:समझाओ|बताओ|क्या है|कैसे)(?=$|[\\s,.!?।])"}
+    ],
+    "script_devanagari": [
+      {"id": "range", "pattern": "[\\u0900-\\u097F]"}
+    ],
+    "unfinished": [
+      {"id": "deva", "pattern": "(?:^|\\s)(?:और|या|की|के|का|को|में|से|तो|फिर|पर|पे|जो)\\s*$"}
+    ],
+    "transliteration": {
+      "खोलो": "kholo", "खोल": "khol", "बंद": "band", "करो": "karo", "कर": "kar", "दो": "do", "चलाओ": "chalao",
+      "चला": "chala", "रोको": "roko", "नीचे": "neeche", "ऊपर": "upar", "आवाज़": "awaaz", "आवाज": "awaaz",
+      "बढ़ाओ": "badhao", "बढाओ": "badhao", "कम": "kam", "स्क्रॉल": "scroll", "यूट्यूब": "youtube",
+      "गाना": "gaana", "अगला": "agla", "पिछला": "pichla", "टैब": "tab", "वापस": "wapas", "जाओ": "jao",
+      "सर्च": "search", "क्रोम": "chrome", "म्यूट": "mute", "रुको": "ruko", "बजाओ": "bajao", "पर": "par",
+      "पे": "pe", "में": "mein", "को": "ko", "और": "aur", "थोड़ा": "thoda", "ज़्यादा": "zyada"
+    }
+  }
+}

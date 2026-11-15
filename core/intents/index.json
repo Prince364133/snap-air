@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Catalogue of intent domains. Each language file (files, in this order) contributes entries to these domains; see core/README.md section 'Intents' for exact execution rules."
+  },
+  "files": ["en.json", "hinglish.json", "devanagari.json"],
+  "domains": {
+    "phone": {"type": "first_match", "doc": "Phone actions -> {kind, slots}. Entries may be rejected by slot validation; then matching continues with the next entry."},
+    "phone_tap_open_ok": {"type": "any", "doc": "'open X' is a tap (not an app launch) only when X matches one of these."},
+    "phone_yes": {"type": "any", "doc": "Confirms a pending phone action."},
+    "phone_no": {"type": "any", "doc": "Cancels a pending phone action."},
+    "assistant_yes": {"type": "any", "doc": "Accepts an assistant offer."},
+    "assistant_no": {"type": "any", "doc": "Declines an assistant offer."},
+    "assistant_stop": {"type": "any", "doc": "Interrupt words: stop talking / stop scrolling."},
+    "assistant_risky": {"type": "any", "doc": "Desktop commands from the AI that need a spoken yes first."},
+    "assistant_polite": {"type": "strip", "doc": "Removed from a typed/spoken turn before the command grammar."},
+    "polite_prefix": {"type": "strip", "doc": "Removed from the normalised command ('can you please open youtube')."},
+    "polite_suffix": {"type": "strip", "doc": "Removed from the end of the normalised command."},
+    "polite_prefix_original": {"type": "strip", "doc": "Same as polite_prefix but on the original-cased text."},
+    "wake_filler": {"type": "fragment", "doc": "Unanchored fragment: up to two filler words allowed before the wake word."},
+    "ordinal": {"type": "first_match", "doc": "Which result: slot n (ordinal word or digits), optional slot keep (text kept in place of the match)."},
+    "play": {"type": "first_match", "doc": "Music/video request -> slot q (the search topic)."},
+    "play_filler_prefix": {"type": "strip", "doc": "Removed from the start of a play topic."},
+    "play_suffix": {"type": "strip", "doc": "Removed from the end of a play topic."},
+    "play_fixes": {"type": "rewrite", "doc": "Speech-recognition fixes applied to a play topic (all matches replaced)."},
+    "play_topicless_words": {"type": "words", "doc": "A topic made only of these words (plus ordinal words and digits) means 'click it on screen', not a search."},
+    "play_reject": {"type": "words", "doc": "A topic equal to one of these is not a play request (try the next entry)."},
+    "normalize_punct": {"type": "rewrite", "doc": "Hinglish normaliser: punctuation -> space."},
+    "normalize_prefix": {"type": "strip", "doc": "Hinglish normaliser: leading filler."},
+    "normalize_suffix": {"type": "strip", "doc": "Hinglish normaliser: trailing filler."},
+    "normalize": {"type": "first_match", "doc": "Hinglish/Hindi command -> English command (entries have replace templates)."},
+    "normalize_fillers": {"type": "rewrite", "doc": "Removed from a normalised command (all matches)."},
+    "question_or_creative": {"type": "any", "doc": "Questions and 'write me...' requests: never typed or executed, always go to the AI."},
+    "transliteration": {"type": "map", "doc": "Devanagari word -> Latin Hinglish. Longest key first, plain substring replace."},
+    "script_devanagari": {"type": "any", "doc": "Text contains Devanagari."},
+    "hinglish_markers": {"type": "words", "doc": "Two or more of these Latin words -> the user is speaking Hinglish."},
+    "unfinished": {"type": "any", "doc": "The phrase stops mid-sentence: wait for the rest."},
+    "realcount_period": {"type": "first_match", "doc": "slot period, mapped through slot_values.realcount.period."},
+    "realcount_app": {"type": "first_match", "doc": "Time-on-app question: slot app (or app2); the app is the LAST word of the slot."},
+    "realcount_reels": {"type": "any", "doc": "Reels/shorts count question."},
+    "realcount_screen": {"type": "any", "doc": "Screen-time question."},
+    "memory_extract": {"type": "extract", "doc": "Rule-based memory: every matching entry yields template.format(groups...)."},
+    "memory_explicit": {"type": "first_match", "doc": "'remember that ...' -> slot fact."},
+    "memory_secret": {"type": "any", "doc": "Never store text matching any of these."},
+    "memory_self": {"type": "any", "doc": "Cheap pre-filter: the user is talking about themself."},
+    "meeting_action_hint": {"type": "any", "doc": "No-AI meeting notes: a sentence that sounds like an action item."},
+    "meeting_decision_hint": {"type": "any", "doc": "No-AI meeting notes: a sentence that records a decision."},
+    "meeting_mine": {"type": "any", "doc": "An action item the user committed to (said by 'You')."},
+    "task_title_prefix": {"type": "strip", "doc": "Removed from the start of a task title."},
+    "task_title_suffix": {"type": "strip", "doc": "Removed from the end of a task title."}
+  },
+  "slot_values": {
+    "phone": {
+      "not_names": ["me", "it", "this", "that", "my", "the", "a", "up", "back", "home"],
+      "torch_on": ["on", "jalao", "जलाओ", "चालू करो", "ऑन करो"],
+      "panel": {"wifi": "wifi", "internet": "internet", "mobile data": "internet", "data": "internet",
+                "bluetooth": "bluetooth", "nfc": "nfc", "volume": "volume"},
+      "panel_default": "internet",
+      "video_call_prefix": "video call",
+      "alarm_label": "Snapy"
+    },
+    "realcount": {
+      "period": {"this week": "this_week", "is hafte": "this_week", "week": "this_week",
+                 "yesterday": "yesterday", "kal": "yesterday"},
+      "period_default": "today",
+      "period_days": {"today": 1, "this_week": 7, "yesterday": 1},
+      "period_end_offset_days": {"today": 0, "this_week": 0, "yesterday": 1}
+    }
+  }
+}

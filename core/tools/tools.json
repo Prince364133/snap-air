@@ -1,0 +1,333 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "The assistant's tool catalog. The AI answers with {say, tool, args}; tool is 'none' or one of these names. 'prompt' is the exact text shown to the model; 'prompt_layout' groups tools into prompt lines (joined with ' | ', lines joined with newline) and replaces {{tools}} in prompts/system.md."
+  },
+  "response": {
+    "say_first": true,
+    "none_tool": "none",
+    "required": [
+      "say",
+      "tool",
+      "args"
+    ]
+  },
+  "args": {
+    "command": {
+      "type": "string",
+      "description": "desktop: the short English command"
+    },
+    "title": {
+      "type": "string",
+      "description": "add_task / complete_task: task title"
+    },
+    "when": {
+      "type": "string",
+      "description": "add_task: time phrase, e.g. '5 pm', 'in 10 minutes', 'tomorrow 9am' or ''"
+    },
+    "text": {
+      "type": "string",
+      "description": "add_note: note text; clipboard: target language; screen: what to type"
+    },
+    "fact": {
+      "type": "string",
+      "description": "remember / forget: the fact"
+    },
+    "query": {
+      "type": "string",
+      "description": "find_notes / web_search: the query; screen: the on-screen thing"
+    },
+    "app": {
+      "type": "string",
+      "description": "activity: app name"
+    },
+    "action": {
+      "type": "string",
+      "description": "clipboard: explain|summarize|translate; meeting_notes: start|stop|bookmark; work_context: park|resume; screen: click|type|read|task"
+    },
+    "minutes": {
+      "type": "integer",
+      "description": "focus: length in minutes"
+    },
+    "name": {
+      "type": "string",
+      "description": "work_context: context name"
+    },
+    "panel": {
+      "type": "string",
+      "description": "open_panel: today|assistant|notes|tasks|memory|activity|settings"
+    }
+  },
+  "tools": [
+    {
+      "name": "desktop",
+      "description": "Control the device with one short English command from the command grammar.",
+      "args": [
+        "command"
+      ],
+      "prompt": "desktop {command}: control the PC with a short English command, e.g. \"open spotify\", \"switch to chrome\", \"play <exactly what the user asked for> on youtube\", \"volume up\", \"next tab\", \"scroll down\", \"pause\", \"search for <query>\", any keyboard shortcut like \"press windows h\", \"press control shift t\", \"press alt f4\", or Windows actions like \"open voice typing\", \"open clipboard history\", \"open task manager\"",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "add_task",
+      "description": "Add a task or reminder.",
+      "args": [
+        "title",
+        "when"
+      ],
+      "prompt": "add_task {title, when}: task/reminder; when like \"5 pm\", \"in 10 minutes\", \"tomorrow 9am\" or \"\"",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "complete_task",
+      "description": "Mark an open task done.",
+      "args": [
+        "title"
+      ],
+      "prompt": "complete_task {title}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "tasks",
+      "description": "Read the open tasks.",
+      "args": [],
+      "prompt": "tasks {}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "add_note",
+      "description": "Save a note.",
+      "args": [
+        "text"
+      ],
+      "prompt": "add_note {text}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "find_notes",
+      "description": "Search notes.",
+      "args": [
+        "query"
+      ],
+      "prompt": "find_notes {query}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "remember",
+      "description": "Store a lasting fact about the user (third person).",
+      "args": [
+        "fact"
+      ],
+      "prompt": "remember {fact}: lasting fact about the user, third person",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "forget",
+      "description": "Delete a stored fact.",
+      "args": [
+        "fact"
+      ],
+      "prompt": "forget {fact}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web for current information.",
+      "args": [
+        "query"
+      ],
+      "prompt": "web_search {query}: current info/news/prices",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "read_page",
+      "description": "Read the browser tab the user is looking at.",
+      "args": [],
+      "prompt": "read_page {}: the browser tab the user is looking at",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "name": "clipboard",
+      "description": "Explain, summarise or translate the clipboard.",
+      "args": [
+        "action",
+        "text"
+      ],
+      "prompt": "clipboard {action: explain|summarize|translate, text: target language}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "meeting_notes",
+      "description": "Start/stop meeting notes or bookmark a moment.",
+      "args": [
+        "action"
+      ],
+      "prompt": "meeting_notes {action: start|stop|bookmark}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "start_my_day",
+      "description": "Run the learned morning routine.",
+      "args": [],
+      "prompt": "start_my_day {}",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "name": "day_summary",
+      "description": "Summarise the day.",
+      "args": [],
+      "prompt": "day_summary {}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "standup_draft",
+      "description": "Draft a stand-up update.",
+      "args": [],
+      "prompt": "standup_draft {}",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "name": "focus",
+      "description": "Start a focus session.",
+      "args": [
+        "minutes"
+      ],
+      "prompt": "focus {minutes}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "work_context",
+      "description": "Park or resume a work context.",
+      "args": [
+        "action",
+        "name"
+      ],
+      "prompt": "work_context {action: park|resume, name}",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "name": "open_panel",
+      "description": "Open a panel of the app.",
+      "args": [
+        "panel"
+      ],
+      "prompt": "open_panel {panel: today|assistant|notes|tasks|memory|activity|settings}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "activity",
+      "description": "Time spent in an app.",
+      "args": [
+        "app"
+      ],
+      "prompt": "activity {app}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    },
+    {
+      "name": "screen",
+      "description": "Act on what is on screen (click, type, read, or a multi-step task).",
+      "args": [
+        "action",
+        "text",
+        "query",
+        "goal"
+      ],
+      "prompt": "screen {action: click|type|read|task, text: what to type, query: the on-screen thing, e.g. \"second video\", \"search box\", \"Subscribe button\", goal: for task = a multi-step goal on the current screen}",
+      "platforms": [
+        "windows",
+        "android"
+      ]
+    }
+  ],
+  "prompt_layout": [
+    [
+      "desktop"
+    ],
+    [
+      "add_task",
+      "complete_task",
+      "tasks"
+    ],
+    [
+      "add_note",
+      "find_notes"
+    ],
+    [
+      "remember",
+      "forget"
+    ],
+    [
+      "web_search",
+      "read_page",
+      "clipboard"
+    ],
+    [
+      "meeting_notes",
+      "start_my_day",
+      "day_summary",
+      "standup_draft"
+    ],
+    [
+      "focus",
+      "work_context",
+      "open_panel",
+      "activity"
+    ],
+    [
+      "screen"
+    ]
+  ]
+}

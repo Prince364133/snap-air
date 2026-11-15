@@ -24,6 +24,13 @@ class SnapyCore {
 
   static Future<void> interrupt() => _ch.invokeMethod('interrupt');
 
+  /// Push-to-talk (asks for the microphone the first time; returns false until granted).
+  static Future<bool> startListening() async => (await _ch.invokeMethod<bool>('startListening')) ?? false;
+  static Future<void> stopListening() => _ch.invokeMethod('stopListening');
+
+  /// "Hey Snapy" in the background (opt-in).
+  static Future<bool> setWakeWord(bool on) async => (await _ch.invokeMethod<bool>('setWakeWord', {'on': on})) ?? false;
+
   static Future<Map<String, dynamic>> _json(String method, [Map<String, dynamic>? args]) async =>
       Map<String, dynamic>.from(jsonDecode((await _ch.invokeMethod<String>(method, args)) ?? '{}') as Map);
 
@@ -35,9 +42,12 @@ class SnapyCore {
   static Future<Map<String, dynamic>> snapshot() => _json('snapshot');
   static Future<void> completeTask(String id) => _ch.invokeMethod('completeTask', {'id': id});
 
-  /// Which permissions are on: {usage, realcount, pill, notifications}.
+  /// Which permissions are on: {usage, realcount, pill, overlay, notifications, microphone, contacts, calls, wake, battery}.
   static Future<Map<String, bool>> status() async => Map<String, bool>.from(await _ch.invokeMethod('status') as Map);
   static Future<void> requestNotifications() => _ch.invokeMethod('requestNotifications');
+
+  /// contacts | calls | microphone
+  static Future<void> requestPermission(String which) => _ch.invokeMethod('requestPermission', {'which': which});
   static Future<void> openUsageAccess() => _ch.invokeMethod('openUsageAccess');
   static Future<void> openRealCountSettings() => _ch.invokeMethod('openRealCountSettings');
   static Future<void> closeSheet() => _ch.invokeMethod('closeSheet');
@@ -49,6 +59,44 @@ class SnapyCore {
   /// Central product data (src/data/app.json), e.g. config('android.social_apps').
   static Future<dynamic> config(String path) async =>
       jsonDecode((await _ch.invokeMethod<String>('config', {'path': path})) ?? 'null');
+
+  // ---------------------------------------------------------------- Real Count (Phase 5)
+  /// The app's private files folder (…/files); Snapy's data lives in its "snapy" subfolder.
+  static Future<String> filesDir() async => (await _ch.invokeMethod<String>('filesDir')) ?? '';
+
+  /// Chip and counter preferences kept on the phone (also read by the Kotlin overlay).
+  static Future<Map<String, dynamic>> rcPrefs() => _json('rcPrefs');
+  static Future<void> setRcPrefs(Map<String, dynamic> changes) =>
+      _ch.invokeMethod('setRcPrefs', {'json': jsonEncode(changes)});
+
+  /// Live counter state: focus_until, paused_until, hidden_day, intention, paused_apps, mode.
+  static Future<Map<String, dynamic>> rcState() => _json('rcState');
+  static Future<void> startFocus(int minutes) => _ch.invokeMethod('startFocus', {'minutes': minutes});
+  static Future<void> stopFocus() => _ch.invokeMethod('stopFocus');
+  static Future<void> pauseCounting(int minutes) => _ch.invokeMethod('pauseCounting', {'minutes': minutes});
+
+  /// A call into the shared brain that returns JSON text, e.g. coreCall('limits_json').
+  static Future<String> coreCall(String method, [List<String> args = const []]) async =>
+      (await _ch.invokeMethod<String>('coreCall', {'method': method, 'args': args})) ?? 'null';
+
+  /// {manufacturer, brand, model, sdk, snapy_version}
+  static Future<Map<String, dynamic>> device() async => Map<String, dynamic>.from(await _ch.invokeMethod('device') as Map);
+
+  /// versionName of each installed package in [packages] (missing = not installed).
+  static Future<Map<String, String>> appVersions(List<String> packages) async =>
+      Map<String, String>.from(await _ch.invokeMethod('appVersions', {'packages': packages}) as Map);
+
+  static Future<void> openOverlaySettings() => _ch.invokeMethod('openOverlaySettings');
+
+  /// Opens a settings screen: an explicit component (pkg/cls) or an action. false if it isn't there.
+  static Future<bool> openTarget(Map<String, String?> target) async =>
+      (await _ch.invokeMethod<bool>('openTarget', target)) ?? false;
+
+  /// Shows the chip with "Display over other apps" when the Reel counter is off.
+  static Future<bool> startChip() async => (await _ch.invokeMethod<bool>('startChip')) ?? false;
+
+  /// Leaves the current app for the home screen (the "Not now" on the pause screen).
+  static Future<void> goHome() => _ch.invokeMethod('goHome');
 }
 
 /// One day of Real Count.

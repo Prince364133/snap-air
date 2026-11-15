@@ -18,7 +18,7 @@ copy {
 
 android {
     namespace = "live.snapy.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -28,12 +28,10 @@ android {
 
     defaultConfig {
         applicationId = "live.snapy.app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
+        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
         // flag during build.
         versionCode = flutter.versionCode
@@ -46,8 +44,7 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Signing with debug keys so release APK installs out-of-the-box on physical devices
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -80,4 +77,7 @@ chaquopy {
 dependencies {
     // notifications (reminders)
     implementation("androidx.core:core-ktx:1.13.1")
+    // "Hey Snapy": offline wake word (Apache-2.0), grammar-limited to the assistant's name
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
 }
