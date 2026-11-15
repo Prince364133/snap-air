@@ -200,25 +200,35 @@ object SnapyChannels {
                         "com.ss.android.ugc.trill" to "TikTok",
                         "com.reddit.frontpage" to "Reddit",
                         "in.mohalla.video" to "Moj",
-                        "com.eterno.shortvideos" to "Josh"
+                        "com.eterno.shortvideos" to "Josh",
+                        "com.twitter.android" to "X (Twitter)",
+                        "com.pinterest" to "Pinterest",
+                        "in.mohalla.sharechat" to "ShareChat",
+                        "video.like" to "Likee"
                     )
                     val list = ArrayList<Map<String, Any>>()
                     val prefs = RcPrefs(activity)
-                    for ((pkg, label) in known) {
+                    for ((pkg, defaultLabel) in known) {
+                        var isInstalled = false
+                        var appLabel = defaultLabel
                         try {
                             val info = pm.getApplicationInfo(pkg, 0)
-                            val appLabel = pm.getApplicationLabel(info).toString()
-                            val limit = prefs.int("limit_$pkg", 100)
-                            val lock = prefs.bool("lock_$pkg", true)
-                            list.add(mapOf(
-                                "package" to pkg,
-                                "label" to if (appLabel.isNotEmpty()) appLabel else label,
-                                "installed" to true,
-                                "limit" to limit,
-                                "lock" to lock
-                            ))
+                            val l = pm.getApplicationLabel(info).toString()
+                            if (l.isNotEmpty()) appLabel = l
+                            isInstalled = true
                         } catch (_: Exception) {}
+
+                        val limit = prefs.int("limit_$pkg", 100)
+                        val lock = prefs.bool("lock_$pkg", true)
+                        list.add(mapOf(
+                            "package" to pkg,
+                            "label" to appLabel,
+                            "installed" to isInstalled,
+                            "limit" to limit,
+                            "lock" to lock
+                        ))
                     }
+                    list.sortWith(compareByDescending<Map<String, Any>> { it["installed"] as Boolean }.thenBy { it["label"] as String })
                     result.success(list)
                 }
                 "setAppReelLimit" -> {

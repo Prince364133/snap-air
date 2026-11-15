@@ -166,6 +166,7 @@ class _ToolsPageState extends State<ToolsPage> {
                       final pkg = app['package'] as String;
                       final limit = (app['limit'] as num?)?.toInt() ?? 100;
                       final lock = app['lock'] as bool? ?? true;
+                      final isInstalled = app['installed'] as bool? ?? false;
 
                       Color badgeColor = c.accent;
                       if (pkg.contains('instagram')) {
@@ -178,6 +179,8 @@ class _ToolsPageState extends State<ToolsPage> {
                         badgeColor = const Color(0xFF1877F2);
                       } else if (pkg.contains('tiktok')) {
                         badgeColor = const Color(0xFF00F2FE);
+                      } else if (pkg.contains('reddit')) {
+                        badgeColor = const Color(0xFFFF4500);
                       }
 
                       return ListTile(
@@ -189,7 +192,27 @@ class _ToolsPageState extends State<ToolsPage> {
                             style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold),
                           ),
                         ),
-                        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        title: Row(
+                          children: [
+                            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isInstalled ? c.green.withValues(alpha: 0.15) : c.hair,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isInstalled ? 'Installed' : 'Ready',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isInstalled ? c.green : c.text2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         subtitle: Text(
                           lock ? 'Limit: $limit reels/day · Lock active' : 'Limit: $limit reels/day · Soft nudge',
                           style: const TextStyle(fontSize: 12),
