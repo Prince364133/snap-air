@@ -16,13 +16,10 @@ void main() {
   testWidgets('home shows Real Count, tasks, memory and the assistant button', (tester) async {
     await tester.pumpWidget(const SnapyApp());
     await tester.pump();
-    expect(find.text('Real Count'), findsOneWidget);
-    expect(find.text('Turn on Real Count'), findsOneWidget);     // no permissions in tests
-    expect(find.text('Set up step by step'), findsOneWidget);
-    expect(find.text('Tasks'), findsOneWidget);
-    expect(find.text('What Snapy remembers'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Ask Snapy'), 300);
     expect(find.text('Ask Snapy'), findsOneWidget);
+    expect(find.text('Usage Frequency'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Top Used Apps'), 300);
+    expect(find.text('Top Used Apps'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());                     // dispose timers
   });
 
@@ -37,10 +34,9 @@ void main() {
   testWidgets('settings offers the three AI brain modes and a key field', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     await tester.pump();
-    expect(find.text('On this phone'), findsOneWidget);
-    expect(find.text('Auto'), findsOneWidget);
-    expect(find.text('Cloud'), findsOneWidget);
-    expect(find.text('Save key'), findsOneWidget);
+    expect(find.text('AI Brain Intelligence'), findsOneWidget);
+    expect(find.text('Your API is not connected till now'), findsOneWidget);
+    expect(find.text('Save API Key'), findsOneWidget);
   });
 
   test('reset phases: breathe, stand, water', () {

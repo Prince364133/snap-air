@@ -40,7 +40,7 @@ class BootReceiver : BroadcastReceiver() {
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE)
         nm.notify(9, NotificationCompat.Builder(ctx, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(Strings.t(ctx, "notif.wake_title"))
             .setContentText(Strings.t(ctx, "notif.wake_text"))
             .setAutoCancel(true)

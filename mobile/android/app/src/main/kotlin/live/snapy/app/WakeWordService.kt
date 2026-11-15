@@ -62,7 +62,7 @@ class WakeWordService : Service(), RecognitionListener {
             }
             val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Snapy is listening for its name")
                 .setContentText("Audio stays on your phone. Turn off in Snapy → Settings.")
                 .setOngoing(true)

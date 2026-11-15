@@ -63,7 +63,7 @@ class ChipService : Service() {
             }
             val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(Strings.t(this, "notif.chip_title"))
                 .setContentText(Strings.t(this, "notif.chip_text"))
                 .setOngoing(true)

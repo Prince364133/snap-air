@@ -334,8 +334,93 @@ object SnapyChannels {
                     core.call("set_profile", p.toString()) { result.success(jsonToMap(it)) }
                 }
                 "syncNow" -> core.call("sync_kick") { result.success(true) }
+                "activationModes" -> {
+                    val prefs = RcPrefs(activity)
+                    result.success(mapOf(
+                        "wake" to WakeWordService.enabled,
+                        "volume" to prefs.bool("volume_shortcut", true),
+                        "power" to false,
+                        "assistantRole" to isAssistantRole(activity)
+                    ))
+                }
+                "setActivationMode" -> {
+                    val mode = str("mode")
+                    val on = call.argument<Boolean>("on") ?: false
+                    val prefs = RcPrefs(activity)
+                    when (mode) {
+                        "volume" -> prefs.putBool("volume_shortcut", on)
+                        "wake" -> {
+                            RcPrefs(activity).putBool(RcPrefs.WAKE_WANTED, on)
+                            WakeWordService.enable(activity.applicationContext, on)
+                        }
+                    }
+                    result.success(mapOf(
+                        "wake" to WakeWordService.enabled,
+                        "volume" to prefs.bool("volume_shortcut", true),
+                        "power" to false,
+                        "assistantRole" to isAssistantRole(activity)
+                    ))
+                }
+                "requestAssistantRole" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        activity.startActivity(intent)
+                        result.success(true)
+                    } catch (_: Exception) {
+                        result.success(false)
+                    }
+                }
+                "appIcon" -> {
+                    val pkg = str("package")
+                    val size = call.argument<Int>("size") ?: 96
+                    Thread {
+                        try {
+                            val pm = activity.packageManager
+                            val icon = pm.getApplicationIcon(pkg)
+                            val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+                            val canvas = android.graphics.Canvas(bmp)
+                            icon.setBounds(0, 0, size, size)
+                            icon.draw(canvas)
+                            val stream = java.io.ByteArrayOutputStream()
+                            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+                            val bytes = stream.toByteArray()
+                            activity.runOnUiThread { result.success(bytes) }
+                        } catch (_: Exception) {
+                            activity.runOnUiThread { result.success(null) }
+                        }
+                    }.start()
+                }
+                "setAppLimit" -> {
+                    val pkg = str("package")
+                    val reelLimit = call.argument<Int>("reelLimit") ?: 100
+                    val timeLimitMin = call.argument<Int>("timeLimitMin") ?: 0
+                    val mode = call.argument<String>("mode") ?: "hard"
+                    val prefs = RcPrefs(activity)
+                    prefs.putInt("limit_$pkg", reelLimit)
+                    prefs.putInt("time_limit_$pkg", timeLimitMin)
+                    prefs.putBool("lock_$pkg", mode == "hard")
+                    RealCountController.active?.reload()
+                    result.success(true)
+                }
+                "setUnlockPin" -> {
+                    val pin = str("pin")
+                    RcPrefs(activity).putString("screen_unlock_pin", pin)
+                    result.success(true)
+                }
+                "getUnlockPin" -> {
+                    result.success(RcPrefs(activity).str("screen_unlock_pin", ""))
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun isAssistantRole(activity: Activity): Boolean {
+        return try {
+            val comp = Settings.Secure.getString(activity.contentResolver, "assistant") ?: return false
+            comp.contains(activity.packageName)
+        } catch (_: Exception) {
+            false
         }
     }
 

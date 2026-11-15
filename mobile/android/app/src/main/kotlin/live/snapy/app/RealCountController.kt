@@ -61,6 +61,10 @@ class RealCountController(
     private val chip: ChipOverlay = ChipOverlay(ctx, wm, windowType, object : ChipOverlay.Callbacks {
         override fun onOpenSheet() = openSheet("/sheet")
         override fun onLaunchApp(pkg: String) = launchSocialApp(pkg)
+        override fun onTakeNote() {
+            VoiceController.start(ctx, "note")
+            openSheet("/sheet")
+        }
         override fun onLongPress() = quickActions()
         override fun onSwipeDown() = breakdown()
         override fun onFullscreen(fullscreen: Boolean) { this@RealCountController.fullscreen = fullscreen; applyVisibility() }
@@ -216,7 +220,7 @@ class RealCountController(
                 lastIndex[pkg] = fromIndex
                 prev != null && prev != fromIndex
             }
-            Build.VERSION.SDK_INT >= 28 -> kotlin.math.abs(deltaY) >= screenH * 0.5
+            Build.VERSION.SDK_INT >= 28 -> kotlin.math.abs(deltaY) >= 20
             else -> false
         }
         if (!pageChanged) return

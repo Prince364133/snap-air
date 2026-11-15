@@ -67,7 +67,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(ctx, Reminders.CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Snapy reminder")
             .setContentText(title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

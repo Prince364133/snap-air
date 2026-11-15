@@ -158,8 +158,8 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                   CheckboxListTile(
                     secondary: const Icon(Icons.volume_up_outlined),
-                    title: Text(tr('profile.volume')),
-                    subtitle: Text(tr('profile.volume_sub')),
+                    title: const Text('Hold Volume Up + Down for 2s'),
+                    subtitle: const Text('Instantly summons your AI from anywhere, even over full-screen apps.'),
                     value: _modes.volume,
                     onChanged: (v) => _setMode('volume', v ?? false),
                   ),

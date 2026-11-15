@@ -52,7 +52,13 @@ class SnapyApp extends StatelessWidget {
 
   /// Big-text & simple mode (Settings → Chip & nudges).
   static final ValueNotifier<bool> simple = ValueNotifier(false);
+  /// Theme mode: defaults to Light mode per user specification, with one-click Dark mode toggle.
+  static final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(ThemeMode.light);
   static final navigatorKey = GlobalKey<NavigatorState>();
+
+  static void toggleTheme() {
+    themeModeNotifier.value = themeModeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+  }
 
   bool get overlay => route != '/' && route.isNotEmpty;
 
@@ -84,14 +90,14 @@ class SnapyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([I18n.notifier, simple]),
+      animation: Listenable.merge([I18n.notifier, simple, themeModeNotifier]),
       builder: (context, _) => MaterialApp(
         title: 'Snapy',
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: snapyTheme(Brightness.light),
         darkTheme: snapyTheme(Brightness.dark),
-        themeMode: ThemeMode.system, // follows the phone, like the Windows HUD follows Windows
+        themeMode: themeModeNotifier.value, // Light mode by default per user specification
         color: overlay ? Colors.transparent : null,
         locale: Locale(I18n.current.lang),
         supportedLocales: [for (final l in I18n.supported) Locale(l)],

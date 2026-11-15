@@ -6,8 +6,6 @@ import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../i18n/i18n.dart';
-import '../main.dart';
-import '../realcount/realcount_data.dart';
 import '../sync/pair_screen.dart';
 import 'battery_guide.dart';
 import 'chip_settings.dart';
@@ -49,7 +47,6 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
   KeyVerdict? _verdict;
   String? _keyNote;          // "paste a key first" / "saved"
   String? _helpUrl;
-  bool _bigText = SnapyApp.simple.value;
   StreamSubscription? _sub;
 
   @override
@@ -216,8 +213,13 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
-    final providers = Map<String, String>.from((_brain['providers'] as Map?) ?? {'gemini': 'Google Gemini', 'openai': 'OpenAI'});
-    final mode = '${_brain['mode'] ?? 'auto'}';
+    final providers = {
+      'gemini': 'Google Gemini (Flash 2.5)',
+      'openai': 'OpenAI (GPT-4o)',
+      'anthropic': 'Anthropic (Claude 3.5)',
+    };
+    final isConnected = _brain['cloud_configured'] == true;
+
     Widget group(String title, List<Widget> children) => Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -253,68 +255,84 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     return Scaffold(
       appBar: AppBar(title: Text(tr('settings.title')), backgroundColor: c.bg),
       body: ListView(children: [
-        group(tr('settings.brain'), [
-          RadioGroup<String>(
-            groupValue: mode,
-            onChanged: (v) {
-              if (v != null) _update({'ai_provider': v});
-            },
-            child: Column(children: [
-              RadioListTile(value: 'local', title: Text(tr('settings.brain.local')), subtitle: Text(tr('settings.brain.local_sub'))),
-              RadioListTile(value: 'auto', title: Text(tr('settings.brain.auto')), subtitle: Text(tr('settings.brain.auto_sub'))),
-              RadioListTile(value: 'cloud', title: Text(tr('settings.brain.cloud')), subtitle: Text(tr('settings.brain.cloud_sub'))),
-            ]),
-          ),
-          ListTile(
-            title: Text(tr('settings.status')),
-            subtitle: Text(_brain['cloud_configured'] == true
-                ? tr('settings.key_saved_for', {'provider': '${providers[_brain['provider']] ?? _brain['provider']}'})
-                : tr('settings.key_none')),
+        group('AI Brain Intelligence', [
+          // Connection Status Banner
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isConnected ? c.green.withValues(alpha: 0.12) : c.orange.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: (isConnected ? c.green : c.orange).withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                Icon(isConnected ? Icons.check_circle_rounded : Icons.warning_amber_rounded, color: isConnected ? c.green : c.orange, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isConnected ? 'Connected to ${providers[_brain['provider']] ?? _brain['provider']}' : 'Your API is not connected till now',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: c.text),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isConnected ? 'Cloud brain is active for speech and conscious answers.' : 'Add your API key below to enable intelligent speech and AI answers.',
+                        style: TextStyle(color: c.text2, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               DropdownButtonFormField<String>(
-                initialValue: providers.containsKey(_provider) ? _provider : providers.keys.first,
+                initialValue: providers.containsKey(_provider) ? _provider : 'gemini',
                 items: providers.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
                 onChanged: (v) => setState(() { _provider = v ?? _provider; _verdict = null; }),
-                decoration: InputDecoration(labelText: tr('settings.provider')),
+                decoration: const InputDecoration(labelText: 'AI Provider'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               TextField(
                 key: const ValueKey('api-key'),
                 controller: _key,
                 obscureText: true,
                 autocorrect: false,
                 enableSuggestions: false,
-                decoration: InputDecoration(labelText: tr('settings.api_key'), hintText: tr('settings.api_key_hint')),
+                decoration: InputDecoration(
+                  labelText: 'Provider API Key',
+                  hintText: 'Paste ${_provider == "gemini" ? "AIzaSy..." : "sk-..."}',
+                ),
               ),
               _keyResult(c),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 OutlinedButton.icon(
                   onPressed: _testing ? null : _test,
                   icon: _testing
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.network_check, size: 18),
-                  label: Text(tr('key.test')),
+                  label: const Text('Test Connection'),
                   style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: const Icon(Icons.lock_outline, size: 18),
-                  label: Text(tr('settings.save_key')),
-                  style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                  label: const Text('Save API Key'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.accent,
+                    minimumSize: const Size(48, 48),
+                  ),
                 ),
               ]),
             ]),
-          ),
-          SwitchListTile(
-            title: Text(tr('settings.offline')),
-            subtitle: Text(tr('settings.offline_sub')),
-            value: _brain['offline_actions'] != false,
-            onChanged: (v) => _update({'offline_actions': v}),
           ),
         ]),
         group(tr('settings.voice'), [
@@ -332,17 +350,29 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             },
           ),
           ListTile(
-            title: Text(tr('settings.language')),
+            title: const Text('Spoken Language'),
             trailing: DropdownButton<String>(
               value: _voiceLang,
               underline: const SizedBox(),
-              items: [
-                DropdownMenuItem(value: 'auto', child: Text(tr('settings.language_auto'))),
-                const DropdownMenuItem(value: 'hi', child: Text('हिन्दी')),
-                const DropdownMenuItem(value: 'mr', child: Text('मराठी')),
-                const DropdownMenuItem(value: 'bn', child: Text('বাংলা')),
-                const DropdownMenuItem(value: 'te', child: Text('తెలుగు')),
-                const DropdownMenuItem(value: 'ta', child: Text('தமிழ்')),
+              items: const [
+                DropdownMenuItem(value: 'auto', child: Text('Auto (Follow Phone)')),
+                DropdownMenuItem(value: 'en-US', child: Text('English (US)')),
+                DropdownMenuItem(value: 'en-IN', child: Text('English (India)')),
+                DropdownMenuItem(value: 'es', child: Text('Español (Spanish)')),
+                DropdownMenuItem(value: 'fr', child: Text('Français (French)')),
+                DropdownMenuItem(value: 'de', child: Text('Deutsch (German)')),
+                DropdownMenuItem(value: 'ja', child: Text('日本語 (Japanese)')),
+                DropdownMenuItem(value: 'zh', child: Text('中文 (Chinese)')),
+                DropdownMenuItem(value: 'ar', child: Text('العربية (Arabic)')),
+                DropdownMenuItem(value: 'pt', child: Text('Português (Portuguese)')),
+                DropdownMenuItem(value: 'it', child: Text('Italiano (Italian)')),
+                DropdownMenuItem(value: 'ko', child: Text('한국어 (Korean)')),
+                DropdownMenuItem(value: 'ru', child: Text('Русский (Russian)')),
+                DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)')),
+                DropdownMenuItem(value: 'mr', child: Text('मराठी (Marathi)')),
+                DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)')),
+                DropdownMenuItem(value: 'te', child: Text('తెలుగు (Telugu)')),
+                DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
               ],
               onChanged: (v) {
                 if (v == null) return;
@@ -352,19 +382,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             ),
           ),
         ]),
-        group(tr('settings.chip'), [
+        group('Camera Halo & Capsule HUD', [
           nav(tr('rcset.title'), Icons.tune, const ChipSettingsPage()),
-          SwitchListTile(
-            secondary: const Icon(Icons.format_size),
-            title: Text(tr('settings.big_text')),
-            subtitle: Text(tr('settings.big_text_sub')),
-            value: _bigText,
-            onChanged: (v) {
-              setState(() => _bigText = v);
-              SnapyApp.simple.value = v;
-              RealCountRepo.setPrefs({'simple_mode': v});
-            },
-          ),
         ]),
         group(tr('settings.permissions'), [
           perm(tr('settings.counter'), 'realcount', SnapyCore.openRealCountSettings),

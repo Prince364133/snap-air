@@ -120,8 +120,12 @@ class SnapyAccessibilityService : AccessibilityService() {
     // ------------------------------------------------------------------ hardware shortcuts
     private var volUpTime = 0L
     private var volDownTime = 0L
+    private var lastVolTrigger = 0L
 
     override fun onKeyEvent(event: android.view.KeyEvent): Boolean {
+        val prefs = RcPrefs(this)
+        if (!prefs.bool("volume_shortcut", true)) return super.onKeyEvent(event)
+
         val now = System.currentTimeMillis()
         if (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) {
             if (event.action == android.view.KeyEvent.ACTION_DOWN) {
@@ -136,10 +140,27 @@ class SnapyAccessibilityService : AccessibilityService() {
                 volDownTime = 0L
             }
         }
-        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2400L)) {
-            volUpTime = 0L
-            volDownTime = 0L
-            openSheet()
+        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2200L)) {
+            if (now - lastVolTrigger > 3000L) {
+                lastVolTrigger = now
+                volUpTime = 0L
+                volDownTime = 0L
+                try {
+                    val vib = if (Build.VERSION.SDK_INT >= 31) {
+                        (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
+                    } else {
+                        @Suppress("DEPRECATION")
+                        getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                    }
+                    if (Build.VERSION.SDK_INT >= 26) {
+                        vib?.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vib?.vibrate(120)
+                    }
+                } catch (_: Exception) {}
+                openSheet()
+            }
             return true
         }
         return super.onKeyEvent(event)
@@ -157,22 +178,40 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     fun showPillPublic() = main.post { rc?.reload() }
 
+    private var appSessionStart = 0L
+
     private fun onWindow(pkg: String) {
         if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
         flushReelTime()
         currentPkg = pkg
+        appSessionStart = System.currentTimeMillis()
+
+        // Check per-app daily time limit (e.g. 30m, 1h)
+        val prefs = RcPrefs(this)
+        val timeLimitMin = prefs.int("time_limit_$pkg", 0)
+        val lockEnabled = prefs.bool("lock_$pkg", true)
+        if (lockEnabled && timeLimitMin > 0) {
+            val usedTodayMs = appMs[pkg] ?: 0L
+            if (usedTodayMs >= timeLimitMin * 60_000L) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                val label = socialApps[pkg]?.optString("label") ?: pkg
+                main.post {
+                    Toast.makeText(this@SnapyAccessibilityService, "⏳ $label time limit reached for today ($timeLimitMin min limit). Stay focused!", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun onScroll(pkg: String, e: AccessibilityEvent) {
         val app = socialApps[pkg] ?: return
         if (app.isNull("short_video")) return
         val screenH = resources.displayMetrics.heightPixels
-        // only full-screen vertical feeds (the reels/shorts pager), not comment lists or tabs
+        // Only full-screen vertical feeds (the reels/shorts pager), not comment lists or tabs
         val src = e.source
         if (src != null) {
             val r = Rect()
             src.getBoundsInScreen(r)
-            if (r.height() < screenH * 0.6) return
+            if (r.height() < screenH * 0.45) return
         }
         val now = System.currentTimeMillis()
         val pageChanged = when {
@@ -181,8 +220,8 @@ class SnapyAccessibilityService : AccessibilityService() {
                 lastIndex[pkg] = e.fromIndex
                 prev != null && prev != e.fromIndex
             }
-            Build.VERSION.SDK_INT >= 28 -> abs(e.scrollDeltaY) >= screenH * 0.5
-            else -> false
+            Build.VERSION.SDK_INT >= 28 -> abs(e.scrollDeltaY) >= 20
+            else -> true
         }
         if (!pageChanged) return
         val last = lastReelAt[pkg] ?: 0L
