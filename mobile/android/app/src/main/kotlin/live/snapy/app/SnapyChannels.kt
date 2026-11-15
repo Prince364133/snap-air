@@ -72,7 +72,12 @@ object SnapyChannels {
                         .put("opens", JSONObject(t.opens as Map<*, *>)).put("realcount", rc)
                     activity.runOnUiThread { result.success(out.toString()) }
                 }.start()
-                "closeSheet" -> { activity.finish(); result.success(true) }
+                "closeSheet" -> {
+                    if (activity is SheetActivity) {
+                        activity.finish()
+                    }
+                    result.success(true)
+                }
                 // ---- voice
                 "startListening" -> {
                     if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {

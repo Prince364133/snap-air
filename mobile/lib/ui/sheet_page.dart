@@ -14,14 +14,6 @@ class SheetPage extends StatefulWidget {
 }
 
 class _SheetPageState extends State<SheetPage> {
-  Today? _today;
-
-  @override
-  void initState() {
-    super.initState();
-    SnapyCore.today().then((t) { if (mounted) setState(() => _today = t); }).catchError((_) {});
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
@@ -54,12 +46,14 @@ class _SheetPageState extends State<SheetPage> {
                     const SizedBox(width: 10),
                     Text('Snapy', style: Theme.of(context).textTheme.titleMedium),
                     const Spacer(),
-                    if (_today != null)
-                      Text('⏱ ${formatMs(_today!.screenMs)}  ·  ▶ ${_today!.totalReels}',
-                          style: TextStyle(color: c.text2, fontFeatures: const [FontFeature.tabularFigures()])),
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, size: 20, color: c.text2),
+                      tooltip: 'Close',
+                      onPressed: SnapyCore.closeSheet,
+                    ),
                   ]),
                 ),
-                Expanded(child: AssistantPanel(scrollController: scroll, onAction: SnapyCore.closeSheet)),
+                Expanded(child: AssistantPanel(scrollController: scroll)),
               ]),
             ),
           ),
