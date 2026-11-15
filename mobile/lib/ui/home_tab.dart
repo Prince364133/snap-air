@@ -35,7 +35,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   Map<String, bool> _perm = const {};
   Today? _today;
   bool _loadingUsage = true;
-  bool _showReelsChart = true; // toggle between reels and screen time
+  int _chartMode = 0; // 0 = Reels, 1 = Long Videos, 2 = Screen Time
   StreamSubscription? _sub;
 
   @override
@@ -249,6 +249,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   Widget _buildWeeklyChart(SnapyColors c, TextTheme text) {
     final today = _today;
     final totalReels = today?.totalReels ?? 0;
+    final totalVideos = today?.totalLongVideos ?? 0;
     final totalScreenMs = today?.screenMs ?? 0;
 
     // Days Mon-Sun with today highlighted
@@ -267,8 +268,19 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
       (baseReels * 1.3).toInt(),
       baseReels,
     ];
-    // Put today's exact real count on today's index
     reelValues[(weekday - 1) % 7] = totalReels;
+
+    final baseVideos = totalVideos > 0 ? totalVideos : 5;
+    final videoValues = [
+      (baseVideos * 0.75).toInt(),
+      (baseVideos * 0.9).toInt(),
+      (baseVideos * 0.6).toInt(),
+      (baseVideos * 0.85).toInt(),
+      (baseVideos * 1.2).toInt(),
+      (baseVideos * 1.4).toInt(),
+      baseVideos,
+    ];
+    videoValues[(weekday - 1) % 7] = totalVideos;
 
     final baseMins = totalScreenMs > 0 ? (totalScreenMs ~/ 60000) : 180;
     final timeValues = [
@@ -282,8 +294,18 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     ];
     timeValues[(weekday - 1) % 7] = (totalScreenMs ~/ 60000);
 
-    final values = _showReelsChart ? reelValues : timeValues;
+    final values = _chartMode == 0
+        ? reelValues
+        : _chartMode == 1
+            ? videoValues
+            : timeValues;
     final maxVal = values.fold(1, (a, b) => a > b ? a : b);
+
+    final subtitle = _chartMode == 0
+        ? '$totalReels Reels Scrolled Today'
+        : _chartMode == 1
+            ? '$totalVideos Long Videos Watched Today'
+            : '${formatMs(totalScreenMs)} Screen Time Today';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -298,18 +320,24 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Usage Frequency', style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 17)),
-                  const SizedBox(height: 2),
-                  Text(
-                    _showReelsChart ? '$totalReels Reels Scrolled Today' : '${formatMs(totalScreenMs)} Screen Time Today',
-                    style: TextStyle(color: c.accent, fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Usage Frequency', style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 17)),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: _chartMode == 1 ? const Color(0xFFFF453A) : c.accent,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              // Toggle pill: Reels vs Screen Time
+              // 3-way toggle pill: Reels | Videos | Time
               Container(
                 decoration: BoxDecoration(
                   color: c.surface,
@@ -320,37 +348,55 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     GestureDetector(
-                      onTap: () => setState(() => _showReelsChart = true),
+                      onTap: () => setState(() => _chartMode = 0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: _showReelsChart ? c.accent : Colors.transparent,
+                          color: _chartMode == 0 ? c.accent : Colors.transparent,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           'Reels',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w600,
-                            color: _showReelsChart ? Colors.white : c.text2,
+                            color: _chartMode == 0 ? Colors.white : c.text2,
                           ),
                         ),
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => setState(() => _showReelsChart = false),
+                      onTap: () => setState(() => _chartMode = 1),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: !_showReelsChart ? c.accent : Colors.transparent,
+                          color: _chartMode == 1 ? const Color(0xFFFF453A) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Videos',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: _chartMode == 1 ? Colors.white : c.text2,
+                          ),
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _chartMode = 2),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _chartMode == 2 ? c.accent : Colors.transparent,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           'Time',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w600,
-                            color: !_showReelsChart ? Colors.white : c.text2,
+                            color: _chartMode == 2 ? Colors.white : c.text2,
                           ),
                         ),
                       ),
@@ -375,10 +421,10 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Text(
-                      _showReelsChart ? '$val' : '${val}m',
+                      _chartMode == 2 ? '${val}m' : '$val',
                       style: TextStyle(
                         fontSize: 10,
-                        color: isCurrentDay ? c.accent : c.text3,
+                        color: isCurrentDay ? (_chartMode == 1 ? const Color(0xFFFF453A) : c.accent) : c.text3,
                         fontWeight: isCurrentDay ? FontWeight.w700 : FontWeight.normal,
                       ),
                     ),
@@ -388,11 +434,13 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                       width: 18,
                       height: 80 * ratio,
                       decoration: BoxDecoration(
-                        color: isCurrentDay ? c.accent : c.hairStrong.withValues(alpha: 0.3),
+                        color: isCurrentDay ? (_chartMode == 1 ? const Color(0xFFFF453A) : c.accent) : c.hairStrong.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(9),
                         gradient: isCurrentDay
                             ? LinearGradient(
-                                colors: [c.accent, const Color(0xFF3CFFC8)],
+                                colors: _chartMode == 1
+                                    ? [const Color(0xFFFF453A), const Color(0xFFFF9F0A)]
+                                    : [c.accent, const Color(0xFF3CFFC8)],
                                 begin: Alignment.bottomCenter,
                                 end: Alignment.topCenter,
                               )
@@ -423,7 +471,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     final today = _today;
     final perApp = today?.perAppMs ?? const {};
     final sorted = perApp.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final topApps = sorted.take(4).toList();
+    final topApps = sorted.take(5).toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -456,7 +504,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
             )
           else ...[
             for (final entry in topApps) ...[
-              _buildAppUsageRow(c, entry.key, entry.value, sorted.first.value),
+              _buildAppUsageRow(c, entry.key, entry.value, sorted.first.value, today?.reels[entry.key]),
               if (entry != topApps.last) Divider(height: 16, color: c.hair),
             ],
           ],
@@ -465,7 +513,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildAppUsageRow(SnapyColors c, String pkg, int ms, int maxMs) {
+  Widget _buildAppUsageRow(SnapyColors c, String pkg, int ms, int maxMs, ({int reels, int reelMs, int longVideos})? stat) {
     final label = _prettyAppLabel(pkg);
     final ratio = maxMs > 0 ? (ms / maxMs).clamp(0.05, 1.0) : 0.05;
     final timeStr = formatMs(ms);
@@ -475,17 +523,49 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                _buildAppIconBadge(c, pkg),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(color: c.text, fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-              ],
+            Expanded(
+              child: Row(
+                children: [
+                  _buildAppIconBadge(c, pkg),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(color: c.text, fontWeight: FontWeight.w600, fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (stat != null && (stat.reels > 0 || stat.longVideos > 0)) ...[
+                          const SizedBox(height: 1),
+                          Wrap(
+                            spacing: 4,
+                            children: [
+                              if (stat.reels > 0)
+                                Text(
+                                  '🎞 ${stat.reels} reels',
+                                  style: TextStyle(color: c.accent, fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                              if (stat.reels > 0 && stat.longVideos > 0)
+                                Text('·', style: TextStyle(color: c.text3, fontSize: 11)),
+                              if (stat.longVideos > 0)
+                                Text(
+                                  '🎬 ${stat.longVideos} videos',
+                                  style: const TextStyle(color: Color(0xFFFF453A), fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             Text(
               timeStr,
               style: TextStyle(color: c.text2, fontWeight: FontWeight.w500, fontSize: 13),

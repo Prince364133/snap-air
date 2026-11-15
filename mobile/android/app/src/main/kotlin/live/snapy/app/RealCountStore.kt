@@ -38,7 +38,7 @@ class RealCountStore(ctx: Context) {
 
     private fun app(pkg: String): JSONObject {
         val apps = data!!.getJSONObject("apps")
-        if (!apps.has(pkg)) apps.put(pkg, JSONObject().put("reels", 0).put("reel_ms", 0L))
+        if (!apps.has(pkg)) apps.put(pkg, JSONObject().put("reels", 0).put("reel_ms", 0L).put("long_videos", 0))
         return apps.getJSONObject(pkg)
     }
 
@@ -49,6 +49,16 @@ class RealCountStore(ctx: Context) {
             a.put("reels", a.optInt("reels") + 1)
             dirty++
             if (dirty >= 10) { dirty = 0; save() }      // don't lose a long session if the service is killed
+        }
+    }
+
+    fun addLongVideo(pkg: String) {
+        synchronized(lock) {
+            rollover()
+            val a = app(pkg)
+            a.put("long_videos", a.optInt("long_videos") + 1)
+            dirty++
+            if (dirty >= 5) { dirty = 0; save() }
         }
     }
 
@@ -65,10 +75,20 @@ class RealCountStore(ctx: Context) {
         rollover(); data!!.getJSONObject("apps").optJSONObject(pkg)?.optInt("reels") ?: 0
     }
 
+    fun longVideos(pkg: String): Int = synchronized(lock) {
+        rollover(); data!!.getJSONObject("apps").optJSONObject(pkg)?.optInt("long_videos") ?: 0
+    }
+
     fun totalReels(): Int = synchronized(lock) {
         rollover()
         val apps = data!!.getJSONObject("apps")
         apps.keys().asSequence().sumOf { apps.getJSONObject(it).optInt("reels") }
+    }
+
+    fun totalLongVideos(): Int = synchronized(lock) {
+        rollover()
+        val apps = data!!.getJSONObject("apps")
+        apps.keys().asSequence().sumOf { apps.getJSONObject(it).optInt("long_videos") }
     }
 
     fun today(): JSONObject = synchronized(lock) { rollover(); JSONObject(data.toString()) }

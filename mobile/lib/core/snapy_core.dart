@@ -180,10 +180,11 @@ class Today {
   final int screenMs;
   final Map<String, int> perAppMs;
   final Map<String, int> opens;
-  final Map<String, ({int reels, int reelMs})> reels;
+  final Map<String, ({int reels, int reelMs, int longVideos})> reels;
   Today(this.screenMs, this.perAppMs, this.opens, this.reels);
 
   int get totalReels => reels.values.fold(0, (a, b) => a + b.reels);
+  int get totalLongVideos => reels.values.fold(0, (a, b) => a + b.longVideos);
 
   factory Today.fromJson(Map<String, dynamic> j) {
     Map<String, int> ints(dynamic m) =>
@@ -193,8 +194,13 @@ class Today {
       (j['screen_ms'] as num?)?.toInt() ?? 0,
       ints(j['per_app_ms']),
       ints(j['opens']),
-      apps.map((k, v) => MapEntry(k.toString(),
-          (reels: ((v as Map)['reels'] as num?)?.toInt() ?? 0, reelMs: (v['reel_ms'] as num?)?.toInt() ?? 0))),
+      apps.map((k, v) => MapEntry(
+          k.toString(),
+          (
+            reels: ((v as Map)['reels'] as num?)?.toInt() ?? 0,
+            reelMs: (v['reel_ms'] as num?)?.toInt() ?? 0,
+            longVideos: (v['long_videos'] as num?)?.toInt() ?? 0,
+          ))),
     );
   }
 }

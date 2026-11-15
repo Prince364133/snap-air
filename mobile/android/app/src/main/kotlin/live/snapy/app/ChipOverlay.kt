@@ -48,6 +48,20 @@ class LivingOrbView(context: Context) : View(context) {
         set(value) { field = value; invalidate() }
     var cutoutRadiusPx = 0f
         set(value) { field = value; invalidate() }
+    var isTopNotch = false
+        set(value) { field = value; invalidate() }
+    var notchWidth = 0f
+        set(value) { field = value; invalidate() }
+    var notchHeight = 0f
+        set(value) { field = value; invalidate() }
+
+    private var dynamicPalette: IntArray? = null
+
+    fun setDynamicPalette(colors: IntArray?) {
+        dynamicPalette = colors
+        colorAnimator.start()
+        invalidate()
+    }
 
     private val palettes = arrayOf(
         intArrayOf(0xFFFFFFFF.toInt(), 0xFF28C8FF.toInt(), 0xFF3CFFC8.toInt(), 0xFF78A0FF.toInt()), // Cyan Electric
@@ -121,12 +135,43 @@ class LivingOrbView(context: Context) : View(context) {
         val cy = h / 2f
 
         try {
+            val curr = dynamicPalette ?: palettes[paletteIndex]
             val prev = palettes[(paletteIndex - 1 + palettes.size) % palettes.size]
-            val curr = palettes[paletteIndex]
-            val c0 = lerpColor(prev[0], curr[0], colorT)
-            val c1 = lerpColor(prev[1], curr[1], colorT)
-            val c2 = lerpColor(prev[2], curr[2], colorT)
-            val c3 = lerpColor(prev[3], curr[3], colorT)
+            val c0 = if (dynamicPalette != null) curr[0] else lerpColor(prev[0], curr[0], colorT)
+            val c1 = if (dynamicPalette != null) curr[1] else lerpColor(prev[1], curr[1], colorT)
+            val c2 = if (dynamicPalette != null) curr[2] else lerpColor(prev[2], curr[2], colorT)
+            val c3 = if (dynamicPalette != null) curr[3] else lerpColor(prev[3], curr[3], colorT)
+
+            if (isTopNotch && notchWidth > 0f && notchHeight > 0f) {
+                val nw = notchWidth
+                val nh = notchHeight
+                val notchPath = Path().apply {
+                    moveTo(cx - nw / 2f - 4f, 0f)
+                    cubicTo(
+                        cx - nw / 2f, nh * 0.75f,
+                        cx - nw * 0.35f, nh + 4f,
+                        cx, nh + 4f
+                    )
+                    cubicTo(
+                        cx + nw * 0.35f, nh + 4f,
+                        cx + nw / 2f, nh * 0.75f,
+                        cx + nw / 2f + 4f, 0f
+                    )
+                }
+                val glowStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 3.5f
+                    strokeCap = Paint.Cap.ROUND
+                    shader = LinearGradient(
+                        cx - nw / 2f, 0f, cx + nw / 2f, nh,
+                        intArrayOf(c1, c2, c3),
+                        floatArrayOf(0.1f, 0.5f, 0.9f),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawPath(notchPath, glowStroke)
+                return
+            }
 
             if (isHaloRing && cutoutRadiusPx > 0f) {
                 val innerCutout = cutoutRadiusPx.coerceIn(0.5f, (r - 2f).coerceAtLeast(0.5f))
@@ -268,6 +313,11 @@ class ReelIconView(context: Context) : View(context) {
             field = value
             invalidate()
         }
+    var isReelMode: Boolean = true
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val whiteFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -288,6 +338,33 @@ class ReelIconView(context: Context) : View(context) {
         try {
             val r = minOf(w, h)
             val corner = r * 0.28f
+
+            if (!isReelMode) {
+                // Real installed application launcher icon (works for any app: WhatsApp, Telegram, Camera, Games, etc.)
+                var drawn = false
+                try {
+                    val pm = context.packageManager
+                    val icon = pm.getApplicationIcon(appPackage)
+                    val path = Path().apply {
+                        addRoundRect(0f, 0f, w, h, corner, corner, Path.Direction.CW)
+                    }
+                    canvas.save()
+                    canvas.clipPath(path)
+                    icon.setBounds(0, 0, w.toInt(), h.toInt())
+                    icon.draw(canvas)
+                    canvas.restore()
+                    drawn = true
+                } catch (_: Exception) {}
+
+                if (!drawn) {
+                    bgPaint.shader = null
+                    bgPaint.color = 0xFF28C8FF.toInt()
+                    canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
+                    val circleR = r * 0.28f
+                    canvas.drawCircle(w / 2f, h / 2f, circleR, whiteFill)
+                }
+                return
+            }
 
             if (appPackage.contains("instagram")) {
                 // Instagram Sunset Gradient: #F58529 -> #DD2A7B -> #8134AF
@@ -539,7 +616,15 @@ class ChipOverlay(
 
     fun rebuild(rules: RealCountRules) { remove(); show(rules) }
 
-    data class CutoutData(val hasCutout: Boolean, val bounds: Rect, val cx: Int, val cy: Int, val size: Int)
+    data class CutoutData(
+        val hasCutout: Boolean,
+        val bounds: Rect,
+        val cx: Int,
+        val cy: Int,
+        val size: Int,
+        val isTopNotch: Boolean = false,
+        val isCorner: Boolean = false
+    )
 
     private fun getCutout(): CutoutData {
         val dm = ctx.resources.displayMetrics
@@ -549,7 +634,9 @@ class ChipOverlay(
             if (cutout != null && cutout.boundingRects.isNotEmpty()) {
                 val r = cutout.boundingRects[0]
                 val sz = maxOf(r.width(), r.height())
-                return CutoutData(true, r, r.centerX(), r.centerY(), sz)
+                val isTopNotch = (r.top <= 2 && r.height() > dp(14f))
+                val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
+                return CutoutData(true, r, r.centerX(), r.centerY(), sz, isTopNotch, isCorner)
             }
         } else if (Build.VERSION.SDK_INT >= 28) {
             @Suppress("DEPRECATION")
@@ -557,7 +644,9 @@ class ChipOverlay(
             if (cutout != null && cutout.boundingRects.isNotEmpty()) {
                 val r = cutout.boundingRects[0]
                 val sz = maxOf(r.width(), r.height())
-                return CutoutData(true, r, r.centerX(), r.centerY(), sz)
+                val isTopNotch = (r.top <= 2 && r.height() > dp(14f))
+                val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
+                return CutoutData(true, r, r.centerX(), r.centerY(), sz, isTopNotch, isCorner)
             }
         }
         val defaultSize = dp(24f)
@@ -575,24 +664,36 @@ class ChipOverlay(
         try {
             val cutout = getCutout()
             val hitSize = dp(54f)
+            val dm = ctx.resources.displayMetrics
 
-            val haloSize = if (cutout.hasCutout) {
-                minOf(cutout.size, dp(34f)) + dp(6f) // bounded halo around punch-hole lens
-            } else {
-                dp(28f)
-            }
-
-            cameraHalo?.apply {
-                isHaloRing = true
-                cutoutRadiusPx = if (cutout.hasCutout) {
-                    minOf(cutout.size / 2f, dp(17f).toFloat())
-                } else {
-                    dp(6.5f).toFloat() // Default camera punch-hole lens radius (13dp cutout)
+            if (cutout.isTopNotch) {
+                cameraHalo?.apply {
+                    isHaloRing = false
+                    isTopNotch = true
+                    notchWidth = cutout.bounds.width().toFloat()
+                    notchHeight = cutout.bounds.height().toFloat()
+                    layoutParams = FrameLayout.LayoutParams(cutout.bounds.width() + dp(12f), cutout.bounds.height() + dp(8f), Gravity.CENTER_HORIZONTAL or Gravity.TOP)
                 }
-                layoutParams = FrameLayout.LayoutParams(haloSize, haloSize, Gravity.CENTER)
+            } else {
+                val haloSize = if (cutout.hasCutout) {
+                    minOf(cutout.size, dp(34f)) + dp(6f) // bounded halo around punch-hole lens
+                } else {
+                    dp(28f)
+                }
+
+                cameraHalo?.apply {
+                    isTopNotch = false
+                    isHaloRing = true
+                    cutoutRadiusPx = if (cutout.hasCutout) {
+                        minOf(cutout.size / 2f, dp(17f).toFloat())
+                    } else {
+                        dp(6.5f).toFloat() // Default camera punch-hole lens radius (13dp cutout)
+                    }
+                    layoutParams = FrameLayout.LayoutParams(haloSize, haloSize, Gravity.CENTER)
+                }
             }
 
-            p.x = (cutout.cx - hitSize / 2).coerceAtLeast(0)
+            p.x = (cutout.cx - hitSize / 2).coerceIn(0, (dm.widthPixels - hitSize).coerceAtLeast(0))
             p.y = (cutout.cy - hitSize / 2).coerceAtLeast(0)
             p.width = WindowManager.LayoutParams.WRAP_CONTENT
             p.height = WindowManager.LayoutParams.WRAP_CONTENT
@@ -603,6 +704,52 @@ class ChipOverlay(
         } catch (_: Exception) { }
     }
 
+    // ------------------------------------------------------------------ Dynamic Palette & Mode
+    fun setDynamicPalette(colors: IntArray?) = main.post {
+        cameraHalo?.setDynamicPalette(colors)
+    }
+
+    fun setReelFeedMode(pkg: String, reels: Int) = main.post {
+        isSocialActive = true
+        activeAppPkg = pkg
+        if (pkg.isNotEmpty()) activeSocialPkg = pkg
+        totalReels = reels
+        badgeIcon?.isReelMode = true
+        badgeIcon?.appPackage = pkg
+        badgeCountText?.text = "$totalReels"
+        stripReelIcon?.isReelMode = true
+        stripReelIcon?.appPackage = pkg
+        stripReelText?.text = "$totalReels"
+        socialBadge?.visibility = View.VISIBLE
+        animateReelNumberDrop()
+    }
+
+    fun setAppFeedMode(pkg: String, appMs: Long) = main.post {
+        isSocialActive = false
+        activeAppPkg = pkg
+        if (pkg.isNotEmpty()) activeSocialPkg = pkg
+        badgeIcon?.isReelMode = false
+        badgeIcon?.appPackage = pkg
+        val minutes = (appMs / 60000L).coerceAtLeast(0L)
+        val timeText = if (minutes >= 60) {
+            val h = minutes / 60
+            val m = minutes % 60
+            "⏱ ${h}h ${m}m"
+        } else {
+            "⏱ ${minutes}m"
+        }
+        badgeCountText?.text = timeText
+        stripTimeText?.text = timeText
+        stripReelIcon?.isReelMode = false
+        stripReelIcon?.appPackage = pkg
+        val badge = socialBadge ?: return@post
+        if (pkg.isEmpty() || pkg == ctx.packageName || pkg == "com.android.systemui") {
+            badge.visibility = View.GONE
+        } else {
+            badge.visibility = View.VISIBLE
+        }
+    }
+
     // ------------------------------------------------------------------ Active App & Social Badge
     fun setActiveApp(pkg: String, isSocial: Boolean, reels: Int) = main.post {
         activeAppPkg = pkg
@@ -610,11 +757,17 @@ class ChipOverlay(
         totalReels = reels
         if (isSocial) {
             if (pkg.isNotEmpty()) activeSocialPkg = pkg
+            badgeIcon?.isReelMode = true
             badgeIcon?.appPackage = pkg
             badgeCountText?.text = "$totalReels"
+            stripReelIcon?.isReelMode = true
             stripReelIcon?.appPackage = pkg
         } else {
-            if (pkg.isNotEmpty()) badgeIcon?.appPackage = pkg
+            if (pkg.isNotEmpty()) {
+                activeSocialPkg = pkg
+                badgeIcon?.isReelMode = false
+                badgeIcon?.appPackage = pkg
+            }
             appSessionStartMs = System.currentTimeMillis()
             badgeCountText?.text = "⏱ 0m"
         }
@@ -631,7 +784,9 @@ class ChipOverlay(
     fun onReelCounted(pkg: String, reels: Int) = main.post {
         totalReels = reels
         activeSocialPkg = pkg
+        badgeIcon?.isReelMode = true
         badgeIcon?.appPackage = pkg
+        stripReelIcon?.isReelMode = true
         stripReelIcon?.appPackage = pkg
 
         animateReelNumberDrop()

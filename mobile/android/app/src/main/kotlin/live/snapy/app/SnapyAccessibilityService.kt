@@ -167,9 +167,43 @@ class SnapyAccessibilityService : AccessibilityService() {
     }
 
     // ------------------------------------------------------------------ events
+    private var currentVideoStart = 0L
+    private var currentVideoPkg = ""
+    private var videoCountedForSession = false
+
+    private fun checkLongVideoProgress(pkg: String, e: AccessibilityEvent) {
+        if (pkg != "com.google.android.youtube" && !pkg.contains("facebook")) return
+        val now = System.currentTimeMillis()
+        if (pkg != currentVideoPkg) {
+            currentVideoPkg = pkg
+            currentVideoStart = now
+            videoCountedForSession = false
+            return
+        }
+
+        // If user tapped a video title/thumbnail, start a new long video watch window
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val desc = "${e.contentDescription ?: ""} ${e.text.joinToString()}".lowercase()
+            if (desc.contains("video") || desc.contains("watch") || desc.contains("play")) {
+                currentVideoStart = now
+                videoCountedForSession = false
+            }
+        }
+
+        // Count as long video if watched continuously for at least 35 seconds outside of fast short scrolls
+        if (!videoCountedForSession && currentVideoStart > 0L && (now - currentVideoStart) >= 35_000L) {
+            val lastReelTime = lastReelAt[pkg] ?: 0L
+            if (now - lastReelTime >= 30_000L) {
+                videoCountedForSession = true
+                store.addLongVideo(pkg)
+            }
+        }
+    }
+
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
         if (pkg == packageName) return // never intercept or count events inside Snapy itself
+        checkLongVideoProgress(pkg, e)
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> { onWindow(pkg); rc?.onWindow(pkg, e.className?.toString() ?: "") }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) { rc?.onScrollEvent(pkg); onScroll(pkg, e) }
@@ -182,9 +216,17 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     private fun onWindow(pkg: String) {
         if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
+        val now = System.currentTimeMillis()
+        if (currentVideoPkg.isNotEmpty() && !videoCountedForSession && currentVideoStart > 0L && (now - currentVideoStart) >= 35_000L) {
+            store.addLongVideo(currentVideoPkg)
+        }
+        currentVideoPkg = if (pkg == "com.google.android.youtube" || pkg.contains("facebook")) pkg else ""
+        currentVideoStart = if (currentVideoPkg.isNotEmpty()) now else 0L
+        videoCountedForSession = false
+
         flushReelTime()
         currentPkg = pkg
-        appSessionStart = System.currentTimeMillis()
+        appSessionStart = now
 
         // Check per-app daily time limit (e.g. 30m, 1h)
         val prefs = RcPrefs(this)
@@ -369,9 +411,13 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     /** Today's numbers for the app/dashboard and the AI. */
     fun todayJson(): JSONObject = try {
-        store.today().put("screen_ms", todayMs).put("current", currentPkg)
+        store.today()
+            .put("screen_ms", todayMs)
+            .put("current", currentPkg)
+            .put("total_reels", store.totalReels())
+            .put("total_long_videos", store.totalLongVideos())
     } catch (_: Throwable) {
-        JSONObject().put("screen_ms", 0L).put("reels", JSONObject()).put("current", "")
+        JSONObject().put("screen_ms", 0L).put("reels", JSONObject()).put("current", "").put("total_reels", 0).put("total_long_videos", 0)
     }
 
     override fun onInterrupt() {}

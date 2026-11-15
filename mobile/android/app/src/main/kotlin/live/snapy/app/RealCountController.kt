@@ -178,7 +178,15 @@ class RealCountController(
         inAppSince = if (app != null && !app.isNull("short_video")) now else 0L
         game = isGame(pkg)
         val isSocial = app != null && !app.isNull("short_video")
-        chip.setSocialActive(isSocial, pkg, store.totalReels())
+
+        // 1. Live dynamic color palette extraction from launcher icon (zero hardcoding)
+        val palette = AppPaletteExtractor.extract(ctx, pkg)
+        chip.setDynamicPalette(palette)
+
+        // 2. Default to app feed mode (showing app icon + screen time)
+        val currentAppMs = appMs[pkg] ?: 0L
+        chip.setAppFeedMode(pkg, currentAppMs)
+
         if (app != null) {
             opens.open(pkg, now)
             onSocialOpen(pkg, app, now)
@@ -186,6 +194,10 @@ class RealCountController(
         applyVisibility()
         render()
     }
+
+    fun setAppPalette(colors: IntArray?) = chip.setDynamicPalette(colors)
+    fun setReelFeedMode(pkg: String, reels: Int) = chip.setReelFeedMode(pkg, reels)
+    fun setAppFeedMode(pkg: String, ms: Long) = chip.setAppFeedMode(pkg, ms)
 
     /** Any scroll event from the app in front (health check: events are arriving). */
     fun onScrollEvent(pkg: String) { lastEventAt[pkg] = System.currentTimeMillis() }
@@ -198,7 +210,7 @@ class RealCountController(
     /** External counter: a reel was just counted (the host already wrote it to the store). */
     fun onReelCounted() {
         session.reel(System.currentTimeMillis(), rules.i("nudges.session_gap_min", 10) * 60000L)
-        chip.onReelCounted(currentPkg, store.totalReels())
+        chip.setReelFeedMode(currentPkg, store.totalReels())
         render()
         decide(NudgeTrigger.REEL_COUNTED)
     }
@@ -229,7 +241,7 @@ class RealCountController(
         if (reelTimeFrom == 0L) reelTimeFrom = now
         store.addReel(pkg)
         session.reel(now, rules.i("nudges.session_gap_min", 10) * 60000L)
-        chip.onReelCounted(pkg, store.totalReels())
+        chip.setReelFeedMode(pkg, store.totalReels())
         render()
         decide(NudgeTrigger.REEL_COUNTED)
 
@@ -538,7 +550,11 @@ class RealCountController(
         }
     }
 
-    fun todayJson(): JSONObject = store.today().put("screen_ms", todayMs).put("current", currentPkg)
+    fun todayJson(): JSONObject = store.today()
+        .put("screen_ms", todayMs)
+        .put("current", currentPkg)
+        .put("total_reels", store.totalReels())
+        .put("total_long_videos", store.totalLongVideos())
 
     fun stateJson(): JSONObject {
         val now = System.currentTimeMillis()
