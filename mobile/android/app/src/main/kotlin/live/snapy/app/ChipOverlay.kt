@@ -501,6 +501,7 @@ class ChipOverlay(
 
     fun remove() {
         dismissCapsuleStrip()
+        dismissFloatingSubtitle()
         cameraHalo?.stop()
         root?.let { try { wm.removeView(it) } catch (_: Exception) { } }
         root = null
@@ -673,6 +674,92 @@ class ChipOverlay(
     fun voice(text: String) = main.post {
         root?.visibility = View.VISIBLE
         stripTitleText?.text = text.takeLast(20)
+        showFloatingSubtitle(text)
+    }
+
+    private var subtitleOverlay: View? = null
+    private var subtitleText: TextView? = null
+    private val hideSubtitleRunnable = Runnable { dismissFloatingSubtitle() }
+
+    /**
+     * Floating Subtitle HUD: compact micro-capsule directly beneath front camera cutout.
+     * Shows small typography (11.5sp) live while AI is speaking / processing.
+     */
+    fun showFloatingSubtitle(text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) {
+            main.postDelayed(hideSubtitleRunnable, 1800)
+            return
+        }
+        main.removeCallbacks(hideSubtitleRunnable)
+        val cutout = getCutout()
+
+        if (subtitleOverlay == null) {
+            val tv = TextView(ctx).apply {
+                setTextColor(0xFFFFFFFF.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                maxLines = 2
+                setPadding(dp(10f), dp(4f), dp(10f), dp(4f))
+            }
+            subtitleText = tv
+
+            val layout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(14f).toFloat()
+                    setColor(0xF012131A.toInt())
+                    setStroke(dp(1f), 0x24FFFFFF)
+                }
+                elevation = dp(8f).toFloat()
+
+                // Tiny glowing cyan/electric indicator dot
+                val dot = View(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(6f), dp(6f)).apply {
+                        leftMargin = dp(8f)
+                    }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(0xFF28C8FF.toInt())
+                    }
+                }
+                addView(dot)
+                addView(tv)
+            }
+            subtitleOverlay = layout
+
+            val lp = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                y = cutout.cy + (if (cutout.hasCutout) cutout.size / 2 else dp(14f)) + dp(6f)
+            }
+            try {
+                wm.addView(layout, lp)
+                layout.alpha = 0f
+                layout.translationY = -dp(6f).toFloat()
+                layout.animate().alpha(1f).translationY(0f).setDuration(160).start()
+            } catch (_: Exception) {}
+        }
+
+        subtitleText?.text = clean
+        main.postDelayed(hideSubtitleRunnable, 3500)
+    }
+
+    fun dismissFloatingSubtitle() {
+        val v = subtitleOverlay ?: return
+        v.animate().alpha(0f).translationY(-dp(6f).toFloat()).setDuration(160).withEndAction {
+            try { wm.removeView(v) } catch (_: Exception) {}
+            if (subtitleOverlay == v) {
+                subtitleOverlay = null
+                subtitleText = null
+            }
+        }.start()
     }
 
     fun pulse() = main.post {
