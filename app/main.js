@@ -1,32 +1,63 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog, shell, Notification, Tray, Menu, nativeImage, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
 let mainWindow;
+let tray = null;
 let engineProc = null;
+let quitting = false;
+const crashTimes = [];
+const AUTOSTART = process.argv.includes('--autostart');
 
 // ---------------------------------------------------------------- engine
-// The HUD starts the Python engine itself so the user launches one thing.
+// The HUD starts the Python engine itself so the user launches one thing, and
+// restarts it with backoff if it crashes (gives up after 4 crashes in 2 minutes).
 // Set SNAP_AIR_EXTERNAL_ENGINE=1 to run the engine yourself (e.g. for debugging).
+function logDir() {
+    const d = path.join(process.env.APPDATA || app.getPath('userData'), 'SnapAir');
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+}
+
 function startEngine() {
-    if (process.env.SNAP_AIR_EXTERNAL_ENGINE === '1') return;
-    const engineDir = path.join(__dirname, '..', 'engine');
-    const venvPy = path.join(engineDir, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-    const python = fs.existsSync(venvPy) ? venvPy : 'python';
-    const logDir = path.join(process.env.APPDATA || app.getPath('userData'), 'SnapAir');
-    fs.mkdirSync(logDir, { recursive: true });
-    const log = fs.openSync(path.join(logDir, 'engine.log'), 'w');
-    engineProc = spawn(python, ['-u', 'main.py'], {
+    if (process.env.SNAP_AIR_EXTERNAL_ENGINE === '1' || quitting) return;
+    // Installed app: the frozen engine ships in resources/engine (no Python needed).
+    // Development: run main.py with the project's virtualenv.
+    let cmd, args, engineDir;
+    if (app.isPackaged) {
+        engineDir = path.join(process.resourcesPath, 'engine');
+        cmd = path.join(engineDir, 'snapy-engine.exe');
+        args = AUTOSTART ? ['--autostart'] : [];
+    } else {
+        engineDir = path.join(__dirname, '..', 'engine');
+        const venvPy = path.join(engineDir, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+        cmd = fs.existsSync(venvPy) ? venvPy : 'python';
+        args = ['-u', 'main.py', ...(AUTOSTART ? ['--autostart'] : [])];
+    }
+    const log = fs.openSync(path.join(logDir(), 'engine.log'), 'a');
+    engineProc = spawn(cmd, args, {
         cwd: engineDir,
         windowsHide: true,
         stdio: ['ignore', log, log],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', SNAP_AIR_AUTOSTART: AUTOSTART ? '1' : '0' },
     });
     engineProc.on('exit', (code) => {
-        console.log('Engine exited with code', code);
         engineProc = null;
+        if (quitting) return;
+        const now = Date.now();
+        crashTimes.push(now);
+        while (crashTimes.length && now - crashTimes[0] > 120000) crashTimes.shift();
+        if (crashTimes.length >= 4) {
+            notify('Snapy stopped', 'The engine keeps crashing. Open the log from the tray menu, then choose Restart engine.');
+            updateTray();
+            return;
+        }
+        const delay = 1000 * 2 ** (crashTimes.length - 1);      // 1 s, 2 s, 4 s
+        console.log(`Engine exited (${code}); restarting in ${delay} ms`);
+        setTimeout(startEngine, delay);
     });
+    updateTray();
 }
 
 function stopEngine() {
@@ -36,58 +67,134 @@ function stopEngine() {
     }
 }
 
+function restartEngine() {
+    crashTimes.length = 0;
+    if (engineProc) {
+        const p = engineProc;
+        p.once('exit', () => setTimeout(startEngine, 500));
+        engineProc = null;
+        try { p.kill(); } catch (e) { startEngine(); }
+    } else startEngine();
+}
+
+function appIcon() { return path.join(__dirname, 'assets', 'snapy-app-256.png'); }
+// tray: white logo on a dark taskbar, black logo on a light one
+function trayIcon() {
+    return nativeImage.createFromPath(path.join(__dirname, 'assets', nativeTheme.shouldUseDarkColors ? 'snapy-white-32.png' : 'snapy-black-32.png'));
+}
+
+function notify(title, body) {
+    if (Notification.isSupported()) new Notification({ title, body, icon: appIcon() }).show();
+}
+
 // ---------------------------------------------------------------- window
 function createWindow() {
     const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
-
     mainWindow = new BrowserWindow({
         x, y, width, height,
-        title: 'Snap Air HUD',
+        title: 'Snapy HUD',
         transparent: true,
         frame: false,
         alwaysOnTop: true,
         hasShadow: false,
         skipTaskbar: true,
         resizable: false,
-        webPreferences: { nodeIntegration: true, contextIsolation: false },
+        icon: appIcon(),
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+        },
     });
     mainWindow.setAlwaysOnTop(true, 'floating');
     // Clicks pass through to the apps underneath except over HUD widgets
     mainWindow.setIgnoreMouseEvents(true, { forward: true });
-    mainWindow.loadFile('index.html', { query: { port: process.env.SNAP_AIR_PORT || '8765' } });
+    mainWindow.loadFile('index.html', { query: { port: process.env.SNAP_AIR_PORT || '8765', autostart: AUTOSTART ? '1' : '0' } });
     mainWindow.on('page-title-updated', (e) => e.preventDefault());
+    // never let the overlay navigate away or open windows
+    mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 }
 
 function sendHotkey(name) {
     if (!mainWindow) return;
-    if (name === 'command') {
+    if (['command', 'assistant', 'today', 'settings'].includes(name)) {
         mainWindow.setIgnoreMouseEvents(false);
         mainWindow.focus();
     }
     mainWindow.webContents.send('hotkey', name);
 }
 
+// ---------------------------------------------------------------- tray
+function updateTray() {
+    if (!tray) return;
+    const running = !!engineProc || process.env.SNAP_AIR_EXTERNAL_ENGINE === '1';
+    const login = app.getLoginItemSettings().openAtLogin;
+    tray.setToolTip(running ? 'Snapy — running on this laptop' : 'Snapy — engine stopped');
+    tray.setContextMenu(Menu.buildFromTemplate([
+        { label: running ? 'Snapy is running' : 'Engine stopped', enabled: false },
+        { type: 'separator' },
+        { label: 'Open assistant', accelerator: 'Ctrl+Alt+J', click: () => sendHotkey('assistant') },
+        { label: 'Today', accelerator: 'Ctrl+Alt+T', click: () => sendHotkey('today') },
+        { label: 'Talk', accelerator: 'Ctrl+Alt+Space', click: () => sendHotkey('push_to_talk') },
+        { label: 'Meeting notes', accelerator: 'Ctrl+Alt+N', click: () => sendHotkey('meeting') },
+        { label: 'Settings', accelerator: 'Ctrl+Alt+S', click: () => sendHotkey('settings') },
+        { type: 'separator' },
+        { label: 'Show / hide HUD', accelerator: 'Ctrl+Alt+H', click: () => sendHotkey('toggle_hud') },
+        { label: 'Pause / resume gestures', accelerator: 'Ctrl+Alt+G', click: () => sendHotkey('toggle_gestures') },
+        { label: 'Start at login', type: 'checkbox', checked: login, click: (i) => setLoginItem(i.checked) },
+        { type: 'separator' },
+        { label: 'Restart engine', click: restartEngine },
+        { label: 'Open data folder', click: () => shell.openPath(logDir()) },
+        { label: 'Open engine log', click: () => shell.openPath(path.join(logDir(), 'engine.log')) },
+        { type: 'separator' },
+        { label: 'Quit Snapy', click: () => app.quit() },
+    ]));
+}
+
+function setLoginItem(enabled) {
+    try {
+        // '--autostart' lets Snapy know it was started by Windows (quiet start + morning greeting).
+        // Note: openAtLogin doesn't work for APPX/MSIX packages — ship an NSIS installer.
+        const opts = { openAtLogin: !!enabled, args: ['--autostart'] };
+        if (!app.isPackaged) { opts.path = process.execPath; opts.args = [app.getAppPath(), '--autostart']; }
+        app.setLoginItemSettings(opts);
+    } catch (e) { console.warn('login item:', e.message); }
+    updateTray();
+}
+
 app.disableHardwareAcceleration();
 
-app.whenReady().then(() => {
-    startEngine();
-    createWindow();
+if (!app.requestSingleInstanceLock()) {
+    app.quit();
+} else {
+    app.on('second-instance', () => sendHotkey('assistant'));
+    app.whenReady().then(() => {
+        startEngine();
+        createWindow();
+        tray = new Tray(trayIcon());
+        nativeTheme.on('updated', () => tray && tray.setImage(trayIcon()));
+        tray.on('click', () => sendHotkey('assistant'));
+        updateTray();
 
-    const shortcuts = {
-        'Control+Alt+Space': 'push_to_talk',   // speak one command, no wake word needed
-        'Control+Alt+K': 'command',            // type a command
-        'Control+Alt+G': 'toggle_gestures',    // emergency stop / resume hand control
-        'Control+Alt+S': 'settings',
-        'Control+Alt+H': 'toggle_hud',
-        'Control+Alt+N': 'meeting',            // start / stop meeting notes
-    };
-    for (const [accel, name] of Object.entries(shortcuts)) {
-        if (!globalShortcut.register(accel, () => sendHotkey(name))) {
-            console.warn('Could not register shortcut', accel);
+        const shortcuts = {
+            'Control+Alt+Space': 'push_to_talk',   // talk / interrupt
+            'Control+Alt+K': 'command',            // type
+            'Control+Alt+J': 'assistant',          // assistant drawer
+            'Control+Alt+T': 'today',              // today drawer
+            'Control+Alt+G': 'toggle_gestures',    // emergency stop / resume hand control
+            'Control+Alt+S': 'settings',
+            'Control+Alt+H': 'toggle_hud',
+            'Control+Alt+N': 'meeting',            // start / stop meeting notes
+        };
+        for (const [accel, name] of Object.entries(shortcuts)) {
+            if (!globalShortcut.register(accel, () => sendHotkey(name))) console.warn('Could not register shortcut', accel);
         }
-    }
-});
+    });
+}
 
+app.on('before-quit', () => { quitting = true; });
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     stopEngine();
@@ -97,7 +204,7 @@ app.on('window-all-closed', () => app.quit());
 // ---------------------------------------------------------------- IPC
 ipcMain.on('set-ignore-mouse-events', (event, ignore) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) win.setIgnoreMouseEvents(ignore, ignore ? { forward: true } : undefined);
+    if (win) win.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
 });
 
 // After typing a command, hand keyboard focus back to the app underneath
@@ -114,20 +221,8 @@ ipcMain.handle('pick-folder', async () => {
 });
 
 ipcMain.on('quit', () => app.quit());
-
-// Start at login (works in development and when packaged)
-ipcMain.on('set-login-item', (_e, enabled) => {
-    try {
-        const opts = { openAtLogin: !!enabled };
-        if (!app.isPackaged) { opts.path = process.execPath; opts.args = [app.getAppPath()]; }
-        app.setLoginItemSettings(opts);
-    } catch (e) { console.warn('login item:', e.message); }
-});
-
-ipcMain.on('notify', (_e, { title, body }) => {
-    if (Notification.isSupported()) new Notification({ title, body, silent: false }).show();
-});
-
+ipcMain.on('set-login-item', (_e, enabled) => setLoginItem(enabled));
+ipcMain.on('notify', (_e, msg) => { if (msg && msg.title) notify(String(msg.title), String(msg.body || '')); });
 ipcMain.on('open-external', (_e, url) => {
-    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) shell.openExternal(url);
 });

@@ -1,4 +1,4 @@
-mediapipe>=0.10.30
+mediapipe==0.10.33      # pinned: 1.x ships Google usage telemetry with no opt-out (mediapipe#6291); 0.10.30 is broken on Windows
 opencv-python
 numpy
 pyautogui

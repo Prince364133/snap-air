@@ -1,8 +1,37 @@
-/* Snap Air HUD renderer */
-const { ipcRenderer } = require('electron');
+/* Snapy HUD renderer */
+// contextIsolation: the page talks to Electron only through the preload bridge
+const ipcRenderer = window.snap || { send() {}, invoke: async () => null, on() {} };
+
+// Line icons (no emoji icons in the UI chrome)
+const ICONS = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    note: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
+    check: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/>',
+    brain: '<path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3h0a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3h0a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+    bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>',
+    phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
+    coffee: '<path d="M17 8h1a4 4 0 0 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><path d="M6 2v2M10 2v2M14 2v2"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h0"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    chart: '<path d="M3 3v18h18M7 15l4-4 3 3 5-6"/>',
+    rocket: '<path d="M5 15c-1 1-2 5-2 5s4-1 5-2M14 4c3-1 6 0 6 0s1 3 0 6l-7 7-6-6z"/><circle cx="15" cy="9" r="1.5"/>',
+    voice: '<path d="M2 10v4M6 6v12M10 3v18M14 8v8M18 5v14M22 10v4"/>',
+    hand: '<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
+    star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+};
+const svg = (name, size = 16) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+function applyIcons(root = document) {
+    root.querySelectorAll('[data-icon]').forEach((el) => { if (!el.dataset.iconDone) { el.innerHTML = svg(el.dataset.icon, el.classList.contains('ib') ? 15 : 16); el.dataset.iconDone = '1'; } });
+}
 
 // ------------------------------------------------------------------ utils
 const $ = (id) => document.getElementById(id);
+const NAME = () => ((typeof S !== 'undefined' && S && S.agent_name) || 'Snapy').trim() || 'Snapy';
 const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 function h(tag, attrs = {}, ...children) {
     const e = document.createElement(tag);
@@ -45,6 +74,7 @@ let socket = null, connected = false;
 let S = {}, profile = {}, memories = [], notes = [], tasks = [], catalogue = [], activity = null, routine = {};
 let models = {}, meeting = {}, eng = {}, briefing = null, scan = null, dataDir = '';
 let lastTranscript = { text: '', t: 0 };
+let focus = {}, contexts = [], noteFilter = 'all', openNoteId = null;
 let flashUntil = 0;
 
 function send(obj) {
@@ -71,16 +101,17 @@ const HANDLERS = {
         catalogue = d.catalogue || []; activity = d.activity; routine = d.routine || {}; meeting = d.meeting || {};
         dataDir = d.data_dir || '';
         models = d;
+        focus = d.focus || {}; contexts = d.contexts || [];
         ipcRenderer.send('set-login-item', !!S.start_at_login);
         renderAll();
         if (d.onboarding_needed) openOnboarding();
     },
     state_update(d) { eng = d; renderIsland(); renderCursor(); updateMeters(); },
-    settings(d) { S = d.settings; bindSettings(); if (activeTab === 'settings') renderSettings(); renderSuggestions(); },
+    settings(d) { S = d.settings; renderName(); bindSettings(); if (activeTab === 'settings') renderSettings(); renderSuggestions(); },
     memory(d) { profile = d.profile; memories = d.memories; renderMemory(); },
     tasks(d) { tasks = d.tasks; renderTasks(); renderGlance(); },
-    notes(d) { notes = d.notes; renderNotes(); renderGlance(); },
-    note_added(d) { notes.unshift(d.note); renderNotes(); renderGlance(); },
+    notes(d) { notes = d.notes; renderNotes(); renderGlance(); renderTodayExtras(); },
+    note_added(d) { notes.unshift(d.note); renderNotes(); renderGlance(); renderTodayExtras(); },
     today(d) { tasks = d.tasks; activity = d.activity; meeting = d.meeting; renderTasks(); renderGlance(); renderMeeting(); },
     activity(d) { activity = d.summary; routine = d.routine || routine; renderActivity(); renderGlance(); },
     models(d) { models = d; if (activeTab === 'settings') renderModelSection(); if (obOpen) renderObStep(); },
@@ -94,12 +125,18 @@ const HANDLERS = {
     wrapup(d) { showBanner({ kind: 'info', title: 'Your day', text: d.text }); },
     memory_learned(d) { showToast('Learned: ' + d.items.join('; '), true); },
     scan(d) { scan = d; if (obOpen) renderObStep(); },
-    onboarding_done() { closeOnboarding(); },
+    onboarding_done(d) { closeOnboarding(); if (d && d.start_at_login !== undefined) ipcRenderer.send('set-login-item', !!d.start_at_login); },
     action_log() {},
     gesture_event(d) { if (['click', 'double_click', 'right_click'].includes(d.event)) flashUntil = Date.now() + 250; },
+    caption(d) { showCaption(d.text); },
+    barge_in() { hideCaption(); },
+    focus(d) { focus = d; renderFocus(); },
+    contexts(d) { contexts = d.contexts; renderContexts(); },
+    onboarding_voice(d) { if (d.step === 'name') { closeOnboarding(); openDrawer('assistant'); } },
     ui_action(d) {
         if (d.action === 'open_settings') { openDrawer('settings'); if (d.focus) highlightSetting(d.focus); }
-        else if (d.action === 'open_drawer') openDrawer(d.tab === 'help' ? 'settings' : d.tab || 'assistant');
+        else if (d.action === 'open_note') { openDrawer('notes'); openNoteDetail(d.id); }
+        else if (d.action === 'open_drawer') { if (d.tab === 'notes' && d.filter) setNoteFilter(d.filter); openDrawer(d.tab || 'assistant'); }
         else if (d.action === 'close_panels') closeDrawer();
         else if (d.action === 'toggle_hud') document.body.classList.toggle('hud-hidden');
     },
@@ -109,7 +146,40 @@ const HANDLERS = {
 const orbs = {
     island: new Orb($('island-orb')), drawer: new Orb($('drawer-orb')),
     empty: new Orb($('empty-orb')), greeting: new Orb($('greeting-orb')),
+    presence: new Orb($('presence-orb')),
 };
+const GESTURE_SHORT = { POINTING: 'Point', SCROLL: 'Scroll', PINCH_INDEX: 'Pinch', PINCH_MIDDLE: 'Right-click', OPEN_PALM: 'Palm', FIST: 'Hold' };
+let captionAt = 0;
+function showCaption(text) {
+    captionAt = Date.now();
+    const cap = $('island-caption');
+    if (cap) {
+        cap.textContent = text;
+        cap.classList.remove('hidden');
+    }
+}
+function hideCaption() {
+    const cap = $('island-caption');
+    if (cap) cap.classList.add('hidden');
+}
+$('presence').addEventListener('click', () => talk());
+function renderFocus() {
+    const on = focus && focus.active;
+    $('island-focus').classList.toggle('hidden', !on);
+}
+setInterval(() => {
+    if (focus && focus.active) {
+        focus.remaining = Math.max(0, (focus.remaining || 0) - 1);
+        $('focus-time').textContent = `${Math.floor(focus.remaining / 60)}:${String(focus.remaining % 60).padStart(2, '0')}`;
+        if (!focus.remaining) { focus.active = false; renderFocus(); }
+    }
+}, 1000);
+$('island-focus').addEventListener('click', (e) => { e.stopPropagation(); send({ type: 'focus_stop' }); });
+// any element with data-open="<tab>" opens that drawer tab
+document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-open]');
+    if (t) { e.stopPropagation(); toggleDrawer(t.dataset.open); }
+}, true);
 function orbState() {
     if (!connected) return ['off', 0];
     if (eng.assistant === 'speaking') return ['speaking', Math.min(1, (eng.speak_level || 0) * 7)];
@@ -123,7 +193,7 @@ function renderIsland() {
     const [st, lvl] = orbState();
     for (const o of Object.values(orbs)) { o.setState(st); o.setLevel(lvl); o.setRecording(!!meeting.recording); }
     let text;
-    if (!connected) text = 'Starting Snap…';
+    if (!connected) text = `Starting ${NAME()}…`;
     else if (Date.now() - lastTranscript.t < 2500 && lastTranscript.text) text = `“${lastTranscript.text}”`;
     else if (eng.assistant === 'speaking') text = 'Speaking…';
     else if (eng.assistant === 'thinking') text = 'Thinking…';
@@ -132,10 +202,30 @@ function renderIsland() {
     else if (/Loading|failed|unavailable/i.test(eng.voice_status || '')) text = eng.voice_status;
     else if (meeting.recording) text = 'Taking meeting notes';
     else if (eng.voice_mode === 'push') text = 'Press Ctrl+Alt+Space to talk';
-    else text = 'Say “Snap…”';
+    else text = `Say “${NAME()}…”`;
     $('island-status').textContent = text;
+    const aiDot = $('island-ai-dot');
+    if (aiDot) {
+        aiDot.classList.remove('dot-orange', 'dot-green', 'dot-red');
+        if (!connected || eng.brain === 'none') {
+            aiDot.classList.add('dot-red');
+            aiDot.title = 'No AI configured or offline';
+        } else if (eng.brain === 'cloud') {
+            aiDot.classList.add('dot-green');
+            aiDot.title = 'AI active (Cloud API)';
+        } else {
+            aiDot.classList.add('dot-orange');
+            aiDot.title = 'AI active (Local on-device)';
+        }
+    }
+    const gestureOn = eng.camera === 'ok' && eng.hand_visible && !eng.gestures_paused;
+    $('island-gesture').classList.toggle('hidden', !gestureOn);
+    if (gestureOn) $('island-gesture').textContent = (GESTURE_SHORT[eng.gesture] || 'Hand');
+    const pres = $('presence');
+    pres.classList.toggle('active', st !== 'idle' && st !== 'off');
+    if (st === 'idle' && Date.now() - captionAt > 2500) hideCaption();
     $('island-rec').classList.toggle('hidden', !meeting.recording);
-    $('island-cam').classList.toggle('hidden', eng.camera !== 'ok');
+
     if (meeting.recording && meeting.elapsed !== undefined) {
         const e = eng.recording ? Math.max(meeting.elapsed, 0) : 0;
         $('rec-time').textContent = `${Math.floor(e / 60)}:${String(e % 60).padStart(2, '0')}`;
@@ -147,6 +237,7 @@ setInterval(() => { if (meeting.recording) { meeting.elapsed = (meeting.elapsed 
 
 $('island').addEventListener('click', (e) => {
     if (e.target.id === 'island-orb') { talk(); return; }
+    if (e.target.closest('.island-btns') || e.target.closest('#island-focus')) return;
     toggleDrawer();
 });
 function talk() {
@@ -188,7 +279,9 @@ function selectTab(tab) {
     activeTab = tab;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
-    if (tab === 'today') send({ type: 'request', what: 'today' });
+    $('drawer').classList.toggle('wide', tab === 'notes' && !!openNoteId);
+    if (tab === 'today' || tab === 'tasks') send({ type: 'request', what: 'today' });
+    if (tab === 'help') renderHelp();
     if (tab === 'activity') send({ type: 'request', what: 'activity' });
     if (tab === 'settings') { send({ type: 'request', what: 'models' }); renderSettings(); }
     if (tab === 'memory') renderMemory();
@@ -242,7 +335,7 @@ function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = nu
 function sendChat(text) {
     text = (text ?? $('chat-input').value).trim();
     if (!text) return;
-    if (!send({ type: 'chat', text })) { showToast('Snap engine is starting…', false); return; }
+    if (!send({ type: 'chat', text })) { showToast(`${NAME()} is starting…`, false); return; }
     $('chat-input').value = '';
 }
 $('chat-send').onclick = () => sendChat();
@@ -289,21 +382,50 @@ function renderMeeting() {
 }
 $('meeting-btn').onclick = () => send({ type: meeting.recording ? 'meeting_stop' : 'meeting_start' });
 
+function taskRow(t) {
+    const overdue = t.remind_at && new Date(t.remind_at) < new Date();
+    return h('li', {},
+        h('button', { class: 'check', title: 'Mark done', onclick: () => send({ type: 'task_update', id: t.id, done: true }) }),
+        h('div', { class: 'grow' }, h('div', { class: 'title' }, t.title),
+            t.remind_at ? h('div', { class: 'meta' + (overdue ? ' due' : '') }, (t.source === 'timer' ? 'Timer · ' : '') + dueText(t.remind_at)) : null,
+            t.source === 'meeting' ? h('div', { class: 'meta' }, 'From a meeting') : null),
+        h('div', { class: 'row-actions' },
+            t.remind_at ? h('button', { class: 'mini', onclick: () => send({ type: 'task_snooze', id: t.id, minutes: 30 }) }, '+30m') : null,
+            h('button', { class: 'mini', title: 'Delete', onclick: () => send({ type: 'task_delete', id: t.id }) }, 'Delete')));
+}
+function renderTodayExtras() {
+    const tl = $('today-tasks');
+    tl.replaceChildren(...(tasks.length ? tasks.slice(0, 4).map(taskRow) : [h('li', { class: 'empty' }, 'Nothing pending.')]));
+    const reviews = [];
+    for (const n of notes) for (const a of (n.actions || [])) if (a.status === 'pending') reviews.push([n, a]);
+    $('review-card').classList.toggle('hidden', !reviews.length);
+    $('review-list').replaceChildren(...reviews.slice(0, 6).map(([n, a]) => actionRow(n, a)));
+}
+function actionRow(n, a) {
+    const decide = (decision) => send({ type: 'action_review', note_id: n.id, action_id: a.id, decision });
+    return h('div', { class: 'action-row' },
+        h('div', { class: 'grow' }, h('div', { class: 'title' }, a.task),
+            h('div', { class: 'meta' }, `${n.title || 'Meeting'} · ${a.owner && a.owner !== 'unassigned' ? a.owner : 'no owner'}${a.due ? ' · ' + a.due : ''}`)),
+        a.status === 'pending' ? h('div', { class: 'row gap8' },
+            h('button', { class: 'btn small primary', onclick: () => decide('accept') }, a.mine ? 'Add to my tasks' : 'Mine'),
+            h('button', { class: 'btn small', onclick: () => decide('not_mine') }, 'Not mine'),
+            h('button', { class: 'mini', onclick: () => decide('dismiss') }, 'Dismiss'))
+            : h('span', { class: 'caption' }, { accepted: 'Added', not_mine: 'Not mine', dismissed: 'Dismissed' }[a.status] || ''));
+}
+function renderContexts() {
+    $('contexts-card').classList.toggle('hidden', !contexts.length);
+    $('contexts-list').replaceChildren(...contexts.slice().reverse().map((c) => h('li', {},
+        h('div', { class: 'grow' }, h('div', { class: 'title' }, c.name),
+            h('div', { class: 'meta' }, `${c.apps.length} apps${c.branch ? ' · ' + c.branch : ''} · ${new Date(c.saved).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`)),
+        h('button', { class: 'btn small', onclick: () => send({ type: 'chat', text: 'resume ' + c.name }) }, 'Resume'),
+        h('button', { class: 'mini', onclick: () => send({ type: 'context_delete', id: c.id }) }, 'Delete'))));
+}
 function renderTasks() {
+    renderTodayExtras();
     const list = $('task-list');
     $('tasks-count').textContent = tasks.length ? `${tasks.length} open` : '';
-    if (!tasks.length) { list.replaceChildren(h('li', { class: 'empty' }, 'Nothing pending. Say “Snap, remind me at 5 to push the PR”.')); return; }
-    list.replaceChildren(...tasks.map((t) => {
-        const overdue = t.remind_at && new Date(t.remind_at) < new Date();
-        return h('li', {},
-            h('button', { class: 'check', title: 'Mark done', onclick: () => send({ type: 'task_update', id: t.id, done: true }) }),
-            h('div', { class: 'grow' }, h('div', { class: 'title' }, t.title),
-                t.remind_at ? h('div', { class: 'meta' + (overdue ? ' due' : '') }, '⏰ ' + dueText(t.remind_at)) : null,
-                t.source === 'meeting' ? h('div', { class: 'meta' }, 'From a meeting') : null),
-            h('div', { class: 'row-actions' },
-                t.remind_at ? h('button', { class: 'mini', onclick: () => send({ type: 'task_snooze', id: t.id, minutes: 30 }) }, '+30m') : null,
-                h('button', { class: 'mini', title: 'Delete', onclick: () => send({ type: 'task_delete', id: t.id }) }, '✕')));
-    }));
+    if (!tasks.length) { list.replaceChildren(h('li', { class: 'empty' }, `Nothing pending. Say “${NAME()}, remind me at 5 to push the PR”.`)); return; }
+    list.replaceChildren(...tasks.map(taskRow));
 }
 function addTask() { const v = $('task-input').value.trim(); if (v && send({ type: 'task_add', text: v })) $('task-input').value = ''; }
 $('task-add').onclick = addTask;
@@ -320,11 +442,45 @@ function renderGlance() {
 }
 
 // ------------------------------------------------------------------ notes
-function renderNotes() {
-    const q = $('note-search').value.trim().toLowerCase();
-    const list = notes.filter((n) => !q || JSON.stringify([n.text, n.title, n.summary, n.transcript]).toLowerCase().includes(q));
+function setNoteFilter(f) {
+    noteFilter = f;
+    document.querySelectorAll('#note-filter button').forEach((b) => b.classList.toggle('active', b.dataset.f === f));
+    openNoteId = null;
+    $('drawer').classList.remove('wide');
+    renderNotes();
+}
+document.querySelectorAll('#note-filter button').forEach((b) => (b.onclick = () => setNoteFilter(b.dataset.f)));
+function openNoteDetail(id) { openNoteId = id; $('drawer').classList.add('wide'); renderNotes(); }
+function renderNoteDetail(n) {
     const box = $('notes-list');
-    if (!list.length) { box.replaceChildren(h('div', { class: 'empty' }, q ? 'No matching notes.' : 'No notes yet. Say “Snap, take note …” or start meeting notes.')); return; }
+    const list = (title, items) => (items && items.length ? [h('h4', {}, title), h('ul', {}, ...items.map((x) => h('li', {}, x)))] : []);
+    box.replaceChildren(h('div', { class: 'note-detail' },
+        h('button', { class: 'mini', onclick: () => { openNoteId = null; $('drawer').classList.remove('wide'); renderNotes(); } }, '‹ All notes'),
+        h('h2', {}, n.title || 'Meeting'),
+        h('div', { class: 'caption' }, `${dayLabel(n.ts)} · ${clock(n.ts)} · ${fmtDur(n.duration || 0)}${n.ai_summary === false ? ' · summary without AI' : ''}`),
+        h('div', { class: 'detail-cols' },
+            h('div', {},
+                ...list('Summary', n.summary), ...list('Key points', n.key_points), ...list('Decisions', n.decisions),
+                n.actions && n.actions.length ? [h('h4', {}, 'Action items'), ...n.actions.map((a) => actionRow(n, a))] : [],
+                n.bookmarks && n.bookmarks.length ? [h('h4', {}, 'Bookmarks'), h('ul', {}, ...n.bookmarks.map((b) => h('li', {}, `${Math.floor(b.t / 60)}:${String(b.t % 60).padStart(2, '0')} — ${b.label}`)))] : []),
+            h('div', {}, h('h4', {}, 'Transcript'), h('pre', { class: 'transcript' }, n.transcript || '—'))),
+        h('div', { class: 'row gap8', style: 'margin-top:12px' },
+            h('button', { class: 'btn small', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy notes'),
+            h('button', { class: 'btn small danger', onclick: () => confirmDo('Delete this meeting note?', "This can't be undone.", () => { send({ type: 'note_delete', id: n.id }); openNoteId = null; $('drawer').classList.remove('wide'); }) }, 'Delete'))));
+}
+function renderNotes() {
+    if (openNoteId) {
+        const n = notes.find((x) => x.id === openNoteId);
+        if (n) { renderNoteDetail(n); return; }
+        openNoteId = null; $('drawer').classList.remove('wide');
+    }
+    const q = $('note-search').value.trim().toLowerCase();
+    const today = new Date().toDateString();
+    const list = notes.filter((n) => (!q || JSON.stringify([n.text, n.title, n.summary, n.transcript]).toLowerCase().includes(q)) &&
+        (noteFilter === 'all' || (noteFilter === 'today' && new Date(n.ts * 1000).toDateString() === today) ||
+         (noteFilter === 'meeting' && n.kind === 'meeting')));
+    const box = $('notes-list');
+    if (!list.length) { box.replaceChildren(h('div', { class: 'empty' }, q ? 'No matching notes.' : `No notes yet. Say “${NAME()}, take note …” or start meeting notes.`)); return; }
     const out = [];
     let lastDay = null;
     for (const n of list) {
@@ -334,15 +490,18 @@ function renderNotes() {
             h('button', { class: 'mini', title: 'Copy', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy'),
             h('button', { class: 'mini', title: 'Delete', onclick: () => confirmDo('Delete this note?', 'This can\'t be undone.', () => send({ type: 'note_delete', id: n.id })) }, '✕'));
         if (n.kind === 'meeting') {
-            out.push(h('div', { class: 'note meeting' }, actions,
-                h('div', { class: 'note-title' }, h('span', { class: 'badge' }, 'MEETING'), n.title || 'Meeting'),
+            out.push(h('div', { class: 'note meeting clickable', onclick: (e) => { if (!e.target.closest('.row-actions, a, details')) openNoteDetail(n.id); } }, actions,
+                h('div', { class: 'note-title' }, h('span', { class: 'badge' }, 'MEETING'), n.title || 'Meeting',
+                    n.review_pending ? h('span', { class: 'badge warn' }, 'REVIEW') : null),
                 h('div', { class: 'note-meta' }, `${clock(n.ts)} · ${fmtDur(n.duration || 0)}`),
                 n.summary && n.summary.length ? [h('h4', {}, 'Summary'), h('ul', {}, ...n.summary.map((s) => h('li', {}, s)))] : h('p', { class: 'caption' }, n.text),
                 n.decisions && n.decisions.length ? [h('h4', {}, 'Decisions'), h('ul', {}, ...n.decisions.map((s) => h('li', {}, s)))] : null,
                 n.actions && n.actions.length ? [h('h4', {}, 'Action items'), h('ul', {}, ...n.actions.map((a) => h('li', {}, `${a.task}${a.owner && a.owner !== 'unassigned' ? ' — ' + a.owner : ''}${a.due ? ' (' + a.due + ')' : ''}`)))] : null,
                 n.transcript ? h('details', {}, h('summary', {}, 'Transcript'), h('pre', {}, n.transcript)) : null));
         } else {
-            out.push(h('div', { class: 'note' }, actions, h('div', { class: 'note-text' }, n.text), h('div', { class: 'note-meta' }, clock(n.ts))));
+            out.push(h('div', { class: 'note' }, actions,
+                n.kind && n.kind !== 'note' ? h('div', { class: 'note-title' }, h('span', { class: 'badge' }, n.kind.toUpperCase()), n.title || '') : null,
+                h('div', { class: 'note-text' }, n.text), h('div', { class: 'note-meta' }, clock(n.ts))));
         }
     }
     box.replaceChildren(...out);
@@ -412,6 +571,7 @@ function addMemory() { const v = $('mem-input').value.trim(); if (v && send({ ty
 $('mem-add').onclick = addMemory;
 $('mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addMemory(); });
 $('mem-export').onclick = () => send({ type: 'export_data' });
+$('act-clear').onclick = () => confirmDo('Clear your activity history?', 'All recorded app usage will be deleted. Your routine will be relearned.', () => send({ type: 'clear_activity' }));
 $('mem-forget').onclick = () => confirmDo('Forget everything about you?', 'Your profile and every memory will be deleted. Tasks, notes and activity stay.', () => send({ type: 'memory_forget_all' }));
 
 // --------------------------------------------------------------- activity
@@ -433,6 +593,20 @@ function renderActivity() {
         $('act-range').textContent = `${clock(start)} – ${clock(end)}`;
         tl.replaceChildren(...segs.map(([s, e, name]) => h('i', { style: `left:${((s - start) / (end - start)) * 100}%;width:${((e - s) / (end - start)) * 100}%;background:${appColor[name] || '#8e8e93'}`, title: `${name} ${clock(s)}–${clock(e)}` })));
     } else { tl.replaceChildren(); $('act-range').textContent = 'No activity yet today'; }
+    const hours = new Array(24).fill(0);
+    for (const [s0, e0] of segs) {
+        let s1 = s0;
+        while (s1 < e0) {
+            const d = new Date(s1 * 1000), hEnd = new Date(d); hEnd.setMinutes(60, 0, 0);
+            const until = Math.min(e0, hEnd.getTime() / 1000);
+            hours[d.getHours()] += until - s1;
+            s1 = until;
+        }
+    }
+    const used = hours.map((v, i) => [i, v]).filter(([, v]) => v > 0);
+    const lo = used.length ? Math.min(...used.map(([i]) => i)) : 9, hi = used.length ? Math.max(...used.map(([i]) => i)) : 18;
+    $('act-hours').replaceChildren(...hours.slice(lo, hi + 1).map((v, k) => h('div', { class: 'hour', title: `${lo + k}:00 — ${fmtDur(v)}` },
+        h('i', { style: `height:${Math.max(2, (v / 3600) * 100)}%` }), h('span', {}, String((lo + k) % 24)))));
     const maxApp = Math.max(1, ...(a.top_apps || []).map((x) => x.seconds));
     $('act-apps').replaceChildren(...((a.top_apps || []).length ? a.top_apps.map((x, i) => h('div', { class: 'bar-row' },
         h('span', {}, x.name), h('span', { class: 'dur' }, fmtDur(x.seconds)),
@@ -456,22 +630,28 @@ function renderActivity() {
 const LANGS = [['auto', 'Detect automatically'], ['en', 'English only (fastest)'], ['hi', 'Hindi'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['pt', 'Portuguese'], ['it', 'Italian'], ['ja', 'Japanese'], ['zh', 'Chinese'], ['ar', 'Arabic'], ['bn', 'Bengali'], ['ta', 'Tamil'], ['te', 'Telugu'], ['mr', 'Marathi']];
 const SETTINGS = [
     ['General', [
-        { key: 'start_at_login', type: 'switch', label: 'Start Snap when I sign in' },
+        { key: 'agent_name', type: 'text', label: 'Assistant name', sub: 'It answers to this name — “Hey <name>, …”', placeholder: 'Snapy' },
+        { key: 'start_at_login', type: 'switch', label: 'Start when I sign in' },
         { key: 'daily_greeting', type: 'switch', label: 'Morning greeting & briefing', sub: 'Once a day, never during a call' },
         { key: 'greeting_voice', type: 'switch', label: 'Speak the greeting out loud' },
-        { key: 'break_reminder_minutes', type: 'select', label: 'Break reminders', num: true, options: [[0, 'Off'], [30, 'Every 30 min'], [50, 'Every 50 min'], [90, 'Every 90 min']] },
+        { key: 'welcome_back', type: 'switch', label: 'Say “welcome back” after 3+ hours away' },
+        { key: 'recap_time', type: 'select', label: 'End-of-day recap', options: [['', 'At my work end time'], ['17:00', '5:00 PM'], ['18:00', '6:00 PM'], ['18:30', '6:30 PM'], ['19:00', '7:00 PM'], ['20:00', '8:00 PM']] },
+        { key: 'break_reminder_minutes', type: 'select', label: 'Wellbeing break nudges', num: true, options: [[0, 'Off'], [30, 'Every 30 min'], [50, 'Every 50 min'], [90, 'Every 90 min']] },
         { key: 'internet_tools', type: 'switch', label: 'Use the internet when I ask', sub: 'Web search and weather only — your data never leaves' },
     ]],
     ['Listening', [
-        { key: 'voice_mode', type: 'select', label: 'How I listen', options: [['wake', 'Wake word — “Snap, …”'], ['push', 'Only when I press Ctrl+Alt+Space'], ['always', 'Always (commands only)']] },
+        { key: 'voice_mode', type: 'select', label: 'How I listen', options: [['wake', 'Wake word — say my name first'], ['push', 'Only when I press Ctrl+Alt+Space'], ['always', 'Always (commands only)']] },
         { key: 'wake_words', type: 'text', label: 'Wake words' },
         { key: 'voice_language', type: 'select', label: 'Language I speak', options: LANGS },
         { key: 'speech_quality', type: 'select', label: 'Speech recognition', options: [['fast', 'Fast'], ['balanced', 'Balanced'], ['accurate', 'Accurate (slower)']] },
         { key: 'mic_sensitivity', type: 'range', label: 'Microphone sensitivity', min: 1, max: 10, step: 1, meter: true },
         { key: 'follow_up_seconds', type: 'select', label: 'Keep listening after I answer', num: true, options: [[0, 'Off'], [5, '5 seconds'], [8, '8 seconds'], [12, '12 seconds']] },
-        { key: 'headphones', type: 'switch', label: 'I use headphones', sub: 'Lets you interrupt me by voice' },
+        { key: 'barge_in', type: 'switch', label: 'Interrupt me by talking', sub: 'Speak while I talk and I stop at once' },
+        { key: 'headphones', type: 'switch', label: 'I use headphones', sub: 'No speaker echo — interrupting works even when you speak softly' },
     ]],
-    ['Snap’s voice', [
+    ['Voice', [
+        { key: 'native_indic_voices', type: 'switch', label: 'Native Indian voices', sub: 'Native-speaker voices for Hindi, Telugu, Malayalam, Marathi, Bengali, Nepali and Urdu (downloaded on first use; free for personal use)' },
+        { key: 'indic_voices', type: 'hindi_voice', label: 'Hindi voice' },
         { key: 'tts_enabled', type: 'switch', label: 'Speak replies' },
         { key: 'tts_voice', type: 'select', label: 'Voice', options: () => (models.voices || [['af_heart', 'Heart']]) },
         { key: 'tts_speed', type: 'range', label: 'Speed', min: 0.8, max: 1.3, step: 0.05 },
@@ -494,13 +674,19 @@ const SETTINGS = [
     ['Workspace', [
         { key: 'project_dir', type: 'folder', label: 'Main project folder', sub: 'Used by “start my day” and “run project”' },
         { key: 'project_run_command', type: 'text', label: 'Run command', placeholder: 'auto-detect' },
+        { key: 'morning_apps', type: 'text', label: 'Also open in “Start my day”', placeholder: 'e.g. Slack, Spotify' },
     ]],
     ['Privacy & data', 'privacy'],
-    ['Help', 'help'],
 ];
 
 function settingControl(it) {
     const v = S[it.key];
+    if (it.type === 'hindi_voice') {
+        const cur = (S.indic_voices || {}).hi || 'hi_IN-priyamvada-medium';
+        const sel = h('select', { class: 'select' }, ...[['hi_IN-priyamvada-medium', 'Priyamvada (female)'], ['hi_IN-pratham-medium', 'Pratham (male)'], ['hi_IN-rohan-medium', 'Rohan (male)']].map(([v, l]) => { const o = h('option', { value: v }, l); if (v === cur) o.selected = true; return o; }));
+        sel.onchange = () => updateSetting('indic_voices', { ...(S.indic_voices || {}), hi: sel.value });
+        return sel;
+    }
     if (it.type === 'action') return h('button', { class: 'btn small', onclick: () => send({ type: it.action }) }, it.button || 'Go');
     if (it.type === 'switch') {
         const c = h('input', { type: 'checkbox', class: 'switch' });
@@ -563,44 +749,125 @@ function renderModelSection() {
     const m = models || {};
     const installed = m.installed || [];
     const has = (n) => installed.some((x) => x === n || x === n + ':latest');
+    const cat = m.catalog || { models: [], hardware: {} };
+    const hw = cat.hardware || {};
+    const cl = m.cloud || {};
+    const mode = S.ai_provider || 'auto';
+    const oi = m.installing_ollama || {};
+
+    // provider switch
+    const seg = h('nav', { class: 'segmented small' }, ...[['local', 'On this PC'], ['auto', 'Auto'], ['cloud', 'Cloud']].map(([v, l]) =>
+        h('button', { class: mode === v ? 'active' : '', onclick: () => { updateSetting('ai_provider', v); renderModelSection(); } }, l)));
+    const modeHelp = {
+        local: 'Private and offline. Speed depends on your PC.',
+        auto: 'Uses the cloud when a key is set and you are online, otherwise this PC.',
+        cloud: 'Fastest answers (about half a second) and no load on your laptop. Conversation text and meeting transcripts go to your provider; commands, memory files and activity stay here.',
+    }[mode];
+
+    // local status
     let status, dot;
-    if (!m.ollama_installed) { status = 'Ollama isn’t installed — it runs the AI on your laptop (free).'; dot = 'bad'; }
-    else if (!m.server) { status = 'Starting the AI engine…'; dot = 'busy'; }
-    else if (m.pulling && m.pulling.status !== 'error') { status = `Downloading ${m.pulling.name}… ${Math.round(m.pulling.pct || 0)}%`; dot = 'busy'; }
+    if (oi.status === 'running' || oi.status === 'installing') {
+        status = oi.status === 'running' ? `Downloading the local AI engine… ${Math.round(oi.pct || 0)}%` : 'Installing the local AI engine…';
+        dot = 'busy';
+    } else if (!m.ollama_installed) { status = 'The local AI engine (Ollama) is not installed.'; dot = 'bad'; }
+    else if (!m.server) { status = 'Starting the local AI engine…'; dot = 'busy'; }
+    else if (m.pulling && m.pulling.status !== 'error') { status = `Installing ${m.pulling.name}… ${Math.round(m.pulling.pct || 0)}%`; dot = 'busy'; }
     else if (m.ready) { status = `Ready · ${m.current}`; dot = 'ok'; }
-    else { status = `${m.current} isn't downloaded yet`; dot = 'bad'; }
-    const cards = (m.recommended || []).map((r) => {
-        const isCur = r.name === m.current;
-        const action = has(r.name) ? (isCur ? h('span', { class: 'caption' }, 'In use') : h('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); send({ type: 'model_select', name: r.name }); } }, 'Use'))
-            : h('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); send({ type: 'model_pull', name: r.name }); } }, `Download ${r.size}`);
-        return h('div', { class: 'model-card' + (isCur ? ' current' : '') }, h('div', { class: 'm-title' }, h('span', {}, r.label), action),
-            h('div', { class: 'm-note' }, `${r.note} Needs ${r.ram}.`));
-    });
-    box.replaceChildren(h('div', { class: 'grouped' },
+    else { status = `${m.current} is not installed yet`; dot = 'bad'; }
+
+    // model dropdown, 1B -> 14B; incompatible models are disabled with the reason
+    const sel = h('select', { class: 'select', style: 'max-width:none;flex:1' }, ...cat.models.map((x) => {
+        const tag = x.recommended ? ' — recommended for this PC' : x.compatible ? (has(x.name) ? ' — installed' : '') : ' — not compatible with this PC';
+        const o = h('option', { value: x.name }, `${x.label} (${x.size})${tag}`);
+        if (!x.compatible) o.disabled = true;
+        if (x.name === (pickedModel || m.current)) o.selected = true;
+        return o;
+    }));
+    sel.onchange = () => { pickedModel = sel.value; renderModelSection(); };
+    const picked = cat.models.find((x) => x.name === (pickedModel || m.current)) || cat.models[0] || {};
+    let action = null;
+    const pulling = m.pulling && m.pulling.status !== 'error';
+    if (picked.name) {
+        if (!picked.compatible) action = h('span', { class: 'caption danger-text' }, 'Not compatible');
+        else if (has(picked.name)) action = picked.name === m.current ? h('span', { class: 'caption' }, 'In use')
+            : h('button', { class: 'btn small primary', onclick: () => send({ type: 'model_select', name: picked.name }) }, 'Use');
+        else action = h('button', { class: 'btn small primary', disabled: !m.ollama_installed || pulling,
+            onclick: () => send({ type: 'model_pull', name: picked.name }) }, `Install ${picked.size}`);
+    }
+
+    const localRows = [
         h('div', { class: 'g-row' }, h('span', {}, h('span', { class: 'status-dot ' + dot }), status),
-            !m.ollama_installed ? h('button', { class: 'btn small primary', onclick: () => ipcRenderer.send('open-external', 'https://ollama.com/download') }, 'Get Ollama') : null),
-        m.pulling && m.pulling.status !== 'error' ? h('div', { class: 'g-row col' }, h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` }))) : null,
-        h('div', { class: 'g-row col' }, ...cards),
-        h('div', { class: 'g-row' }, h('span', {}, 'Free memory when idle', h('span', { class: 'sub' }, 'Unloads the AI from RAM after this long')),
+            !m.ollama_installed && oi.status !== 'running' && oi.status !== 'installing'
+                ? h('button', { class: 'btn small primary', onclick: () => send({ type: 'install_ollama' }) }, 'Install (free)') : null),
+        pulling || oi.status === 'running'
+            ? h('div', { class: 'g-row col' }, h('div', { class: 'progress' }, h('i', { style: `width:${(pulling && m.pulling.pct) || oi.pct || 0}%` }))) : null,
+        h('div', { class: 'g-row col' },
+            h('div', { class: 'caption' }, `This PC: ${hw.ram_total || '?'} GB RAM (${hw.ram_free || '?'} GB free) · ${hw.cores || '?'} threads · ${hw.gpu_vram ? hw.gpu_vram + ' GB GPU' : 'no dedicated GPU'} → models up to ${cat.max_params ? Math.round(cat.max_params) + 'B' : '?'} run smoothly.`),
+            h('div', { class: 'row', style: 'gap:8px;margin-top:8px' }, sel, action),
+            h('div', { class: 'm-note', style: 'margin-top:6px' }, picked.compatible === false ? picked.reason : (picked.note || ''))),
+        h('div', { class: 'g-row' }, h('span', {}, 'Free memory when idle', h('span', { class: 'sub' }, 'Unloads the local model from RAM after this long')),
             settingControl({ key: 'llm_keep_alive', type: 'select', options: [['5m', '5 minutes'], ['15m', '15 minutes'], ['1h', '1 hour'], ['-1', 'Never']] })),
+    ];
+
+    // cloud
+    const provSel = h('select', { class: 'select' }, ...Object.entries(cl.providers || {}).map(([k, v]) => {
+        const o = h('option', { value: k }, v.label);
+        if (k === cl.provider) o.selected = true;
+        return o;
+    }));
+    provSel.onchange = () => updateSetting('cloud_provider', provSel.value);
+    const keyIn = h('input', { type: 'password', placeholder: cl.key ? `Saved (${cl.key}) — paste to replace` : 'Paste your API key', autocomplete: 'off' });
+    const defModel = (cl.providers && cl.providers[cl.provider] && cl.providers[cl.provider].model) || 'set one';
+    const cloudRows = [
+        h('div', { class: 'g-row' }, h('span', {}, 'Provider'), provSel),
+        h('div', { class: 'g-row' }, h('span', {}, 'Model', h('span', { class: 'sub' }, `Default: ${defModel}`)),
+            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'model id' })),
+        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Base URL'),
+            settingControl({ key: 'cloud_base_url', type: 'text', placeholder: cl.base_url || 'https://…/v1' })) : null,
+        h('div', { class: 'g-row col' },
+            h('div', { class: 'row', style: 'gap:8px' }, keyIn,
+                h('button', { class: 'btn small primary', onclick: () => { send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() }); keyIn.value = ''; } }, 'Save'),
+                h('button', { class: 'btn small', disabled: !cl.configured, onclick: () => send({ type: 'cloud_test' }) }, 'Test'),
+                cl.key ? h('button', { class: 'mini', onclick: () => send({ type: 'set_api_key', provider: provSel.value, key: '' }) }, 'Remove') : null),
+            h('div', { class: 'm-note', style: 'margin-top:6px' },
+                (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? 'Cloud brain is active.' : ''}`
+                    : 'Get a key at aistudio.google.com (Gemini) or platform.openai.com.') + (cl.error ? '  ⚠ ' + cl.error : ''))),
+        h('div', { class: 'g-row' }, h('span', {}, 'Let the cloud help learn memories', h('span', { class: 'sub' }, 'Off = memory learning stays on this PC')),
+            settingControl({ key: 'cloud_for_memory', type: 'switch' })),
+    ];
+
+    box.replaceChildren(h('div', { class: 'grouped' },
+        h('div', { class: 'g-row col' }, seg, h('div', { class: 'm-note', style: 'margin-top:6px' }, modeHelp)),
+        ...(mode !== 'cloud' ? localRows : []),
+        ...(mode !== 'local' ? cloudRows : []),
         h('div', { class: 'g-row' }, h('span', {}, 'Speech', h('span', { class: 'sub' }, `Recognition: Whisper ${m.whisper || ''} · Voice: ${m.tts_engine === 'kokoro' ? 'Kokoro (natural)' : 'Windows'}`)))));
 }
+let pickedModel = null;
 
 function privacySection() {
     return h('div', { class: 'grouped' },
         h('div', { class: 'g-row' }, h('span', {}, 'Everything stays on this laptop', h('span', { class: 'sub' }, dataDir || '%APPDATA%\\SnapAir')), h('button', { class: 'btn small', onclick: () => send({ type: 'open_data_folder' }) }, 'Open folder')),
         h('div', { class: 'g-row' }, h('span', {}, 'Export my data (JSON)'), h('button', { class: 'btn small', onclick: () => send({ type: 'export_data' }) }, 'Export')),
         h('div', { class: 'g-row' }, h('span', { class: 'danger-text' }, 'Delete all my data', h('span', { class: 'sub' }, 'Memories, notes, tasks, activity and conversations')),
-            h('button', { class: 'btn small danger', onclick: () => confirmDo('Delete all your data?', 'Snap will forget everything: memories, notes, tasks, activity history and conversations. This can\'t be undone.', () => send({ type: 'delete_all_data' })) }, 'Delete')));
+            h('button', { class: 'btn small danger', onclick: () => confirmDo('Delete all your data?', `${NAME()} will forget everything: memories, notes, tasks, activity history and conversations. This can't be undone.`, () => send({ type: 'delete_all_data' })) }, 'Delete')));
 }
 
 function helpSection() {
-    const keys = [['Ctrl+Alt+Space', 'Talk to Snap'], ['Ctrl+Alt+K', 'Open the assistant'], ['Ctrl+Alt+N', 'Start/stop meeting notes'], ['Ctrl+Alt+G', 'Pause hand gestures'], ['Ctrl+Alt+S', 'Settings'], ['Ctrl+Alt+H', 'Hide Snap']];
+    const keys = [['Ctrl+Alt+Space', 'Talk / interrupt'], ['Ctrl+Alt+K', 'Type a request'], ['Ctrl+Alt+J', 'Assistant'], ['Ctrl+Alt+T', 'Today'], ['Ctrl+Alt+N', 'Start/stop meeting notes'], ['Ctrl+Alt+G', 'Pause hand gestures'], ['Ctrl+Alt+S', 'Settings'], ['Ctrl+Alt+H', 'Hide the HUD']];
     return h('div', { class: 'grouped' },
         ...keys.map(([k, d]) => h('div', { class: 'g-row' }, h('span', {}, d), h('span', { class: 'kbd' }, k))),
         h('div', { class: 'g-row col' }, h('div', { class: 'help-cat' }, 'Try saying'),
-            h('div', { class: 'help-items' }, '“Snap, start my day” · “remind me at 5 to push the PR” · “take meeting notes” · “what notes did we create today?” · “remember that my manager is Arun” · “how much time on YouTube today?” · “switch to Chrome” · “play lofi on YouTube” · “wrap up my day”')),
+            h('div', { class: 'help-items' }, `“${NAME()}, start my day” · “remind me at 5 to push the PR” · “kal subah gym yaad dilana” · “set a timer for 10 minutes” · “take meeting notes” … “mark that” … “stop taking notes” · “what notes did we create today?” · “prepare my standup” · “focus for 45 minutes” · “park this as login bug” / “resume login bug” · “explain my clipboard” · “summarise this page” · “what do you know about me?” · “forget that I …” · “youtube kholo” · “awaaz badhao” · “press windows h” · “open clipboard history” · “wrap up my day”`)),
         ...catalogue.map(([cat, items]) => h('div', { class: 'g-row col' }, h('div', { class: 'help-cat' }, cat), h('div', { class: 'help-items' }, items.map((i) => `“${i}”`).join(' · ')))));
+}
+
+function renderHelp() {
+    const root = $('help-root');
+    root.replaceChildren(h('p', { class: 'caption intro' }, `Talk to ${NAME()} like a person — in English, Hindi or Hinglish. Say “${NAME()}, …”, press Ctrl+Alt+Space, or type.`),
+        helpSection(),
+        h('div', { class: 'group-title' }, 'Read your browser tab'),
+        h('div', { class: 'grouped' }, h('div', { class: 'g-row col' }, h('div', { class: 'help-items' },
+            'To let Snapy read the page you\'re on (“summarise this page”), start Chrome with remote debugging: chrome.exe --remote-debugging-port=9222. Without it, Snapy can still read any link you give it.'))));
 }
 
 function highlightSetting(key) {
@@ -627,7 +894,7 @@ function updateMeters() {
 }
 
 // ---------------------------------------------------------------- banners
-const BANNER_STYLE = { reminder: ['⏰', '#ff9f0a'], call: ['📞', '#30d158'], break: ['☕', '#64d2ff'], wrapup: ['🌙', '#5e5ce6'], info: ['✦', '#0a84ff'] };
+const BANNER_STYLE = { problem: ['mic', '#ff3b30'], reminder: ['bell', '#ff9f0a'], call: ['phone', '#30d158'], break: ['coffee', '#64d2ff'], wrapup: ['moon', '#5e5ce6'], info: ['info', '#0a84ff'] };
 function showBanner(b) {
     const [icon, color] = BANNER_STYLE[b.kind] || BANNER_STYLE.info;
     const close = () => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); };
@@ -635,21 +902,24 @@ function showBanner(b) {
     if (b.kind === 'reminder' && b.task) {
         actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'task_update', id: b.task.id, done: true }); close(); } }, 'Done'),
             h('button', { class: 'btn small', onclick: () => { send({ type: 'task_snooze', id: b.task.id, minutes: 10 }); close(); } }, 'Snooze 10m'));
-        ipcRenderer.send('notify', { title: 'Snap reminder', body: b.text });
+        ipcRenderer.send('notify', { title: b.title === 'Timer done' ? 'Timer done' : `${NAME()} reminder`, body: b.text });
     } else if (b.kind === 'call') {
         actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'meeting_start' }); close(); } }, 'Take notes'),
             h('button', { class: 'btn small', onclick: close }, 'No thanks'));
     } else if (b.kind === 'wrapup') {
         actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'chat', text: 'wrap up my day' }); openDrawer('assistant'); close(); } }, 'Show summary'),
             h('button', { class: 'btn small', onclick: close }, 'Later'));
+    } else if (b.action) {
+        actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: b.action.type }); close(); } }, b.action.label),
+            h('button', { class: 'btn small', onclick: close }, 'Later'));
     } else {
         actions.push(h('button', { class: 'btn small', onclick: close }, 'OK'));
     }
     const el = h('div', { class: 'banner interactive' },
-        h('div', { class: 'banner-head' }, h('div', { class: 'banner-icon', style: `background:${color}` }, icon), h('div', { class: 'banner-title' }, b.title), h('button', { class: 'icon-btn', style: 'width:22px;height:22px', onclick: close }, '✕')),
+        h('div', { class: 'banner-head' }, h('div', { class: 'banner-icon', style: `background:${color}`, html: svg(icon, 13) }), h('div', { class: 'banner-title' }, b.title), h('button', { class: 'icon-btn', style: 'width:22px;height:22px', onclick: close }, '✕')),
         h('div', { class: 'banner-text' }, b.text), h('div', { class: 'banner-actions' }, ...actions));
     $('banners').prepend(el);
-    if (b.kind !== 'reminder' && b.kind !== 'call') setTimeout(close, 20000);
+    if (!['reminder', 'call', 'problem'].includes(b.kind)) setTimeout(close, 20000);
 }
 
 // --------------------------------------------------------------- greeting
@@ -670,9 +940,9 @@ $('greeting-go').onclick = () => { send({ type: 'start_my_day' }); hideGreeting(
 $('greeting-later').onclick = () => { send({ type: 'dismiss_briefing' }); hideGreeting(); };
 
 // ------------------------------------------------------------- onboarding
-let obOpen = false, obStep = 0;
+let obOpen = false, obStep = 0, obAutoPulled = false;
 const ob = { name: '', role: '', work_start: '09:00', work_end: '18:00', city: '', languages: ['English'],
-             voice: true, activity: true, gestures: false, login: true, greeting_voice: false, editor: '', projects: {}, main: '' };
+             voice: true, activity: false, gestures: false, login: true, greeting_voice: false, editor: '', projects: {}, main: '' };
 const OB_STEPS = ['welcome', 'about', 'language', 'permissions', 'setup', 'brain', 'done'];
 function openOnboarding() {
     obOpen = true; obStep = 0;
@@ -697,24 +967,27 @@ function obInput(key, placeholder, type = 'text') {
 function perm(icon, color, title, text, key) {
     const c = h('input', { type: 'checkbox', class: 'switch' }); c.checked = !!ob[key];
     c.onchange = () => (ob[key] = c.checked);
-    return h('div', { class: 'perm' }, h('div', { class: 'p-icon', style: `background:${color}` }, icon), h('div', { class: 'p-body' }, h('b', {}, title), h('span', { class: 'caption' }, text)), c);
+    return h('div', { class: 'perm' }, h('div', { class: 'p-icon', style: `background:${color}`, html: svg(icon, 16) }), h('div', { class: 'p-body' }, h('b', {}, title), h('span', { class: 'caption' }, text)), c);
 }
 let obOrb = null;
 function renderObStep() {
     const step = OB_STEPS[obStep];
     $('ob-steps').replaceChildren(...OB_STEPS.map((_, i) => h('i', { class: i === obStep ? 'on' : '' })));
     $('ob-back').classList.toggle('hidden', obStep === 0);
-    $('ob-next').textContent = step === 'done' ? 'Start using Snap' : step === 'welcome' ? 'Get started' : 'Continue';
+    $('ob-next').textContent = step === 'done' ? `Start using ${ob.agent || NAME()}` : step === 'welcome' ? 'Get started' : 'Continue';
     const body = $('ob-body');
     if (step === 'welcome') {
-        const c = h('canvas', { width: 96, height: 96, class: 'orb-canvas' });
-        body.replaceChildren(h('div', { class: 'ob-hero' }, c, h('h2', {}, 'Hi, I’m Snap.'),
+        const c = h('canvas', { width: 96, height: 96, class: 'orb-canvas hidden' });
+        const logo = h('picture', { class: 'logo hero', html: '<source srcset="assets/snapy-white.svg" media="(prefers-color-scheme: dark)"><img src="assets/snapy-black.svg" alt="Snapy" width="88" height="88">' });
+        body.replaceChildren(h('div', { class: 'ob-hero' }, logo, c, h('h2', {}, `Hi, I’m ${NAME()}.`),
             h('p', { class: 'lead' }, 'Your personal assistant for this laptop. I can greet you in the morning, open your work, take your meeting notes, remember what matters to you and keep your reminders — just by talking.'),
-            h('p', { class: 'caption' }, '🔒 Everything I hear and learn stays on this computer. No account, no cloud.')));
+            h('p', { class: 'caption' }, 'Everything I hear and learn stays on this computer. No account, no cloud.'),
+            h('button', { class: 'btn', style: 'margin-top:14px', onclick: () => { send({ type: 'voice_onboarding' }); closeOnboarding(); openDrawer('assistant'); } }, 'Set up by voice instead')));
         obOrb = new Orb(c);
     } else if (step === 'about') {
         body.replaceChildren(h('h2', {}, 'A little about you'), h('p', { class: 'lead' }, 'So I can personalise things. You can change this anytime in Memory.'),
             obField('What should I call you?', obInput('name', 'Your name')),
+            obField('And what would you like to call me?', obInput('agent', 'Snapy')),
             obField('What do you do?', chipGroup(['Developer', 'Designer', 'Student', 'Manager', 'Writer', 'Other'], ob.role, false, (o) => (ob.role = o))),
             h('div', { class: 'two' }, obField('Work usually starts', obInput('work_start', '09:00', 'time')), obField('and ends', obInput('work_end', '18:00', 'time'))),
             obField('City (optional — for weather in your briefing)', obInput('city', 'e.g. Bengaluru')));
@@ -725,11 +998,11 @@ function renderObStep() {
             h('p', { class: 'fine' }, 'English-only is fastest. With more languages I detect what you’re speaking each time.'));
     } else if (step === 'permissions') {
         body.replaceChildren(h('h2', {}, 'What should I help with?'), h('p', { class: 'lead' }, 'Turn things on now or later in Settings.'),
-            perm('🎙', '#0a84ff', 'Listen for “Snap”', 'I only act when you start with my name. Audio is processed on this laptop and never stored.', 'voice'),
-            perm('📈', '#30d158', 'Learn my routine', 'I note which apps and projects you use and when — never keystrokes, screen contents or private windows — so I can set up your day.', 'activity'),
-            perm('🚀', '#ff9f0a', 'Start when I sign in', 'So I can greet you and get your work ready each morning.', 'login'),
-            perm('🗣', '#bf5af2', 'Speak my morning greeting', 'Otherwise I show it as a quiet card.', 'greeting_voice'),
-            perm('✋', '#ff375f', 'Hand gestures', 'Control the mouse with your hand using the camera. Great for accessibility.', 'gestures'));
+            perm('mic', '#0a84ff', `Listen for “${ob.agent || NAME()}”`, 'I only act when you start with my name. Audio is processed on this laptop and never stored.', 'voice'),
+            perm('chart', '#30d158', 'Learn my routine', 'I note which apps and projects you use and when — never keystrokes, screen contents or private windows — so I can set up your day.', 'activity'),
+            perm('rocket', '#ff9f0a', 'Start when I sign in', 'So I can greet you and get your work ready each morning.', 'login'),
+            perm('voice', '#bf5af2', 'Speak my morning greeting', 'Otherwise I show it as a quiet card.', 'greeting_voice'),
+            perm('hand', '#ff375f', 'Hand gestures', 'Control the mouse with your hand using the camera. Great for accessibility.', 'gestures'));
     } else if (step === 'setup') {
         const editors = (scan && scan.apps && scan.apps.editors) || [];
         if (!ob.editor && editors.length) ob.editor = editors[0];
@@ -743,17 +1016,42 @@ function renderObStep() {
             }))) : (scan ? h('p', { class: 'caption' }, 'No code projects found — you can pick a folder later in Settings.') : null));
     } else if (step === 'brain') {
         const m = models || {};
+        const cat = m.catalog || {};
+        const hw = cat.hardware || {};
+        const rec = cat.recommended || m.recommended_model || 'qwen3:1.7b';
+        const info = (cat.models || []).find((r) => r.name === rec) || {};
+        const oi = m.installing_ollama || {};
+        const pulling = m.pulling && m.pulling.status !== 'error';
+        const hwLine = h('p', { class: 'caption' }, `This PC: ${hw.ram_total || '?'} GB RAM · ${hw.gpu_vram ? hw.gpu_vram + ' GB GPU' : 'no dedicated GPU'} → the best model that runs smoothly here is ${info.label || rec} (${info.size || ''}). Bigger models are blocked so your laptop stays fast.`);
         let inner;
-        if (!m.ollama_installed) inner = [h('p', { class: 'lead' }, 'My AI brain runs on Ollama, a free app that keeps the model on your laptop.'), h('button', { class: 'btn primary', onclick: () => ipcRenderer.send('open-external', 'https://ollama.com/download') }, 'Download Ollama'), h('p', { class: 'fine' }, 'Commands, reminders, notes and meeting transcripts work without it.')];
-        else if (m.ready) inner = [h('p', { class: 'lead' }, `✓ Ready — ${m.current} is installed and runs fully offline.`)];
-        else if (m.pulling && m.pulling.status !== 'error') inner = [h('p', { class: 'lead' }, `Downloading ${m.pulling.name}… you can continue meanwhile.`), h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` })), h('p', { class: 'fine' }, `${Math.round(m.pulling.pct || 0)}%`)];
-        else inner = [h('p', { class: 'lead' }, 'I need to download my AI model once (about 1.4 GB). After that I work fully offline.'), h('button', { class: 'btn primary', onclick: () => send({ type: 'model_pull', name: m.current || 'qwen3:1.7b' }) }, 'Download now')];
-        body.replaceChildren(h('h2', {}, 'My AI brain'), ...inner);
+        if (oi.status === 'running' || oi.status === 'installing') {
+            inner = [h('p', { class: 'lead' }, oi.status === 'running' ? 'Downloading the local AI engine…' : 'Installing the local AI engine…'),
+                h('div', { class: 'progress' }, h('i', { style: `width:${oi.pct || 0}%` }))];
+        } else if (!m.ollama_installed) {
+            inner = [h('p', { class: 'lead' }, 'My AI brain runs on Ollama, a free engine that keeps the model on your laptop. I can install it for you.'),
+                h('button', { class: 'btn primary', onclick: () => send({ type: 'install_ollama' }) }, 'Install local AI (free)')];
+        } else if (m.ready) {
+            inner = [h('p', { class: 'lead' }, `Ready — ${m.current} is installed and runs fully offline.`)];
+        } else if (pulling) {
+            inner = [h('p', { class: 'lead' }, `Installing ${m.pulling.name} for this PC… you can continue meanwhile.`),
+                h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` })), h('p', { class: 'fine' }, `${Math.round(m.pulling.pct || 0)}%`)];
+        } else {
+            // automatic: install the recommended model as soon as this step is shown
+            if (!obAutoPulled) { obAutoPulled = true; send({ type: 'update_settings', settings: { llm_model: rec } }); send({ type: 'model_pull', name: rec }); }
+            inner = [h('p', { class: 'lead' }, `Installing ${info.label || rec} automatically…`)];
+        }
+        const keyIn = h('input', { type: 'password', placeholder: 'Optional: paste a Gemini or OpenAI API key', style: 'flex:1;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--card)' });
+        const provSel = h('select', { class: 'select' }, h('option', { value: 'gemini' }, 'Gemini'), h('option', { value: 'openai' }, 'OpenAI'));
+        body.replaceChildren(h('h2', {}, 'My AI brain'), hwLine, ...inner,
+            h('div', { class: 'group-title', style: 'margin-top:20px' }, 'Want instant answers? (optional)'),
+            h('p', { class: 'caption' }, 'Add a cloud API key and conversations and meeting summaries answer in about half a second with no load on your laptop. Commands, reminders, memory and activity always stay on this PC.'),
+            h('div', { class: 'row', style: 'gap:8px;margin-top:8px' }, provSel, keyIn,
+                h('button', { class: 'btn', onclick: () => { if (keyIn.value.trim()) { send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() }); send({ type: 'update_settings', settings: { ai_provider: 'auto' } }); keyIn.value = ''; showToast('Key saved — encrypted on this PC'); } } }, 'Save')));
     } else if (step === 'done') {
         body.replaceChildren(h('div', { class: 'ob-hero' }, h('h2', {}, `You're all set${ob.name ? ', ' + ob.name : ''}!`),
             h('p', { class: 'lead' }, 'Try one of these:'),
-            h('div', { class: 'chip-row center' }, ...['“Snap, start my day”', '“Snap, remind me at 5 to push the PR”', '“Snap, take meeting notes”', '“Snap, remember that I prefer Slack”'].map((t) => h('span', { class: 'chip static' }, t))),
-            h('p', { class: 'caption', style: 'margin-top:12px' }, 'Click the pill at the top of your screen any time to open Snap.')));
+            h('div', { class: 'chip-row center' }, ...['start my day', 'remind me at 5 to push the PR', 'take meeting notes', 'remember that I prefer Slack'].map((x) => `“${ob.agent || NAME()}, ${x}”`).map((t) => h('span', { class: 'chip static' }, t))),
+            h('p', { class: 'caption', style: 'margin-top:12px' }, `Click the pill at the top of your screen any time to open ${ob.agent || NAME()}.`)));
     }
 }
 $('ob-back').onclick = () => { if (obStep > 0) { obStep--; renderObStep(); } };
@@ -761,12 +1059,13 @@ $('ob-next').onclick = () => {
     if (obStep < OB_STEPS.length - 1) { obStep++; renderObStep(); return; }
     const projects = ((scan && scan.projects) || []).slice(0, 15).map((p) => ({ name: p.name, path: p.path }));
     const onlyEnglish = ob.languages.length === 1 && ob.languages[0] === 'English';
+    const agentName = (ob.agent || '').trim() || 'Snapy';
     send({ type: 'onboarding_complete', scan,
         profile: { name: ob.name, preferred_name: ob.name, role: ob.role, work_start: ob.work_start, work_end: ob.work_end, city: ob.city,
                    languages: ob.languages, editor: ob.editor, projects },
         settings: { voice_mode: ob.voice ? 'wake' : 'push', activity_tracking: ob.activity, gestures_enabled: ob.gestures,
                     start_at_login: ob.login, greeting_voice: ob.greeting_voice, voice_language: onlyEnglish ? 'en' : 'auto',
-                    project_dir: ob.main || '' } });
+                    project_dir: ob.main || '', agent_name: agentName } });
     ipcRenderer.send('set-login-item', ob.login);
     closeOnboarding();
     openDrawer('assistant');
@@ -802,7 +1101,8 @@ function renderCursor() {
 // ----------------------------------------------------------------- hotkeys
 ipcRenderer.on('hotkey', (_e, name) => {
     if (name === 'push_to_talk') talk();
-    else if (name === 'command') { openDrawer('assistant'); setTimeout(() => $('chat-input').focus(), 150); }
+    else if (name === 'command' || name === 'assistant') { openDrawer('assistant'); setTimeout(() => $('chat-input').focus(), 150); }
+    else if (name === 'today') toggleDrawer('today');
     else if (name === 'toggle_gestures') send({ type: 'toggle_gestures' });
     else if (name === 'settings') toggleDrawer('settings');
     else if (name === 'toggle_hud') document.body.classList.toggle('hud-hidden');
@@ -810,11 +1110,18 @@ ipcRenderer.on('hotkey', (_e, name) => {
 });
 
 // ------------------------------------------------------------------ boot
+function renderName() {
+    const h1 = document.querySelector('.drawer-title h1');
+    if (h1) h1.textContent = NAME();
+    document.title = `${NAME()} HUD`;
+}
 function renderAll() {
-    bindSettings(); renderIsland(); renderSuggestions(); renderTasks(); renderNotes(); renderMemory();
+    renderName();
+    bindSettings(); renderIsland(); renderSuggestions(); renderTasks(); renderNotes(); renderMemory(); renderFocus(); renderContexts();
     renderMeeting(); renderGlance(); renderActivity(); renderBriefingCard();
     if (activeTab === 'settings') renderSettings();
 }
+applyIcons();
 connect();
 renderIsland();
 renderSuggestions();

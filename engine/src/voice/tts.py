@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover
     sd = None
 
 from src import storage
+from src.voice.piper_voice import CATALOG as PIPER_CATALOG, PiperVoice, download as piper_download
 
 # whisper language code -> (kokoro voice, kokoro lang)
 VOICES = {
@@ -28,10 +29,28 @@ ENGLISH_VOICES = [("af_heart", "Heart (warm, female)"), ("af_bella", "Bella (bri
                   ("am_fenrir", "Fenrir (deep, male)"), ("bf_emma", "Emma (British, female)"),
                   ("bm_george", "George (British, male)")]
 KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
+INDIC_SCRIPTS = [(re.compile(r"[ఀ-౿]"), "te"), (re.compile(r"[ഀ-ൿ]"), "ml"),
+                 (re.compile(r"[ঀ-৿]"), "bn"), (re.compile(r"[؀-ۿ]"), "ur"),
+                 (re.compile(r"[஀-௿]"), "ta"), (re.compile(r"[઀-૿]"), "gu"),
+                 (re.compile(r"[ಀ-೿]"), "kn"), (re.compile(r"[਀-੿]"), "pa")]
 DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 
 
+def piper_dir():
+    """Native voices: bundled with the installer when present, else downloaded on first use."""
+    if getattr(sys, "frozen", False):
+        bundled = os.path.join(os.path.dirname(sys.executable), "models", "piper")
+        if os.path.isdir(bundled):
+            return bundled
+    return os.path.join(storage.data_dir(), "models", "piper")
+
+
 def model_dir():
+    """Bundled with the installer when present, else downloaded once to the data folder."""
+    if getattr(sys, "frozen", False):
+        bundled = os.path.join(os.path.dirname(sys.executable), "models", "kokoro")
+        if os.path.exists(os.path.join(bundled, "kokoro-v1.0.int8.onnx")):
+            return bundled
     return os.path.join(storage.data_dir(), "models", "kokoro")
 
 
@@ -82,15 +101,17 @@ def clean_for_speech(text):
     t = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)          # code
     t = re.sub(r"https?://\S+", "a link", t)
     t = re.sub(r"[*_#>|]+", "", t)
+    t = re.sub("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]", "", t)   # emoji
     t = re.sub(r"\s+", " ", t)
     return t.strip()
 
 
 class Speaker:
-    def __init__(self, settings=None, on_level=None, on_state=None):
+    def __init__(self, settings=None, on_level=None, on_state=None, on_caption=None):
         self.settings = settings
         self.on_level = on_level or (lambda lvl: None)
         self.on_state = on_state or (lambda speaking: None)
+        self.on_caption = on_caption or (lambda text: None)     # live captions (also the no-audio fallback)
         self.kokoro = None
         self.engine = "none"
         self.text_q = queue.Queue()
@@ -101,6 +122,8 @@ class Speaker:
         self._pending = 0
         self._lock = threading.Lock()
         self._sapi = None
+        self._piper = {}
+        self._downloading = set()
         threading.Thread(target=self._load, daemon=True).start()
         threading.Thread(target=self._synth_loop, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
@@ -132,6 +155,10 @@ class Speaker:
     def _load(self):
         d = model_dir()
         onnx, voices = os.path.join(d, "kokoro-v1.0.int8.onnx"), os.path.join(d, "voices-v1.0.bin")
+        import importlib.util
+        if importlib.util.find_spec("kokoro_onnx") is None:      # optional dependency not installed
+            self.engine = "sapi" if sys.platform == "win32" else "none"
+            return
         if not (os.path.exists(onnx) and os.path.exists(voices)):
             self.engine = "sapi" if sys.platform == "win32" else "none"
             try:
@@ -196,6 +223,48 @@ class Speaker:
             self.on_state(on)
 
     # --------------------------------------------------------- workers
+    # ------------------------------------------------- native Indian voices
+    def _script_lang(self, text, lang):
+        """Language to speak in, from the script actually used in the text."""
+        lang = (lang or "en")[:2]
+        if DEVANAGARI.search(text):
+            return lang if lang in ("mr", "ne") else "hi"
+        for rx, code in INDIC_SCRIPTS:
+            if rx.search(text):
+                return code
+        return "en" if lang in ("hi", "hinglish") else lang     # Latin text: an English voice reads it best
+
+    def _native_voice(self, lang):
+        """A native Piper voice for this language (downloaded on first use), or None."""
+        if not self._s("native_indic_voices", True) or lang not in PIPER_CATALOG:
+            return None
+        chosen = (self._s("indic_voices", {}) or {}).get(lang) or PIPER_CATALOG[lang][0][0]
+        if chosen in self._piper:
+            return self._piper[chosen]
+        path = os.path.join(piper_dir(), chosen + ".onnx")
+        if os.path.exists(path) and os.path.exists(path + ".json"):
+            try:
+                self._piper[chosen] = PiperVoice(path)
+                return self._piper[chosen]
+            except Exception as e:
+                print("[TTS] native voice failed:", e)
+                return None
+        if chosen not in self._downloading:
+            self._downloading.add(chosen)
+            rel = next(r for n, r, _ in PIPER_CATALOG[lang] if n == chosen)
+
+            def fetch():
+                try:
+                    print(f"[TTS] Downloading native {lang} voice {chosen}…")
+                    piper_download(piper_dir(), chosen, rel)
+                    print(f"[TTS] Native {lang} voice ready")
+                except Exception as e:
+                    print("[TTS] native voice download failed:", e)
+                finally:
+                    self._downloading.discard(chosen)
+            threading.Thread(target=fetch, daemon=True).start()
+        return None          # meanwhile the multilingual voice is used
+
     def _voice_for(self, text, lang):
         if DEVANAGARI.search(text):
             lang = "hi"
@@ -216,15 +285,23 @@ class Speaker:
                     break
                 time.sleep(0.1)
             try:
-                if self.kokoro:
-                    voice, klang = self._voice_for(text, lang)
+                speak_lang = self._script_lang(text, lang)
+                native = self._native_voice(speak_lang)
+                if native is not None:
+                    samples, sr = native.synthesize(text, speed=float(self._s("tts_speed", 1.0)))
+                    if gen == self.gen:
+                        self.audio_q.put((gen, samples, sr, text))
+                elif self.kokoro:
+                    voice, klang = self._voice_for(text, speak_lang)
                     samples, sr = self.kokoro.create(text, voice=voice, lang=klang,
                                                      speed=float(self._s("tts_speed", 1.0)))
                     if gen == self.gen:
-                        self.audio_q.put((gen, samples.astype(np.float32), sr))
+                        self.audio_q.put((gen, samples.astype(np.float32), sr, text))
                 elif self.engine == "sapi":
                     if gen == self.gen:
-                        self.audio_q.put((gen, text, None))
+                        self.audio_q.put((gen, text, None, text))
+                elif gen == self.gen:
+                    self.audio_q.put((gen, None, 0, text))      # captions only
             except Exception as e:
                 print("[TTS] synth error:", e)
                 with self._lock:
@@ -233,7 +310,7 @@ class Speaker:
     def _play_loop(self):
         while True:
             try:
-                gen, audio, sr = self.audio_q.get(timeout=0.25)
+                gen, audio, sr, caption = self.audio_q.get(timeout=0.25)
             except queue.Empty:
                 if self.speaking and self._pending <= 0:
                     self._set_speaking(False)
@@ -242,7 +319,10 @@ class Speaker:
                 continue
             self._set_speaking(True)
             try:
-                if sr is None:
+                self.on_caption(caption)
+                if sr == 0:
+                    time.sleep(min(6, 0.25 + len(caption) * 0.045))   # captions-only: give time to read
+                elif sr is None:
                     self._speak_sapi(audio, gen)
                 else:
                     self._play(audio, sr, gen)
@@ -266,16 +346,35 @@ class Speaker:
                 self.on_level(float(np.sqrt(np.mean(chunk ** 2))) if len(chunk) else 0.0)
                 out.write(chunk.reshape(-1, 1))
 
+    def _sapi_process(self):
+        """One persistent PowerShell running System.Speech; killed on interrupt and respawned."""
+        if self._sapi is None or self._sapi.poll() is not None:
+            script = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                      "[Console]::InputEncoding = [Text.Encoding]::UTF8; "
+                      "while (($l = [Console]::In.ReadLine()) -ne $null) { $s.Speak($l); [Console]::Out.WriteLine('DONE'); "
+                      "[Console]::Out.Flush() }")
+            self._sapi = subprocess.Popen(["powershell", "-NoProfile", "-Command", script], stdin=subprocess.PIPE,
+                                          stdout=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return self._sapi
+
     def _speak_sapi(self, text, gen):
-        script = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                  "$s.Speak([Console]::In.ReadToEnd())")
-        self._sapi = subprocess.Popen(["powershell", "-NoProfile", "-Command", script], stdin=subprocess.PIPE,
-                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        self._sapi.stdin.write(text.encode("utf-8"))
-        self._sapi.stdin.close()
+        proc = self._sapi_process()
+        try:
+            proc.stdin.write((text.replace("\n", " ") + "\n").encode("utf-8"))
+            proc.stdin.flush()
+        except OSError:
+            self._sapi = None
+            return
+        done = threading.Event()
+
+        def reader():
+            try:
+                proc.stdout.readline()
+            finally:
+                done.set()
+        threading.Thread(target=reader, daemon=True).start()
         t = 0.0
-        while self._sapi and self._sapi.poll() is None and gen == self.gen:
+        while not done.is_set() and gen == self.gen:
             t += 0.08
             self.on_level(0.04 + 0.03 * abs(np.sin(t * 7)))   # gentle orb motion
             time.sleep(0.08)
-        self._sapi = None

@@ -21,3 +21,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.lnk
+
+# installer icons are source files
+!app/build/
+!app/build/**
+# PyInstaller output
+engine/build/
+engine/dist/

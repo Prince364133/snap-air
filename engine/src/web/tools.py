@@ -55,6 +55,38 @@ def read_page(url, max_chars=6000):
     return {"title": title, "url": url, "text": text[:max_chars]}
 
 
+CDP = "http://127.0.0.1:9222"
+
+
+def current_tab(max_chars=8000):
+    """The page open in Chrome/Edge (started with --remote-debugging-port=9222).
+    Uses Playwright over CDP when installed (sees logged-in pages), else fetches the URL."""
+    try:
+        tabs = requests.get(CDP + "/json", timeout=2).json()
+    except (requests.RequestException, ValueError):
+        return None
+    pages = [t for t in tabs if t.get("type") == "page" and t.get("url", "").startswith("http")]
+    if not pages:
+        return None
+    tab = pages[0]                      # most recently focused tab is listed first
+    try:
+        from playwright.sync_api import sync_playwright  # optional dependency
+        with sync_playwright() as pw:
+            browser = pw.chromium.connect_over_cdp(CDP)
+            for ctx in browser.contexts:
+                for page in ctx.pages:
+                    if page.url == tab["url"]:
+                        return {"title": page.title(), "url": page.url, "text": page.inner_text("body")[:max_chars]}
+    except Exception:
+        pass
+    try:
+        page = read_page(tab["url"], max_chars)
+        page["title"] = tab.get("title") or page["title"]
+        return page
+    except Exception:
+        return {"title": tab.get("title", ""), "url": tab["url"], "text": ""}
+
+
 WMO = {0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "fog",
        51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
        71: "light snow", 73: "snow", 75: "heavy snow", 80: "rain showers", 81: "rain showers",

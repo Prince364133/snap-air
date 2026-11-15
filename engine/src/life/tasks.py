@@ -41,7 +41,7 @@ def _clock(h, m, ampm, now, day=None):
     if day is None and not ampm and h <= 12:
         # "at 5" -> the next 5 o'clock that's still ahead; prefer afternoon for 1-7
         options = [cand, cand + dt.timedelta(hours=12)] if h < 12 else [cand]
-        if 1 <= h <= 7:
+        if 1 <= h <= 6:          # "at 4" means 4 PM; 7+ could be either, take the next one
             options = [cand + dt.timedelta(hours=12), cand]
         for c in options:
             if c > now:
@@ -110,8 +110,14 @@ def parse_when(text, now=None):
         span = nm.span()
 
     if when is None and day is not None:
-        defaults = {"tonight": 20, "this evening": 18, "shaam ko": 18, "this afternoon": 15, "this morning": 9, "subah": 9}
+        defaults = {"tonight": 20, "this evening": 18, "shaam ko": 18, "this afternoon": 15, "this morning": 9,
+                    "subah": 9, "aaj raat": 20, "raat ko": 20}
         hour = defaults.get(dm.group(1) if dm else "", 9)
+        # "kal subah" / "tomorrow evening": a part of day anywhere in the phrase sets the hour
+        pod = re.search(r"\b(subah|morning|dopahar|afternoon|shaam|evening|raat|night)\b", low)
+        if pod:
+            hour = {"subah": 9, "morning": 9, "dopahar": 14, "afternoon": 14, "shaam": 18, "evening": 18,
+                    "raat": 21, "night": 21}[pod.group(1)]
         when = dt.datetime.combine(day, dt.time(hour))
         if when <= now:
             when = now + dt.timedelta(minutes=30)
@@ -119,7 +125,8 @@ def parse_when(text, now=None):
     rest = t
     for m in (span and (span,)) or ():
         rest = rest[:m[0]] + " " + rest[m[1]:]
-    for rx in (r"\b(tomorrow|kal|day after tomorrow|tonight|this evening|this afternoon|this morning|shaam ko|subah)\b",
+    for rx in (r"\b(day after tomorrow|tomorrow|kal|tonight|this evening|this afternoon|this morning|shaam ko|subah|"
+               r"aaj raat|raat ko|(?:in the )?(?:morning|evening|afternoon|night)|shaam|dopahar|raat)\b",
                r"\b(?:on |next |this )?(" + "|".join(WEEKDAYS) + r")\b") if when else ():
         rest = re.sub(rx, " ", rest, flags=re.I)
     rest = re.sub(r"\s+", " ", rest).strip(" ,.")

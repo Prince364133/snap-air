@@ -1,12 +1,72 @@
 {
-  "name": "snap-motion-os",
-  "version": "1.0.0",
-  "description": "AI-Powered Gesture Controlled OS Layer",
+  "name": "snapy",
+  "version": "2.0.0",
+  "description": "Snapy — your private AI companion for Windows",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build:engine": "cd ../engine && .venv\\Scripts\\python -m PyInstaller snapy-engine.spec --noconfirm && .venv\\Scripts\\python bundle_models.py",
+    "build:installer": "electron-builder --win nsis",
+    "dist": "npm run build:engine && npm run build:installer"
   },
   "devDependencies": {
-    "electron": "^29.1.0"
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3"
+  },
+  "productName": "Snapy",
+  "author": "Snapy",
+  "build": {
+    "appId": "ai.snapy.app",
+    "productName": "Snapy",
+    "copyright": "Snapy",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "orb.js",
+      "index.html",
+      "styles.css",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../engine/dist/snapy-engine",
+        "to": "engine",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Snapy-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Snapy",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

@@ -219,7 +219,7 @@ class AssistantTests(unittest.TestCase):
     def test_llm_tool_desktop_and_risky_confirmation(self):
         self.a.llm.stream_answer = json.dumps({"tool": "desktop", "args": {"command": "play lofi hip hop on youtube"},
                                                "say": "Chalo, lofi laga deta hoon."})
-        self.say("yaar kuch lofi chala do")
+        self.say("I need some calm music to focus")
         self.assertIn(("youtube", "lofi hip hop"), self.os.calls)
         self.a.llm.stream_answer = json.dumps({"tool": "desktop", "args": {"command": "close chrome"},
                                                "say": "Okay."})
@@ -284,8 +284,18 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(note["kind"], "meeting")
         self.assertEqual(note["title"], "API sync")
         self.assertIn("Rahul will update the README", note["transcript"])
-        titles = [t["title"] for t in self.a.tasks.open_tasks()]
-        self.assertEqual(titles, ["Update the README"])         # only the user's own action item
+        self.assertIn("You: Rahul will update the README", note["transcript"])   # mic = "You"
+        # action items wait for review instead of silently becoming tasks
+        self.assertEqual(self.a.tasks.open_tasks(), [])
+        self.assertTrue(note["review_pending"])
+        mine = [a for a in note["actions"] if a["mine"]]
+        self.assertEqual([a["task"] for a in mine], ["Update the README"])
+        task = self.a.meeting.review_action(note, mine[0]["id"], "accept")
+        self.assertEqual(task["title"], "Update the README")
+        other = [a for a in note["actions"] if not a["mine"]][0]
+        self.a.meeting.review_action(note, other["id"], "not_mine")
+        self.assertFalse(note["review_pending"])
+        self.assertEqual([t["title"] for t in self.a.tasks.open_tasks()], ["Update the README"])
 
     def test_notes_today_and_tasks_queries(self):
         self.a.notes.add("Call the bank")

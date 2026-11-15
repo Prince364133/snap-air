@@ -156,8 +156,31 @@ CALL_APPS = ("teams", "zoom", "slack", "discord", "webex", "skype", "whatsapp", 
 CALL_TITLES = ("meet -", "meet.google.com", "zoom meeting", "| microsoft teams", "huddle", "webex")
 
 
+CALL_WINDOW = re.compile(r"^Meet - |meet\.google\.com|\bZoom Meeting\b|^Zoom Workplace - Meeting|"
+                         r"\bMeeting( with [^|]+)? \| Microsoft Teams|\bCall with .+ \| Microsoft Teams|"
+                         r"\bWebex\b.*\bmeeting\b|\bHuddle\b.*\bSlack\b", re.I)
+
+
+def call_from_titles(titles):
+    """Call apps announce live calls in their window titles."""
+    for t in titles:
+        if CALL_WINDOW.search(t or ""):
+            tl = t.lower()
+            return ("Zoom" if "zoom" in tl else "Teams" if "teams" in tl else "Slack" if "slack" in tl else
+                    "Webex" if "webex" in tl else "Google Meet")
+    return None
+
+
 def detect_call():
-    """Best-effort: returns the app name if a call/meeting seems to be live."""
+    """Best-effort: the app name if a call seems live (call window title, or a
+    call-capable app currently holding the microphone)."""
+    try:
+        from src.os_control import windows as win
+        hit = call_from_titles(t for _, t, _ in win.list_windows())
+        if hit:
+            return hit
+    except Exception:
+        pass
     try:
         users = apps_using_microphone()
     except Exception:

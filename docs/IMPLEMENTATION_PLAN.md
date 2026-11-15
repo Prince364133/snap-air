@@ -151,3 +151,52 @@ Updates 1–23 are implemented and tested. Update 24 (installer, code signing, a
   - On CPU the 1.7B model is good at personal Q&A and Hinglish, but can answer time-sensitive questions from stale knowledge instead of searching.
   - Voice barge-in needs headphones; on speakers, interrupt with the hotkey or the orb.
   - The wake word is detected by transcribing speech (CPU while people talk nearby). A dedicated keyword-spotting model is part of update 24.
+
+---
+
+## Spec compliance review (2026-11-15, against "Prompt: upgrade Snap Air into a personal AI companion")
+
+### Acceptance checklist
+| Item | Status | Evidence |
+|---|---|---|
+| All old + new tests pass; engine starts with no optional packages | ✅ | 112 tests pass. Engine started with kokoro_onnx, soundcard, faster_whisper and playwright blocked → Windows voice, reminders still work |
+| Login → greeting → "yes" → project opens + dev server, no duplicates | ✅ | `test_briefing_offer_then_yes`, `test_start_my_day_skips_what_is_already_open` (editor already open → skipped; second run → no second dev server) |
+| "Start taking notes … stop" → meeting note; action items wait for review | ✅ | `test_meeting_notes_end_to_end`: pending → accept → task; not_mine → no task |
+| "Open the drawer and tell me what notes we created today" | ✅ | `test_open_drawer_notes_today_filter`: opens Notes filtered to Today and replies with the summary |
+| Hinglish in → Hinglish out; "youtube kholo" runs instantly | ✅ | `test_hinglish_reply_language`, `test_youtube_kholo_runs_instantly_without_llm` (Devanagari too) |
+| Speaking while Snap talks stops it at once | ✅ (echo-guarded) | Mic stays open while speaking; threshold rises with playback level (learned speaker→mic coupling); 300 ms of clear speech → playback stops and the utterance is taken without the wake word |
+| During a Teams/Zoom call Snap stays silent | ✅ | `test_quiet_during_calls`; call detection by window title (`test_call_titles`) + mic-in-use; reminders become notifications only |
+| Memory drawer shows exactly what's stored; "forget that…" works; export/delete-all | ✅ | Memory tab, `test_remember_and_forget`, export + delete-all in Settings → Privacy |
+| 8 GB laptop gets a small, responsive model | ✅ | `recommend_model` (RAM tiers + free-RAM cap) → `qwen3:1.7b`; measured first word 1.5–2.4 s on the busy 16 GB test laptop |
+
+### Deliberate deviations (with reasons)
+- **Module layout:** code lives in `engine/src/brain` (assistant, memory, llm, briefing, hinglish) and `engine/src/life` (tasks, notes, activity, meeting, workday), not `src/companion/`. Same responsibilities, already tested, so not renamed.
+- **Memory files:** `memory/profile.json`, `memory/memories.json`, `memory/vectors.json`, `memory/journal/DAY.json` and `memory/conversations/DAY.jsonl` instead of a single `memory.json`. Profile, facts and episodes stay separately readable, and conversations get retention. Importance uses a 1–5 scale; the reflection threshold of 20 equals the spec's 40 on 1–10.
+- **Embeddings:** `embeddinggemma` (multilingual, Hindi) instead of `nomic-embed-text` (English-centric). Live turns use keyword relevance because embedding a query took 3–6 s on the busy test CPU; vectors are used for background consolidation.
+- **Tool calling:** structured JSON output (`say` first) instead of Ollama native tools, because of the Qwen3.5 think+tools bugs and to get speech out sooner. Exposes 18 tools; `<think>` filtering and a non-streaming fallback are in `LLM.stream`.
+- **Loopback capture:** `soundcard` (WASAPI loopback, pure Python) instead of PyAudioWPatch; same capability, already verified on this machine.
+- **TTS:** Kokoro → Windows voices (one persistent PowerShell) → captions only. Kyutai Pocket TTS is not integrated yet (next phase).
+- **Model tiers:** the spec says 16 GB → `qwen3:8b`. We follow that, but cap by *free* RAM, because on the measured 16 GB developer laptop (0.8–1.7 GB free) anything above 1.7B felt unresponsive.
+
+### Still open (next phase)
+1. NSIS installer with embedded Python, model downloader and code signing (Phase 5). `setLoginItemSettings` already passes `--autostart`.
+2. Silero VAD + Smart Turn v3 for end-of-turn detection (currently energy endpointing).
+3. Kyutai Pocket TTS backend; a custom-trained "Hey Snap" wake-word model.
+4. LoRA fine-tuning as an "improve the model" path; today "improve" means switching to a bigger model.
+
+---
+
+## Round 3 (2026-11-15): latency, cloud brain, device-aware models, Snapy installer, full keyboard
+
+| Change | Detail / evidence |
+|---|---|
+| Latency | Default speech recognition is `tiny.en` (~0.4 s measured; multilingual `base` stays available). Ollama runs at below-normal priority with half the CPU threads so the HUD, camera and IDE stay smooth. Earlier fixes still apply: `127.0.0.1` instead of `localhost` (2.09 s → 0.01 s per request) and no live query embeddings. |
+| Cloud brain (hybrid) | Modes: On this PC / Auto / Cloud. Providers: Gemini, OpenAI, or any OpenAI-compatible endpoint. Keys are encrypted with Windows DPAPI and never echoed to the UI. Commands, tasks, notes, memory files and activity always stay local; memory learning stays local unless allowed. Falls back to local if the cloud fails. 6 unit tests cover Gemini/OpenAI SSE parsing, errors and routing. |
+| Model catalog 1B → 14B | 15 Ollama models. Compatibility is computed from RAM, cores and NVIDIA VRAM. On this CPU-only 16 GB laptop: up to ~4B allowed, 7B–14B shown as "Not compatible with this PC" and refused by the engine (not just the UI). Onboarding installs the recommended model automatically and can install Ollama itself (silent). |
+| Full keyboard by voice | `src/os_control/keys.py`: any combo, F1–F24, misheard letters after modifiers ("window plus edge" → Win+H), ~60 named Windows actions (voice typing, clipboard history, emoji panel, Task Manager, snap layouts, virtual desktops…). Lock uses `LockWorkStation`; Ctrl+Alt+Del is refused honestly (Windows security). |
+| Snapy brand | Black and white logo variants, app icon (`app/build/icon.ico`), theme-aware tray icon, "Snapy"/"Snappy"/"Snap" wake words. |
+| Installer | `npm run dist` → PyInstaller frozen engine (no Python needed) + bundled tiny.en and Kokoro voice + electron-builder NSIS → `app/dist/Snapy-Setup-2.0.0.exe` (374 MB). The packaged app was launched and verified: it starts its own engine, offline voice is ready, and onboarding runs. |
+| Privacy fix | MediaPipe 1.x contains Google "clearcut" usage telemetry with no opt-out ([mediapipe#6291](https://github.com/google-ai-edge/mediapipe/issues/6291)). Pinned to **0.10.33**, verified to contain no telemetry client and to work with the hand tracker (0.10.30 is broken on Windows). |
+| Robustness | The camera/gesture layer can no longer crash the engine. The mic tries WASAPI, DirectSound and MME across devices. If Windows privacy blocks the mic, Snapy shows a banner that opens Settings › Privacy › Microphone. Engine log is line-buffered. Added a `main.py` import test (it caught a startup NameError). |
+
+Still open: code-signing certificate (SmartScreen warning until then), auto-update, Silero VAD + Smart Turn, Pocket TTS, custom wake-word model, LoRA.

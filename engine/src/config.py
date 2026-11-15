@@ -33,9 +33,9 @@ DEFAULTS = {
 
     # --- Voice ---
     "voice_mode": "wake",          # "wake" (say "Snap ..."), "always", "push" (hotkey only), "off"
-    "wake_words": ["snap", "hey snap", "snap air", "okay snap"],
-    "voice_language": "auto",      # "auto" = detect language each time (multilingual), or "en", "hi", ...
-    "speech_quality": "balanced",  # fast (tiny) | balanced (base) | accurate (small) Whisper models
+    "wake_words": ["snapy", "snappy", "hey snapy", "snap"],
+    "voice_language": "en",        # "en" = fastest (tiny.en ~0.4 s); "auto" = detect language (multilingual, ~1.5 s)
+    "speech_quality": "fast",      # fast (tiny) | balanced (base) | accurate (small) Whisper models
     "mic_sensitivity": 5,          # 1 (only loud speech) .. 10 (very sensitive)
     "use_ollama": False,           # (legacy) let the LLM map unknown phrases to commands
     "ollama_model": "qwen3:1.7b",
@@ -46,24 +46,36 @@ DEFAULTS = {
     "tts_enabled": True,
     "tts_voice": "af_heart",
     "tts_speed": 1.0,
+    "native_indic_voices": True,   # native-speaker Piper voices for Hindi, Telugu, Malayalam, Marathi, Bengali…
+    "indic_voices": {},            # per-language choice, e.g. {"hi": "hi_IN-rohan-medium"}
     "speak_typed_replies": False,  # also speak answers to typed questions
     "speak_confirmations": False,  # speak "Scrolled down" etc. for quick commands
 
     # --- AI brain ---
+    "agent_name": "Snapy",         # users can rename their assistant; it answers to this name
     "llm_model": "qwen3:1.7b",
+    "ai_provider": "auto",         # local | cloud | auto (cloud when an API key is set and online)
+    "cloud_provider": "gemini",    # gemini | openai | compatible
+    "cloud_model": "",             # empty = provider default
+    "cloud_base_url": "",          # for OpenAI-compatible endpoints
+    "cloud_for_memory": False,     # memory learning stays on-device unless allowed
     "llm_keep_alive": "15m",       # unload the model from RAM after this much idle time
     "internet_tools": True,        # web search / weather when you ask for them
 
     # --- Memory & routine ---
     "memory_learning": True,       # learn durable facts from conversations
-    "activity_tracking": True,     # local app-usage tracking for routine learning
+    "activity_tracking": False,    # opt-in (asked during onboarding): local app-usage tracking
     "activity_privacy": "standard",  # standard = app names + project/site names; all = also window titles
     "activity_exclude": ["keepass", "keepassxc", "1password", "bitwarden", "lastpass", "dashlane"],
-    "activity_retention_days": 90,
+    "activity_retention_days": 30,
     "break_reminder_minutes": 0,   # 0 = off; e.g. 50 = nudge after 50 min of continuous work
     "daily_greeting": True,
     "greeting_voice": False,       # speak the morning greeting (default: show a card)
     "start_at_login": False,
+    "welcome_back": True,         # short "welcome back" after 3+ hours away
+    "recap_time": "",              # e.g. "18:30" = offer an end-of-day recap then (empty = at work end)
+    "morning_apps": [],            # extra apps for "start my day"
+    "barge_in": True,             # interrupt Snap by talking over it (echo-guarded on speakers)
 
     # --- Gestures ---
     "gestures_enabled": False,     # camera stays off until the user turns gestures on
@@ -135,6 +147,10 @@ class Settings:
                     v = bool(v)
                 elif isinstance(default, int):
                     v = int(v)
+                elif isinstance(default, dict):
+                    if not isinstance(v, dict):
+                        continue
+                    v = dict(v)
                 elif isinstance(default, list):
                     if isinstance(v, str):
                         v = [w.strip().lower() for w in v.split(",") if w.strip()]

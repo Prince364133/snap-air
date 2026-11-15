@@ -92,5 +92,8 @@ def guess_name():
 def scan(app_index):
     apps = scan_apps(app_index)
     projects = find_projects()
+    from src.brain.llm import recommend_model, system_ram_gb
+    total, free = system_ram_gb()
     return {"apps": apps, "projects": [{k: p[k] for k in ("name", "path", "kind")} for p in projects],
-            "name_guess": guess_name()}
+            "name_guess": guess_name(), "ram_total": round(total, 1), "ram_free": round(free, 1),
+            "recommended_model": recommend_model(total, free)}

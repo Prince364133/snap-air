@@ -8,7 +8,8 @@ from ctypes import wintypes
 IS_WIN = sys.platform == "win32"
 
 # Windows that belong to Snap Air itself and must never receive shortcuts
-OWN_TITLES = ("snap air hud", "snap air - camera", "snap-air engine", "snap-air app")
+OWN_TITLES = ("snapy hud", "snapy - camera", "snap air hud", "snap air - camera", "snap-air engine",
+              "snap-air app", "snapy engine")
 
 if IS_WIN:
     user32 = ctypes.windll.user32

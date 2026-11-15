@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snap Air HUD</title>
+    <title>Snapy HUD</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,14 +11,15 @@
     <div id="cursor-ring" class="cursor-ring hidden"></div>
 
     <!-- ============ Island ============ -->
-    <div id="island" class="island interactive" role="button" aria-label="Snap status — click to open">
+    <div id="island" class="island interactive" role="button" aria-label="Snapy status — click to open">
         <canvas id="island-orb" class="orb-canvas" width="26" height="26" title="Click to talk"></canvas>
         <span id="island-status" class="island-status">Starting…</span>
         <span id="island-rec" class="pill-ind rec hidden" title="Recording meeting notes"><i></i>REC <b id="rec-time">0:00</b></span>
-        <span id="island-cam" class="pill-ind cam hidden" title="Camera on (gestures)">●</span>
-        <span id="island-local" class="pill-ind local" title="Everything runs on this laptop">Local</span>
-        <span class="island-chevron">›</span>
+        <span id="island-focus" class="pill-ind focus hidden" title="Focus mode — click to end">Focus <b id="focus-time">25:00</b></span>
+        <span id="island-gesture" class="pill-ind cam hidden" title="Hand gestures active"></span>
+        <span id="island-ai-dot" class="ai-status-dot dot-orange" title="AI Status"></span>
     </div>
+    <div id="island-caption" class="island-caption hidden" aria-live="polite"></div>
 
     <!-- ============ Greeting card ============ -->
     <section id="greeting" class="greeting card-surface interactive hidden" aria-live="polite">
@@ -35,41 +36,50 @@
         </div>
     </section>
 
-    <!-- ============ Banners ============ -->
+    <!-- ============ Banners (under the island) ============ -->
     <div id="banners" class="banners"></div>
+
+    <!-- ============ Presence orb (bottom centre) ============ -->
+    <div id="presence" class="presence interactive" title="Click to talk / interrupt">
+        <canvas id="presence-orb" class="orb-canvas" width="64" height="64"></canvas>
+    </div>
 
     <!-- ============ Drawer ============ -->
     <aside id="drawer" class="drawer interactive" aria-hidden="true">
         <header class="drawer-head">
-            <canvas id="drawer-orb" class="orb-canvas" width="30" height="30"></canvas>
+            <picture class="logo"><source srcset="assets/snapy-white.svg" media="(prefers-color-scheme: dark)"><img src="assets/snapy-black.svg" alt="Snapy" width="30" height="30"></picture>
+            <canvas id="drawer-orb" class="orb-canvas hidden" width="30" height="30"></canvas>
             <div class="drawer-title">
-                <h1>Snap</h1>
+                <h1>Snapy</h1>
                 <span id="drawer-sub" class="caption">On-device · nothing leaves this laptop</span>
             </div>
             <button id="drawer-close" class="icon-btn" title="Close (Esc)">✕</button>
         </header>
         <nav class="segmented" id="tabs" role="tablist">
-            <button data-tab="assistant" class="active">Assistant</button>
             <button data-tab="today">Today</button>
+            <button data-tab="assistant" class="active">Assistant</button>
             <button data-tab="notes">Notes</button>
+            <button data-tab="tasks">Tasks</button>
             <button data-tab="memory">Memory</button>
             <button data-tab="activity">Activity</button>
-            <button data-tab="settings" title="Settings">⚙︎</button>
+            <button data-tab="settings" title="Settings" data-icon="gear"></button>
+            <button data-tab="help" title="Help">?</button>
         </nav>
 
         <!-- Assistant -->
         <section class="tab-panel active" data-panel="assistant">
             <div id="chat" class="chat"></div>
             <div id="chat-empty" class="empty-state">
-                <canvas id="empty-orb" class="orb-canvas" width="72" height="72"></canvas>
+                <picture class="logo big"><source srcset="assets/snapy-white.svg" media="(prefers-color-scheme: dark)"><img src="assets/snapy-black.svg" alt="Snapy" width="64" height="64"></picture>
+                <canvas id="empty-orb" class="orb-canvas hidden" width="72" height="72"></canvas>
                 <h3 id="empty-hello">Hi! What can I do for you?</h3>
-                <p class="caption">Say <b>“Snap, …”</b>, press <b>Ctrl+Alt+Space</b>, or type below.</p>
+                <p class="caption">Say <b>“Snapy, …”</b>, press <b>Ctrl+Alt+Space</b>, or type below.</p>
                 <div class="chip-row center" id="suggestions"></div>
             </div>
             <footer class="composer">
-                <input id="chat-input" type="text" placeholder="Ask Snap anything…" autocomplete="off" spellcheck="false">
-                <button id="chat-mic" class="round-btn" title="Talk (Ctrl+Alt+Space)">🎙</button>
-                <button id="chat-send" class="round-btn primary" title="Send">↑</button>
+                <input id="chat-input" type="text" placeholder="Ask Snapy anything…" autocomplete="off" spellcheck="false">
+                <button id="chat-mic" class="round-btn" title="Talk (Ctrl+Alt+Space)" data-icon="mic"></button>
+                <button id="chat-send" class="round-btn primary" title="Send" data-icon="up"></button>
             </footer>
         </section>
 
@@ -84,18 +94,42 @@
                     <p class="fine">Audio is never saved — only the transcript and notes. Let participants know.</p>
                 </div>
                 <div class="card">
-                    <div class="card-head"><h3>Tasks</h3><span id="tasks-count" class="caption"></span></div>
-                    <div class="add-row">
-                        <input id="task-input" type="text" placeholder="Add a task — “call Arun at 4”, “in 20 minutes stretch”">
-                        <button id="task-add" class="btn">Add</button>
-                    </div>
-                    <ul id="task-list" class="list"></ul>
+                    <div class="card-head"><h3>Up next</h3><button class="mini" data-open="tasks">All tasks</button></div>
+                    <ul id="today-tasks" class="list"></ul>
+                </div>
+                <div id="review-card" class="card hidden">
+                    <div class="card-head"><h3>Meeting action items to review</h3></div>
+                    <div id="review-list"></div>
+                </div>
+                <div id="contexts-card" class="card hidden">
+                    <div class="card-head"><h3>Parked work</h3></div>
+                    <ul id="contexts-list" class="list"></ul>
                 </div>
                 <div class="card">
                     <div class="card-head"><h3>Today at a glance</h3></div>
                     <div id="glance" class="glance"></div>
                 </div>
             </div>
+        </section>
+
+        <!-- Tasks -->
+        <section class="tab-panel" data-panel="tasks">
+            <div class="scroll">
+                <div class="add-row">
+                    <input id="task-input" type="text" placeholder="“call Arun at 4”, “in 20 minutes stretch”, “kal subah gym”">
+                    <button id="task-add" class="btn">Add</button>
+                </div>
+                <div class="card">
+                    <div class="card-head"><h3>Open</h3><span id="tasks-count" class="caption"></span></div>
+                    <ul id="task-list" class="list"></ul>
+                </div>
+                <p class="fine">Reminders are spoken and shown as Windows notifications — during calls, notifications only.</p>
+            </div>
+        </section>
+
+        <!-- Help -->
+        <section class="tab-panel" data-panel="help">
+            <div class="scroll" id="help-root"></div>
         </section>
 
         <!-- Notes -->
@@ -105,6 +139,9 @@
                     <input id="note-input" type="text" placeholder="Quick note…">
                     <button id="note-add" class="btn">Save</button>
                 </div>
+                <nav class="segmented small" id="note-filter">
+                    <button data-f="today">Today</button><button data-f="meeting">Meetings</button><button data-f="all" class="active">All</button>
+                </nav>
                 <input id="note-search" class="search" type="search" placeholder="Search notes">
                 <div id="notes-list"></div>
             </div>
@@ -113,12 +150,12 @@
         <!-- Memory -->
         <section class="tab-panel" data-panel="memory">
             <div class="scroll">
-                <p class="caption intro">Everything Snap knows about you. It lives in a file on this laptop — edit or delete anything.</p>
+                <p class="caption intro">Everything Snapy knows about you. It lives in a file on this laptop — edit or delete anything.</p>
                 <div class="group-title">Profile</div>
                 <div id="profile-form" class="grouped"></div>
                 <div class="group-title row between"><span>Memories</span><span id="mem-count" class="caption"></span></div>
                 <div class="add-row">
-                    <input id="mem-input" type="text" placeholder="Teach Snap something — “I prefer Slack over email”">
+                    <input id="mem-input" type="text" placeholder="Teach Snapy something — “I prefer Slack over email”">
                     <button id="mem-add" class="btn">Add</button>
                 </div>
                 <div id="mem-list"></div>
@@ -134,6 +171,7 @@
         <section class="tab-panel" data-panel="activity">
             <div class="scroll">
                 <div id="act-stats" class="stats"></div>
+                <div class="card"><div class="card-head"><h3>By hour</h3></div><div id="act-hours" class="hours"></div></div>
                 <div class="card"><div class="card-head"><h3>Timeline</h3><span id="act-range" class="caption"></span></div><div id="act-timeline" class="timeline"></div></div>
                 <div class="card"><div class="card-head"><h3>Apps</h3></div><div id="act-apps"></div></div>
                 <div class="card" id="act-projects-card"><div class="card-head"><h3>Projects & sites</h3></div><div id="act-projects"></div></div>
@@ -151,7 +189,8 @@
                             <option value="90">90 days</option><option value="365">1 year</option>
                         </select></div>
                 </div>
-                <p class="fine">Never recorded: keystrokes, screen contents, URLs, private/incognito windows, password managers.</p>
+                <div class="grouped"><div class="g-row"><span class="danger-text">Clear activity history</span><button id="act-clear" class="btn small danger">Clear</button></div></div>
+                <p class="fine">Never recorded: screenshots, keystrokes, screen contents, URLs, private/incognito windows, password managers. Off until you turn it on.</p>
             </div>
         </section>
 

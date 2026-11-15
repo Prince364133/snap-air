@@ -76,7 +76,8 @@ class Briefing:
         editor = (self.memory.profile.get("editor") or "").lower()
         ide_names = ("antigravity", "code", "cursor", "windsurf", "pycharm", "idea", "webstorm")
         project = self.resolve_project()
-        for a in routine.get("usual_first_apps", [])[:3]:
+        extra = [{"exe": n.lower(), "name": n} for n in (self._s("morning_apps", []) or []) if n]
+        for a in routine.get("usual_first_apps", [])[:3] + extra:
             if project and any(k in a["exe"] for k in ide_names):
                 continue   # the project step opens the editor
             steps.append({"label": f"Open {a['name']}", "action": {"type": "app", "name": a["name"]}})
@@ -105,7 +106,7 @@ class Briefing:
         if s:
             label = "Yesterday" if day == (now - dt.timedelta(days=1)).strftime("%Y-%m-%d") else \
                 dt.datetime.strptime(day, "%Y-%m-%d").strftime("On %A")
-            bits = []
+            bits = [f"were active for {fmt_duration(s['total_active'])}"] if s["total_active"] > 600 else []
             if s["projects"]:
                 bits.append(f"worked on {s['projects'][0]['name']} for {fmt_duration(s['projects'][0]['seconds'])}")
             elif s["top_apps"]:
@@ -118,8 +119,11 @@ class Briefing:
                 bits.append(f"finished {len(done)} task{'s' if len(done) > 1 else ''}")
             if bits:
                 lines.append(f"{label} you " + ", ".join(bits) + ".")
+        reviews = [n for n in self.notes.items if n.get("review_pending")]
+        if reviews:
+            lines.append(f"{len(reviews)} meeting note{'s have' if len(reviews) > 1 else ' has'} action items to review.")
 
-        open_tasks = self.tasks.open_tasks()
+        open_tasks = [t for t in self.tasks.open_tasks() if t.get("source") != "timer"]
         today = now.strftime("%Y-%m-%d")
         due_today = [t for t in open_tasks if (t.get("remind_at") or "").startswith(today)]
         overdue = [t for t in open_tasks if t.get("remind_at") and t["remind_at"] < now.isoformat(timespec="minutes")
@@ -188,6 +192,21 @@ class Briefing:
         if r["days_observed"]:
             self.memory.profile["routine"] = r
             self.memory.save_profile()
+            # observed facts, upserted by key so they're replaced instead of piling up
+            if r["days_observed"] >= 2:
+                if r.get("typical_start"):
+                    self.memory.upsert("obs_start", f"Usually starts work around {r['typical_start']} on weekdays",
+                                       "routine", 3)
+                if r.get("usual_first_apps"):
+                    self.memory.upsert("obs_first_apps", "Usually opens " + ", ".join(
+                        a["name"] for a in r["usual_first_apps"]) + " first thing", "routine", 2)
+                if r.get("top_projects"):
+                    self.memory.upsert("obs_projects", "Main projects lately: " + ", ".join(r["top_projects"]),
+                                       "project", 3)
+        try:
+            self.memory.reflect()
+        except Exception as e:
+            print("[Briefing] memory reflection failed:", e)
         # summarize the previous day into the journal (used for "what did I do yesterday")
         y = (now - dt.timedelta(days=1)).strftime("%Y-%m-%d")
         j = self.memory.journal(y)

@@ -7,7 +7,9 @@
   without needing the wake word.
 - A single transcription worker so commands run in order, never concurrently.
 """
+import os
 import queue
+import sys
 import threading
 import time
 
@@ -39,8 +41,15 @@ class VoiceListener:
         self.sample_rate = sample_rate
         self.model_name = model_name
         self.language = None if language in (None, "", "auto") else language
-        self.suppress_fn = None       # returns True while Snap itself is talking
+        self.suppress_fn = None       # legacy: returns True to mute the mic completely
+        # Barge-in (full duplex): the mic stays open while Snap talks.
+        self.talking_fn = None        # True while Snap is speaking
+        self.echo_level_fn = None     # current playback RMS (what the speakers are putting out)
+        self.headphones_fn = None     # True = no speaker echo, use the normal threshold
+        self.on_barge_in = None       # called the moment the user starts talking over Snap
+        self.coupling = 0.3           # learned ratio mic-RMS / playback-RMS (speaker echo)
         self.last_lang = "en"
+        self.mic_blocked = False
         self.set_sensitivity(sensitivity)
         self.audio_queue = queue.Queue()
         self.jobs = queue.Queue()
@@ -86,10 +95,14 @@ class VoiceListener:
         try:
             from faster_whisper import WhisperModel
             print(f"[Voice] Loading faster-whisper ({name})…")
-            import os
             # More threads is NOT faster for tiny models (8 was 2.5x slower in testing)
             threads = max(2, min(4, (os.cpu_count() or 4) // 4))
-            m = WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=threads)
+            # the installer ships tiny.en so voice works offline on first launch
+            bundled = os.path.join(os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+                                   else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                                   "models", f"faster-whisper-{name}")
+            m = WhisperModel(bundled if os.path.isdir(bundled) else name, device="cpu", compute_type="int8",
+                             cpu_threads=threads)
             # warm-up so the first real command isn't slow
             m.transcribe(np.zeros(self.sample_rate, dtype=np.float32), language="en", without_timestamps=True)
             if name == self.model_name:
@@ -128,26 +141,74 @@ class VoiceListener:
     def _audio_callback(self, indata, frames, time_info, status):
         self.audio_queue.put(indata[:, 0].copy())
 
+    def _input_candidates(self):
+        """Default device first, then the same microphone through other Windows audio
+        APIs (some drivers refuse MME at 16 kHz), then any other input device."""
+        cands = [(None, None)]
+        try:
+            default = sd.query_devices(kind="input")
+            base = default["name"].split("(")[0].strip().lower()
+            apis = {i: h["name"] for i, h in enumerate(sd.query_hostapis())}
+            order = {"Windows WASAPI": 0, "Windows DirectSound": 1, "MME": 2, "Windows WDM-KS": 3}
+            devs = [(i, d) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
+            devs.sort(key=lambda x: (0 if x[1]["name"].lower().startswith(base) else 1,
+                                     order.get(apis.get(x[1]["hostapi"], ""), 9)))
+            for i, d in devs:
+                extra = None
+                if apis.get(d["hostapi"]) == "Windows WASAPI":
+                    try:
+                        extra = sd.WasapiSettings(auto_convert=True)
+                    except TypeError:
+                        extra = None
+                cands.append((i, extra))
+        except Exception:
+            pass
+        return cands
+
     def _listen_loop(self):
         if sd is None:
             self._status("No audio library: " + str(_SD_ERR))
             return
         while self.is_running:
-            try:
-                with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="float32",
-                                    blocksize=int(self.sample_rate * self.CHUNK_S),
-                                    callback=self._audio_callback):
-                    print("[Voice] Microphone open:", sd.query_devices(kind="input")["name"])
-                    self._capture()
-            except Exception as e:
-                print("[Voice] Microphone error (retrying in 3s):", e)
-                self._status("Microphone unavailable")
-                time.sleep(3)
+            opened = False
+            last_err = None
+            for device, extra in self._input_candidates():
+                try:
+                    with sd.InputStream(device=device, samplerate=self.sample_rate, channels=1, dtype="float32",
+                                        blocksize=int(self.sample_rate * self.CHUNK_S), extra_settings=extra,
+                                        callback=self._audio_callback):
+                        name = sd.query_devices(device if device is not None else sd.default.device[0])["name"]
+                        print("[Voice] Microphone open:", name)
+                        opened = True
+                        self._capture()
+                    break
+                except Exception as e:
+                    last_err = e
+                    if not opened and not getattr(self, "_logged_candidates", False):
+                        print(f"[Voice]   device {device}: {e}")
+                    if opened:
+                        break        # it was working and then failed: restart from the default device
+            if not opened:
+                self._logged_candidates = True
+                print("[Voice] Microphone error (retrying in 3s):", last_err)
+                # Every API failing with these errors = Windows privacy has denied this app the mic
+                blocked = any(k in str(last_err) for k in ("MME error 1", "DirectSound error", "Invalid device"))
+                self.mic_blocked = blocked
+                self._status("Microphone blocked by Windows privacy settings" if blocked else "Microphone unavailable")
+                # Re-initialise PortAudio: other native libraries loading at startup can leave
+                # its device list stale ("Invalid device" / MME host errors).
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                except Exception as e:
+                    print("[Voice] PortAudio reset failed:", e)
+            time.sleep(3 if not opened else 0.5)
 
     def _capture(self):
         pre_roll = []           # audio just before speech started (catches first syllable)
         recording = []
         speaking = False
+        barged = False
         loud_chunks = 0
         quiet_chunks = 0
         while self.is_running:
@@ -155,28 +216,42 @@ class VoiceListener:
                 chunk = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
-            if (not self.enabled and not self.armed) or (self.suppress_fn and self.suppress_fn()):
-                # muted, or Snap is talking: don't transcribe our own voice
+            talking = bool(self.talking_fn and self.talking_fn())
+            if (self.suppress_fn and self.suppress_fn()) or (not self.enabled and not self.armed and not talking):
                 pre_roll, recording, speaking, loud_chunks = [], [], False, 0
                 continue
 
             rms = float(np.sqrt(np.mean(chunk ** 2)))
             self.level = rms
             threshold = max(self.min_threshold, self.noise_floor * 3.0)
+            need = 2
+            echo_guard = talking and not (self.headphones_fn and self.headphones_fn())
+            if echo_guard:
+                # Echo guard: our own voice leaks from the speakers into the mic, so the bar
+                # to count as "the user is talking" rises with what we're playing right now.
+                echo = self.echo_level_fn() if self.echo_level_fn else 0.0
+                threshold = max(threshold * 2.5, echo * self.coupling * 2.5)
+                need = 3                                       # 300 ms of clear speech
+                if not speaking and echo > 0.01:
+                    self.coupling = 0.97 * self.coupling + 0.03 * min(2.0, rms / echo)
 
             if not speaking:
                 pre_roll = (pre_roll + [chunk])[-3:]
                 if rms > threshold:
                     loud_chunks += 1
-                    if loud_chunks >= 2:
+                    if loud_chunks >= need:
                         speaking = True
                         recording = list(pre_roll)
                         quiet_chunks = 0
+                        barged = talking
+                        if talking and self.on_barge_in:
+                            self.on_barge_in()                 # stop playback immediately
                         self._status("Hearing you…")
                 else:
                     loud_chunks = 0
-                    # Track background noise only while nobody is talking
-                    self.noise_floor = 0.95 * self.noise_floor + 0.05 * rms
+                    if not talking:
+                        # Track background noise only while nobody is talking
+                        self.noise_floor = 0.95 * self.noise_floor + 0.05 * rms
                 continue
 
             recording.append(chunk)
@@ -186,7 +261,8 @@ class VoiceListener:
                 audio = np.concatenate(recording)
                 speaking, recording, loud_chunks, pre_roll = False, [], 0, []
                 if len(audio) >= self.sample_rate * 0.45:
-                    self.jobs.put((audio, self.armed))
+                    # talking over Snap counts as addressing Snap (no wake word needed)
+                    self.jobs.put((audio, self.armed or barged))
                 else:
                     self._status("Ready")
 

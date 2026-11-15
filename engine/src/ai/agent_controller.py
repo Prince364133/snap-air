@@ -1,4 +1,4 @@
-"""Snap Air command agent: turns spoken/typed phrases into desktop actions.
+"""Snapy command agent: turns spoken/typed phrases into desktop actions.
 
 Tier 0 is a deterministic command grammar (instant, offline, predictable).
 Tier 1 (optional) asks a local Ollama model to rewrite an unrecognised phrase
@@ -20,6 +20,7 @@ import requests
 
 from src.os_control import windows as win
 from src.os_control.apps import AppIndex
+from src.os_control import keys as K
 
 NUMBER_WORDS = {
     "one": 1, "two": 2, "to": 2, "too": 2, "three": 3, "four": 4, "for": 4, "five": 5,
@@ -89,6 +90,10 @@ class OSActions:
         win.ensure_target_focus()
         self.pg.scroll(int(delta))
 
+    def lock(self):
+        import ctypes
+        ctypes.windll.user32.LockWorkStation()
+
     def hwheel(self, delta):
         win.ensure_target_focus()
         self.pg.hscroll(int(delta))
@@ -132,6 +137,9 @@ class OSActions:
 
     def find_window(self, name):
         return win.find_window(name)
+
+    def list_windows(self):
+        return win.list_windows()
 
     def window_cmd(self, cmd):
         return win.show_window(cmd)
@@ -200,20 +208,60 @@ class AgentController:
         t = re.sub(r"\s+", " ", t).strip()
         return t
 
+    FILLER = r"^(?:(?:uh|um|so|and|oh|yo|hey|hi|ok|okay|alright|right|hello) ){0,2}"
+    BUILTIN_WAKE = {"hey snap", "hi snap", "ok snap", "okay snap", "snap air", "snapair", "snap",
+                    "snapy", "snappy", "snappie", "snapey"}
+
+    @property
+    def agent_name(self):
+        return (self._s("agent_name", "Snapy") or "Snapy").strip()
+
+    def wake_variants(self):
+        words = set(self._s("wake_words", ["snapy", "snap"]) or [])
+        name = self.normalize(self.agent_name)
+        names = {name, name.replace(" ", "")} if name else set()
+        return sorted({self.normalize(w) for w in words} | self.BUILTIN_WAKE | names, key=len, reverse=True)
+
     def strip_wake_word(self, text):
         """Returns (heard_wake_word, remaining_text). Accepts it in the first
-        few words, since people often say "uh, snap, ..." or "okay snap ...". """
+        few words ("uh, snapy, ..."), and fuzzy-matches custom names because
+        Whisper spells uncommon names in different ways ("Meera" -> "Mira")."""
         norm = self.normalize(text)
-        words = self._s("wake_words", ["snap", "hey snap", "snap air"])
-        variants = sorted({self.normalize(w) for w in words} |
-                          {"hey snap", "hi snap", "ok snap", "okay snap", "snap air", "snapair", "snap"},
-                          key=len, reverse=True)
-        for v in variants:
-            m = re.match(r"^(?:(?:uh|um|so|and|oh|yo|hey|hi|ok|okay|alright|right) ){0,2}"
-                         + re.escape(v) + r"(?: air)?\b\s*(.*)$", norm)
+        for v in self.wake_variants():
+            m = re.match(self.FILLER + re.escape(v) + r"(?: air)?\b\s*(.*)$", norm)
             if m:
                 return True, m.group(1).strip()
+        name = self.normalize(self.agent_name)
+        if name and name not in self.BUILTIN_WAKE and len(name) >= 4:
+            import difflib
+            m = re.match(self.FILLER + r"(\S+(?: \S+)?)\s*(.*)$", norm)
+            if m:
+                cand_words = m.group(1).split()
+                for k in (len(name.split()), 1):
+                    cand = " ".join(cand_words[:k])
+                    if difflib.SequenceMatcher(None, self._sound(cand), self._sound(name)).ratio() >= 0.8:
+                        rest = (" ".join(cand_words[k:]) + " " + m.group(2)).strip()
+                        return True, rest
         return False, norm
+
+    @staticmethod
+    def _sound(word):
+        """Rough phonetic key so Whisper's spellings of a name match ("Meera" ~ "Mira")."""
+        w = word.lower()
+        for x, y in (("ee", "i"), ("ii", "i"), ("oo", "u"), ("aa", "a"), ("ph", "f"), ("w", "v"), ("ck", "k"),
+                     ("q", "k"), ("y", "i"), ("z", "s"), ("th", "t"), ("sh", "s")):
+            w = w.replace(x, y)
+        w = re.sub(r"(.)+", r"", w)
+        return re.sub(r"h$", "", w)
+
+    def strip_wake_original(self, raw):
+        """Remove the wake word from the original text (keeps casing for notes/typing)."""
+        heard, rest = self.strip_wake_word(raw)
+        if not heard:
+            return raw.strip()
+        words = raw.strip().split()
+        n_rest = len(rest.split())
+        return " ".join(words[len(words) - n_rest:]) if n_rest else ""
 
     @staticmethod
     def parse_count(s, default=1):
@@ -254,7 +302,7 @@ class AgentController:
             return Result(True, "Listening for a command…", "wake")
 
         # Payload text keeps original casing, minus the wake word
-        original = re.sub(r"^\W*(?:(?:hey|hi|ok|okay|uh|um)\W+)?snap(?:\W*air)?\W*", "", raw, flags=re.I)
+        original = self.strip_wake_original(raw)
 
         result = self._run(cmd, original)
         if result is None:
@@ -266,7 +314,7 @@ class AgentController:
                 if result:
                     result.message += f'  (understood as "{mapped}")'
         if result is None:
-            return Result(False, f'Didn\'t understand "{cmd}". Say "Snap, help" for commands.', "unknown")
+            return Result(False, f'Didn\'t understand "{cmd}". Say "Snapy, help" for commands.', "unknown")
         if result.action not in ("repeat", "help", "wake"):
             self.last_command = (cmd, original)
         return result
@@ -314,6 +362,20 @@ class AgentController:
         o = self.os
         step = lambda: int(self._s("voice_scroll_amount", 5)) * 120  # noqa: E731
 
+        # ---- keyboard: named Windows actions and bare key combos come first, so
+        # "open voice typing" or "windows plus h" never fall into the app launcher
+        @cmd(r"(.+)")
+        def _(m, orig):
+            hit = K.find_shortcut(m.group(1))
+            if hit:
+                keys, label = hit
+                o.hotkey(*keys)
+                return Result(True, f"{label} ({K.describe(keys)})", "key")
+            combo = K.parse_combo(m.group(1), require_modifier=True)
+            if combo:
+                return self.press_combo(combo)
+            return None
+
         # ---- repeat / cancel
         @cmd(r"(again|repeat|do that again|one more time|more)")
         def _(m, orig):
@@ -330,7 +392,7 @@ class AgentController:
         @cmd(r"(?:keep scrolling|auto scroll|start scrolling|scroll slowly)(?: (up|down))?")
         def _(m, orig):
             self.start_autoscroll(-1 if (m.group(1) or "down") == "down" else 1)
-            return Result(True, "Auto-scrolling — say \"Snap, stop\" (or faster/slower)", "autoscroll")
+            return Result(True, "Auto-scrolling — say \"Snapy, stop\" (or faster/slower)", "autoscroll")
 
         @cmd(r"(stop|stop scrolling|stop it|halt|freeze)")
         def _(m, orig):
@@ -399,7 +461,7 @@ class AgentController:
         @cmd(r"(?:hold|grab|press and hold|start drag(?:ging)?)(?: (?:it|that|here|click))?")
         def _(m, orig):
             o.mouse_down()
-            return Result(True, "Holding — move your hand, then say \"Snap, release\"", "hold")
+            return Result(True, "Holding — move your hand, then say \"Snapy, release\"", "hold")
 
         @cmd(r"(?:release|let go|drop(?: it)?)")
         def _(m, orig):
@@ -531,9 +593,9 @@ class AgentController:
             o.hotkey("win", "shift", "s")
             return Result(True, "Snipping tool — drag to capture", "window")
 
-        @cmd(r"lock (?:the )?(?:screen|computer|pc|laptop)")
+        @cmd(r"lock (?:the |my )?(?:screen|computer|pc|laptop|system)|lock it")
         def _(m, orig):
-            o.hotkey("win", "l")
+            o.lock()     # Win+L can't be simulated; Windows' LockWorkStation API works
             return Result(True, "Locked", "window")
 
         # ---- editing / keyboard
@@ -548,28 +610,12 @@ class AgentController:
         ]:
             C.append((pat, (lambda k, lbl: lambda m, orig: (o.hotkey(*k), Result(True, lbl, "edit"))[1])(keys, label)))
 
-        @cmd(r"(?:press|hit|push) (.+?)(?: (\w+) times)?")
+        @cmd(r"(?:press|hit|push|tap) (.+)")
         def _(m, orig):
-            spec = m.group(1).replace(" plus ", " ").replace("+", " ")
-            times = self.parse_count(m.group(2), 1) if m.group(2) else 1
-            keys, rest = [], spec
-            while rest:
-                for name in sorted(KEY_NAMES, key=len, reverse=True):
-                    if rest == name or rest.startswith(name + " "):
-                        keys.append(KEY_NAMES[name])
-                        rest = rest[len(name):].strip()
-                        break
-                else:
-                    tok, _, rest = rest.partition(" ")
-                    if len(tok) == 1:
-                        keys.append(tok)
-                    else:
-                        return Result(False, f"Unknown key \"{tok}\"", "key")
-            if len(keys) == 1:
-                o.press(keys[0], int(times))
-            else:
-                o.hotkey(*keys)
-            return Result(True, "Pressed " + "+".join(keys), "key")
+            combo = K.parse_combo(m.group(0))
+            if not combo:
+                return Result(False, f"I don't know the key \"{m.group(1)}\" — try e.g. \"press control shift t\".", "key")
+            return self.press_combo(combo)
 
         @cmd(r"(?:type|write|dictate) (.+)")
         def _(m, orig):
@@ -691,11 +737,11 @@ class AgentController:
             o.run_terminal("", d)
             return Result(True, f"Terminal in {os.path.basename(d) or d}", "dev")
 
-        # ---- Snap Air itself
-        @cmd(r"(?:open |show )?(?:snap(?: air)? )?(?:settings|preferences|options|setting|configuration)|configure|customi[sz]e(?: snap(?: air)?)?")
+        # ---- Snapy itself
+        @cmd(r"(?:open |show )?(?:snap(?: air)? |snapp?y |snappy's )?(?:settings|preferences|options|setting|configuration)|configure|customi[sz]e(?: snap(?: air)?)?")
         def _(m, orig):
             self._ui("open_settings")
-            return Result(True, "Opened Snap Air settings", "ui")
+            return Result(True, "Opened Snapy settings", "ui")
 
         @cmd(r"(?:close|hide) (?:the )?(?:settings|notes|guide|help|panel|panels|everything)")
         def _(m, orig):
@@ -713,7 +759,7 @@ class AgentController:
                 or self.payload(orig, r"note\W+(?:down\W+|that\W+)?(.+)$") \
                 or self.payload(orig, r"remember\W+(?:that\W+)?(.+)$")
             if not text:
-                return Result(False, "What should the note say? e.g. \"Snap, take note buy milk\"", "note")
+                return Result(False, "What should the note say? e.g. \"Snapy, take note buy milk\"", "note")
             if re.fullmatch(r"(?i)(the )?clipboard|what i copied", text):
                 text = (o.clipboard() or "").strip()
                 if not text:
@@ -731,7 +777,7 @@ class AgentController:
         def _(m, orig):
             if self.gesture_callback:
                 self.gesture_callback(True)
-            return Result(True, "Gestures paused — say \"Snap, resume gestures\"", "gestures")
+            return Result(True, "Gestures paused — say \"Snapy, resume gestures\"", "gestures")
 
         @cmd(r"(?:resume|start|enable|turn on) (?:the )?(?:gestures?|tracking|hand tracking|mouse|camera)|gestures? on")
         def _(m, orig):
@@ -767,6 +813,17 @@ class AgentController:
         return C
 
     # --------------------------------------------------------------- helpers
+    def press_combo(self, combo):
+        keys, times = combo["keys"], combo["times"]
+        if tuple(keys) in K.BLOCKED:
+            return Result(False, K.BLOCKED[tuple(keys)], "key")
+        if len(keys) == 1:
+            self.os.press(keys[0], int(times))
+        else:
+            for _ in range(int(times)):
+                self.os.hotkey(*keys)
+        return Result(True, "Pressed " + K.describe(keys) + (f" ×{times}" if times > 1 else ""), "key")
+
     def open_anything(self, name):
         name = name.strip()
         name = re.sub(r"^(the|my|a)\s+", "", name)
@@ -813,7 +870,7 @@ class AgentController:
 
     def _need_project(self):
         self._ui("open_settings", focus="project_dir")
-        return Result(False, "Set your project folder in Snap Air settings first", "dev")
+        return Result(False, "Set your project folder in Snapy settings first", "dev")
 
     @staticmethod
     def detect_run_command(d):
@@ -902,6 +959,6 @@ class AgentController:
                                   "press enter", "press control shift t", "type <text>",
                                   "copy / paste / undo / save / select all"]),
             ("Developer", ["open project", "run project", "git status", "open terminal"]),
-            ("Snap Air", ["take note <text>", "note clipboard", "open notes", "open settings",
+            ("Snapy", ["take note <text>", "note clipboard", "open notes", "open settings",
                           "pause gestures / resume gestures", "stop listening", "help"]),
         ]

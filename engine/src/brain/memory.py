@@ -41,6 +41,32 @@ STOP = set("the a an and or but to of in on at for with is are was were be been 
            "so as by from about into over than then there here what when where which who whom why how "
            "can could would should will shall may might must just also very really please snap".split())
 
+# Never store secrets, whatever their source (rule-based, LLM, manual).
+SECRET = re.compile(
+    r"\b(password|passwd|passcode|pin|otp|one[- ]time code|cvv|secret|api[ _-]?key|token|private key|ssh key|"
+    r"card number|account number|ifsc|aadhaar|aadhar|pan number|social security|ssn)\b"
+    r"|\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,7}\b"
+    r"|\b(sk|pk|ghp|gho|xox[bp]|AKIA|AIza)[-_A-Za-z0-9]{12,}", re.I)
+
+
+def is_secret(text):
+    return bool(SECRET.search(text or ""))
+
+
+# Rule-based extraction: works with no LLM at all. (pattern, template, category, importance, key)
+RULES = [
+    (r"\b(?:my name is|i am called|mera naam)\s+([A-Za-z][A-Za-z]{1,20})", "Name is {0}", "fact", 5, "name"),
+    (r"\bcall me\s+([A-Za-z][A-Za-z]{1,20})", "Prefers to be called {0}", "preference", 5, "call_me"),
+    (r"\bi (?:work as|am working as)\s+(?:an? )?([a-z][a-z ]{2,40}?)(?:\s+at\b|[.,!]|$)", "Works as {0}", "work", 4, "role"),
+    (r"\bi work at\s+([A-Za-z0-9][\w &.-]{1,40}?)(?:[.,!]|$)", "Works at {0}", "work", 4, "company"),
+    (r"\bi (?:start|begin) (?:work|working|my day|office)(?: at| around| by)?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)", "Usually starts work at {0}", "routine", 4, "start_time"),
+    (r"\bi (?:usually|always|normally|generally)\s+(.{4,80}?)(?:[.!]|$)", "Usually {0}", "routine", 3, None),
+    (r"\bi (?:love|really like|prefer|enjoy)\s+(.{3,60}?)(?:[.!]|$)", "Likes {0}", "preference", 3, None),
+    (r"\bi (?:hate|dislike|don't like|do not like)\s+(.{3,60}?)(?:[.!]|$)", "Dislikes {0}", "preference", 3, None),
+    (r"\bi use\s+(antigravity|vs ?code|cursor|windsurf|pycharm|intellij|vim|neovim|sublime|zed)\b", "Uses {0} for coding", "project", 3, "editor"),
+    (r"\bmy (?:goal|plan) is to\s+(.{4,80}?)(?:[.!]|$)", "Goal: {0}", "goal", 4, None),
+]
+
 EXTRACT_SYSTEM = """You maintain the long-term memory of a personal desktop assistant about its user.
 From the LATEST EXCHANGE, extract only durable information worth remembering for weeks:
 preferences, habits, routines, people (name + relationship), projects, goals, schedules, personal details the
@@ -51,6 +77,8 @@ If the new information corrects or refines an existing memory, use op "update" w
 full corrected text. Write each memory as one short third-person statement, e.g. "Prefers Slack over email for
 work messages", "Manager is Arun", "Standup is at 10:00 on weekdays".
 importance: 5 = identity/strong preference/instruction, 3 = useful, 1 = trivia.
+Never store secrets (passwords, OTPs, PINs, card/account numbers, keys) or facts only about other people.
+If new information makes an existing memory untrue, use op "delete" with its id.
 Return {"memories": []} if nothing qualifies (this is the most common answer)."""
 
 EXTRACT_SCHEMA = {
@@ -58,7 +86,7 @@ EXTRACT_SCHEMA = {
     "properties": {"memories": {"type": "array", "items": {
         "type": "object",
         "properties": {
-            "op": {"type": "string", "enum": ["add", "update"]},
+            "op": {"type": "string", "enum": ["add", "update", "delete"]},
             "id": {"type": "string"},
             "text": {"type": "string"},
             "category": {"type": "string", "enum": CATEGORIES},
@@ -181,9 +209,9 @@ class MemoryStore:
     def get(self, mem_id):
         return next((m for m in self.memories if m["id"] == mem_id), None)
 
-    def add(self, text, category="fact", importance=3, source="conversation", pinned=False, dedupe=True):
+    def add(self, text, category="fact", importance=3, source="conversation", pinned=False, dedupe=True, key=None):
         text = text.strip().rstrip(".")
-        if not text:
+        if not text or is_secret(text):
             return None
         with self.lock:
             if dedupe:
@@ -198,6 +226,8 @@ class MemoryStore:
             m = {"id": uuid.uuid4().hex[:10], "text": text, "category": category if category in CATEGORIES else "fact",
                  "importance": max(1, min(5, int(importance))), "created": _now_iso(), "updated": _now_iso(),
                  "last_used": None, "uses": 0, "source": source, "pinned": bool(pinned), "history": []}
+            if key:
+                m["key"] = key
             self.memories.append(m)
             self._save()
             self._embed_later([m])
@@ -288,8 +318,8 @@ class MemoryStore:
                     age_days = (now - dt.datetime.fromisoformat(ts).timestamp()) / 86400
                 except ValueError:
                     age_days = 30
-                recency = 0.5 ** (age_days / 30)
-                score = 0.55 * rel + 0.25 * (m["importance"] / 5) + 0.20 * recency + (0.3 if m.get("pinned") else 0)
+                recency = 0.995 ** (age_days * 24)          # spec: 0.995^hours since last access
+                score = 0.5 * rel + 0.25 * (m["importance"] / 5) + 0.25 * recency + (0.3 if m.get("pinned") else 0)
                 scored.append({"memory": m, "score": round(score, 3), "relevance": round(rel, 3)})
             scored.sort(key=lambda x: -x["score"])
             hits = [s for s in scored if s["relevance"] >= min_relevance][:k]
@@ -359,6 +389,89 @@ class MemoryStore:
         fact = re.sub(r"\bme\b", "the user", fact, flags=re.I)
         return self.add(fact[0].upper() + fact[1:] if fact else fact, category="fact", importance=5, source="explicit")
 
+    def extract_rules(self, user_text, source="chat"):
+        """Deterministic extraction (no LLM). Keyed facts are replaced, not duplicated."""
+        if not self.learning_enabled or is_secret(user_text):
+            return []
+        out = []
+        for pat, tmpl, cat, imp, key in RULES:
+            m = re.search(pat, user_text, re.I)
+            if not m:
+                continue
+            groups = [g.strip().rstrip(".") for g in m.groups() if g]
+            if not groups:
+                continue
+            text = tmpl.format(*groups)
+            if key == "name":
+                self.update_profile({"name": groups[0].title(),
+                                     "preferred_name": self.profile.get("preferred_name") or groups[0].title()})
+            elif key == "call_me":
+                self.update_profile({"preferred_name": groups[0]})
+            elif key == "role":
+                self.update_profile({"role": groups[0]})
+            elif key == "editor":
+                self.update_profile({"editor": groups[0].title()})
+            mem = self.upsert(key, text, cat, imp, source=source) if key else self.add(text, cat, imp, source=source)
+            if mem:
+                out.append(mem)
+        return out
+
+    def upsert(self, key, text, category="routine", importance=3, source="observed"):
+        """Facts with a stable key (e.g. 'start_time') are replaced instead of duplicated."""
+        with self.lock:
+            existing = next((m for m in self.memories if m.get("key") == key), None)
+            if existing:
+                if existing["text"] != text:
+                    return self.update(existing["id"], text=text, importance=max(existing["importance"], importance))
+                return existing
+        return self.add(text, category, importance, source=source, key=key, dedupe=False)
+
+    def reflect(self, threshold=20):
+        """Generative-Agents reflection: after enough new importance accumulates (1-5 scale,
+        20 here = 40 on the 1-10 scale), write up to 3 insights. Needs the LLM."""
+        if not self.llm or not self.learning_enabled:
+            return []
+        since = self.profile.get("last_reflection") or ""
+        fresh = [m for m in self.memories if m["updated"] > since and m.get("category") != "insight"]
+        if sum(m["importance"] for m in fresh) < threshold:
+            return []
+        facts = "\n".join(f"- {m['text']}" for m in fresh[-25:])
+        schema = {"type": "object", "properties": {"insights": {"type": "array", "items": {"type": "string"}}},
+                  "required": ["insights"]}
+        try:
+            out = self.llm.chat_json([
+                {"role": "system", "content": "From these facts about one person, write at most 3 short third-person "
+                                              "insights that would help a personal assistant (patterns, priorities, "
+                                              "working style). No secrets, nothing about other people."},
+                {"role": "user", "content": facts}], schema, max_tokens=160)
+        except Exception:
+            return []
+        made = [self.add(t, "insight", 3, source="reflection") for t in (out or {}).get("insights", [])[:3]]
+        self.profile["last_reflection"] = _now_iso()
+        self.save_profile()
+        return [m for m in made if m]
+
+    def about_me(self):
+        """Plain-language answer to 'what do you know about me?' (never a raw dump)."""
+        p = self.profile
+        bits = []
+        name = p.get("preferred_name") or p.get("name")
+        if name:
+            bits.append(f"you're {name}")
+        if p.get("role"):
+            bits.append(f"you work as {p['role']}")
+        if p.get("editor"):
+            bits.append(f"you code in {p['editor']}")
+        skip = ("name is", "works as", "prefers to be called", "uses ")
+        top = [m for m in sorted(self.memories, key=lambda m: (not m.get("pinned"), -m["importance"]))
+               if not m["text"].lower().startswith(skip)][:3]
+        if not bits and not top:
+            return "I don't know much about you yet. Tell me things like “remember that I start work at 9”."
+        out = ("I know " + ", ".join(bits)) if bits else "I know a few things"
+        if top:
+            out += ". I also remember: " + "; ".join(m["text"] for m in top)
+        return out + f". That's {len(self.memories)} things in total — you can see, edit or delete all of them in the Memory tab."
+
     def worth_extracting(self, user_text):
         words = user_text.split()
         return self.learning_enabled and len(words) >= 4 and bool(SELF_SIGNALS.search(user_text))
@@ -380,7 +493,14 @@ class MemoryStore:
         applied = []
         for item in (out or {}).get("memories", [])[:4]:
             text = (item.get("text") or "").strip()
+            if item.get("op") == "delete" and item.get("id") and self.get(item["id"]):
+                gone = self.get(item["id"])          # deletes don't need text
+                self.delete(item["id"])
+                applied.append(("delete", gone))
+                continue
             if len(text) < 4:
+                continue
+            if is_secret(text):
                 continue
             if item.get("op") == "update" and item.get("id") and self.get(item["id"]):
                 applied.append(("update", self.update(item["id"], text=text,
