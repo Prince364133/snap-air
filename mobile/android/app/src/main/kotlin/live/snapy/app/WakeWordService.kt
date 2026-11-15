@@ -35,10 +35,21 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startInForeground()
-        when (intent?.action) {
-            ACTION_PAUSE -> { speech?.stop(); speech = null }
-            else -> Thread { startListening() }.start()
+        try {
+            startInForeground()
+            when (intent?.action) {
+                ACTION_PAUSE -> { speech?.stop(); speech = null }
+                else -> Thread {
+                    try {
+                        startListening()
+                    } catch (t: Throwable) {
+                        android.util.Log.e("WakeWordService", "Error in startListening", t)
+                    }
+                }.start()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("WakeWordService", "Error in onStartCommand", t)
+            stopSelf()
         }
         return START_STICKY
     }
@@ -46,7 +57,7 @@ class WakeWordService : Service(), RecognitionListener {
     private fun startInForeground() {
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (nm.getNotificationChannel(CHANNEL) == null) {
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
                 nm.createNotificationChannel(NotificationChannel(CHANNEL, "Listening for “Hey Snapy”", NotificationManager.IMPORTANCE_MIN))
             }
             val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -61,6 +72,10 @@ class WakeWordService : Service(), RecognitionListener {
             else startForeground(7, n)
         } catch (e: Exception) {
             android.util.Log.e("WakeWordService", "startForeground failed", e)
+            try {
+                if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+                else @Suppress("DEPRECATION") stopForeground(true)
+            } catch (_: Throwable) {}
             stopSelf()
         }
     }

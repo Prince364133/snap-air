@@ -114,135 +114,145 @@ class LivingOrbView(context: Context) : View(context) {
         super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
+        if (w <= 2f || h <= 2f) return
         val r = minOf(w, h) / 2f
+        if (r <= 2f) return
         val cx = w / 2f
         val cy = h / 2f
 
-        val prev = palettes[(paletteIndex - 1 + palettes.size) % palettes.size]
-        val curr = palettes[paletteIndex]
-        val c0 = lerpColor(prev[0], curr[0], colorT)
-        val c1 = lerpColor(prev[1], curr[1], colorT)
-        val c2 = lerpColor(prev[2], curr[2], colorT)
-        val c3 = lerpColor(prev[3], curr[3], colorT)
+        try {
+            val prev = palettes[(paletteIndex - 1 + palettes.size) % palettes.size]
+            val curr = palettes[paletteIndex]
+            val c0 = lerpColor(prev[0], curr[0], colorT)
+            val c1 = lerpColor(prev[1], curr[1], colorT)
+            val c2 = lerpColor(prev[2], curr[2], colorT)
+            val c3 = lerpColor(prev[3], curr[3], colorT)
 
-        if (isHaloRing && cutoutRadiusPx > 0f) {
-            val innerCutout = cutoutRadiusPx.coerceAtMost(r - 3f)
-            val ringPath = Path().apply {
-                fillType = Path.FillType.EVEN_ODD
-                addCircle(cx, cy, r, Path.Direction.CW)
-                addCircle(cx, cy, innerCutout, Path.Direction.CW)
+            if (isHaloRing && cutoutRadiusPx > 0f) {
+                val innerCutout = cutoutRadiusPx.coerceIn(0.5f, (r - 2f).coerceAtLeast(0.5f))
+                val ringPath = Path().apply {
+                    fillType = Path.FillType.EVEN_ODD
+                    addCircle(cx, cy, r, Path.Direction.CW)
+                    addCircle(cx, cy, innerCutout, Path.Direction.CW)
+                }
+                canvas.save()
+                canvas.clipPath(ringPath)
+
+                // Halo glow inside the camera ring
+                val t = turnT * 2 * Math.PI.toFloat()
+                val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = RadialGradient(
+                        cx, cy, r.coerceAtLeast(1f),
+                        intArrayOf(c1 and 0xCCFFFFFF.toInt(), c2 and 0x88FFFFFF.toInt(), c3 and 0x44FFFFFF.toInt()),
+                        floatArrayOf(0.2f, 0.6f, 1f),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawCircle(cx, cy, r, ringPaint)
+
+                // Dynamic rotating light streak around the ring
+                val angle = t
+                val lx = cx + Math.cos(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
+                val ly = cy + Math.sin(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
+                val streakRadius = ((r - innerCutout) * 1.6f).coerceAtLeast(1f)
+                val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+                    shader = RadialGradient(
+                        lx, ly, streakRadius,
+                        intArrayOf(0xFFFFFFFF.toInt(), 0),
+                        floatArrayOf(0f, 1f),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawCircle(lx, ly, streakRadius, streakPaint)
+
+                canvas.restore()
+
+                // Outer subtle glowing hairline
+                val outerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2.5f
+                    color = c1 and 0x99FFFFFF.toInt()
+                }
+                canvas.drawCircle(cx, cy, (r - 1.25f).coerceAtLeast(1f), outerStroke)
+
+                // Crisp inner camera cutout edge
+                val innerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 1.5f
+                    color = 0x44FFFFFF.toInt()
+                }
+                canvas.drawCircle(cx, cy, innerCutout + 0.75f, innerStroke)
+                return
             }
-            canvas.save()
-            canvas.clipPath(ringPath)
 
-            // Halo glow inside the camera ring
-            val t = turnT * 2 * Math.PI.toFloat()
-            val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            // Solid Living Orb (used inside dropped capsule strip)
+            // 1. Soft atmospheric halo
+            val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = RadialGradient(
-                    cx, cy, r,
-                    intArrayOf(c1 and 0xCCFFFFFF.toInt(), c2 and 0x88FFFFFF.toInt(), c3 and 0x44FFFFFF.toInt()),
-                    floatArrayOf(0.2f, 0.6f, 1f),
+                    cx, cy, r.coerceAtLeast(1f),
+                    intArrayOf(c1 and 0x55FFFFFF, c2 and 0x22FFFFFF, 0),
+                    floatArrayOf(0.4f, 0.75f, 1.0f),
                     Shader.TileMode.CLAMP
                 )
             }
-            canvas.drawCircle(cx, cy, r, ringPaint)
+            canvas.drawCircle(cx, cy, r, haloPaint)
 
-            // Dynamic rotating light streak around the ring
-            val angle = t
-            val lx = cx + Math.cos(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
-            val ly = cy + Math.sin(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
-            val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+            // 2. Base spherical gradient
+            val innerR = (r * 0.88f).coerceAtLeast(1f)
+            val path = Path().apply { addCircle(cx, cy, innerR, Path.Direction.CW) }
+            canvas.save()
+            canvas.clipPath(path)
+
+            val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = RadialGradient(
-                    lx, ly, (r - innerCutout) * 1.6f,
-                    intArrayOf(0xFFFFFFFF.toInt(), 0),
+                    cx - innerR * 0.25f, cy - innerR * 0.35f, (innerR * 1.1f).coerceAtLeast(1f),
+                    intArrayOf(c0, c1),
                     floatArrayOf(0f, 1f),
                     Shader.TileMode.CLAMP
                 )
             }
-            canvas.drawCircle(lx, ly, (r - innerCutout) * 1.6f, streakPaint)
+            canvas.drawCircle(cx, cy, innerR, basePaint)
+
+            // 3. Spectral light blobs rotating inside
+            val t = turnT * 2 * Math.PI.toFloat()
+            val blobColors = intArrayOf(c1, c2, c3)
+            val blobRadius = (innerR * 0.75f).coerceAtLeast(1f)
+            for (i in 0..2) {
+                val a = t + i * 2.1f
+                val rr = innerR * (0.35f + 0.1f * Math.sin((t * 0.8f + i).toDouble()).toFloat())
+                val px = cx + Math.cos(a.toDouble()).toFloat() * rr
+                val py = cy + Math.sin((a * 1.12f).toDouble()).toFloat() * rr
+                val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+                    shader = RadialGradient(
+                        px, py, blobRadius,
+                        intArrayOf(blobColors[i] and 0xE6FFFFFF.toInt(), 0),
+                        floatArrayOf(0f, 1f),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawCircle(px, py, blobRadius, blobPaint)
+            }
+
+            // 4. Glassy specular highlight
+            val hx = cx - innerR * 0.30f
+            val hy = cy - innerR * 0.35f
+            val hlRadius = (innerR * 0.45f).coerceAtLeast(1f)
+            val hlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = RadialGradient(
+                    hx, hy, hlRadius,
+                    intArrayOf(0xAAFFFFFF.toInt(), 0),
+                    floatArrayOf(0f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+            }
+            canvas.drawCircle(hx, hy, hlRadius, hlPaint)
 
             canvas.restore()
-
-            // Outer subtle glowing hairline
-            val outerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 2.5f
-                color = c1 and 0x99FFFFFF.toInt()
-            }
-            canvas.drawCircle(cx, cy, r - 1.25f, outerStroke)
-
-            // Crisp inner camera cutout edge
-            val innerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 1.5f
-                color = 0x44FFFFFF.toInt()
-            }
-            canvas.drawCircle(cx, cy, innerCutout + 0.75f, innerStroke)
-            return
+        } catch (t: Throwable) {
+            android.util.Log.e("LivingOrbView", "Draw exception caught", t)
         }
-
-        // 1. Soft atmospheric halo
-        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                cx, cy, r,
-                intArrayOf(c1 and 0x55FFFFFF, c2 and 0x22FFFFFF, 0),
-                floatArrayOf(0.4f, 0.75f, 1.0f),
-                Shader.TileMode.CLAMP
-            )
-        }
-        canvas.drawCircle(cx, cy, r, haloPaint)
-
-        // 2. Base spherical gradient
-        val innerR = r * 0.88f
-        val path = Path().apply { addCircle(cx, cy, innerR, Path.Direction.CW) }
-        canvas.save()
-        canvas.clipPath(path)
-
-        val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                cx - innerR * 0.25f, cy - innerR * 0.35f, innerR * 1.1f,
-                intArrayOf(c0, c1),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP
-            )
-        }
-        canvas.drawCircle(cx, cy, innerR, basePaint)
-
-        // 3. Spectral light blobs rotating inside
-        val t = turnT * 2 * Math.PI.toFloat()
-        val blobColors = intArrayOf(c1, c2, c3)
-        for (i in 0..2) {
-            val a = t + i * 2.1f
-            val rr = innerR * (0.35f + 0.1f * Math.sin((t * 0.8f + i).toDouble()).toFloat())
-            val px = cx + Math.cos(a.toDouble()).toFloat() * rr
-            val py = cy + Math.sin((a * 1.12f).toDouble()).toFloat() * rr
-            val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
-                shader = RadialGradient(
-                    px, py, innerR * 0.75f,
-                    intArrayOf(blobColors[i] and 0xE6FFFFFF.toInt(), 0),
-                    floatArrayOf(0f, 1f),
-                    Shader.TileMode.CLAMP
-                )
-            }
-            canvas.drawCircle(px, py, innerR * 0.75f, blobPaint)
-        }
-
-        // 4. Glassy specular highlight
-        val hx = cx - innerR * 0.30f
-        val hy = cy - innerR * 0.35f
-        val hlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                hx, hy, innerR * 0.45f,
-                intArrayOf(0xAAFFFFFF.toInt(), 0),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP
-            )
-        }
-        canvas.drawCircle(hx, hy, innerR * 0.45f, hlPaint)
-
-        canvas.restore()
     }
 }
 
@@ -274,87 +284,92 @@ class ReelIconView(context: Context) : View(context) {
         super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
-        val r = minOf(w, h)
-        val corner = r * 0.28f
+        if (w <= 1f || h <= 1f) return
+        try {
+            val r = minOf(w, h)
+            val corner = r * 0.28f
 
-        if (appPackage.contains("instagram")) {
-            // Instagram Sunset Gradient: #F58529 -> #DD2A7B -> #8134AF
-            bgPaint.shader = LinearGradient(
-                0f, h, w, 0f,
-                intArrayOf(0xFFF58529.toInt(), 0xFFDD2A7B.toInt(), 0xFF8134AF.toInt()),
-                floatArrayOf(0f, 0.5f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-
-            // Clapper top separator
-            strokePaint.strokeWidth = r * 0.08f
-            val clapperY = h * 0.30f
-            canvas.drawLine(w * 0.16f, clapperY, w * 0.84f, clapperY, strokePaint)
-
-            // Clapper diagonal slashes
-            strokePaint.strokeWidth = r * 0.06f
-            canvas.drawLine(w * 0.32f, clapperY, w * 0.40f, h * 0.12f, strokePaint)
-            canvas.drawLine(w * 0.58f, clapperY, w * 0.66f, h * 0.12f, strokePaint)
-
-            // Center Play triangle
-            val playPath = Path().apply {
-                val cx = w * 0.52f
-                val cy = h * 0.62f
-                val sz = r * 0.18f
-                moveTo(cx - sz * 0.7f, cy - sz)
-                lineTo(cx + sz, cy)
-                lineTo(cx - sz * 0.7f, cy + sz)
-                close()
-            }
-            canvas.drawPath(playPath, whiteFill)
-        } else if (appPackage.contains("youtube")) {
-            // YouTube Shorts Red
-            bgPaint.shader = null
-            bgPaint.color = 0xFFFF0000.toInt()
-            canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-
-            // Play Triangle
-            val playPath = Path().apply {
-                val cx = w * 0.53f
-                val cy = h * 0.50f
-                val sz = r * 0.24f
-                moveTo(cx - sz * 0.8f, cy - sz)
-                lineTo(cx + sz, cy)
-                lineTo(cx - sz * 0.8f, cy + sz)
-                close()
-            }
-            canvas.drawPath(playPath, whiteFill)
-        } else {
-            var drawn = false
-            try {
-                val pm = context.packageManager
-                val icon = pm.getApplicationIcon(appPackage)
-                val path = Path().apply {
-                    addRoundRect(0f, 0f, w, h, corner, corner, Path.Direction.CW)
-                }
-                canvas.save()
-                canvas.clipPath(path)
-                icon.setBounds(0, 0, w.toInt(), h.toInt())
-                icon.draw(canvas)
-                canvas.restore()
-                drawn = true
-            } catch (_: Exception) {}
-
-            if (!drawn) {
-                bgPaint.shader = LinearGradient(0f, 0f, w, h, 0xFFFF9500.toInt(), 0xFFFF5E3A.toInt(), Shader.TileMode.CLAMP)
+            if (appPackage.contains("instagram")) {
+                // Instagram Sunset Gradient: #F58529 -> #DD2A7B -> #8134AF
+                bgPaint.shader = LinearGradient(
+                    0f, h, w, 0f,
+                    intArrayOf(0xFFF58529.toInt(), 0xFFDD2A7B.toInt(), 0xFF8134AF.toInt()),
+                    floatArrayOf(0f, 0.5f, 1f),
+                    Shader.TileMode.CLAMP
+                )
                 canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
+
+                // Clapper top separator
+                strokePaint.strokeWidth = r * 0.08f
+                val clapperY = h * 0.30f
+                canvas.drawLine(w * 0.16f, clapperY, w * 0.84f, clapperY, strokePaint)
+
+                // Clapper diagonal slashes
+                strokePaint.strokeWidth = r * 0.06f
+                canvas.drawLine(w * 0.32f, clapperY, w * 0.40f, h * 0.12f, strokePaint)
+                canvas.drawLine(w * 0.58f, clapperY, w * 0.66f, h * 0.12f, strokePaint)
+
+                // Center Play triangle
+                val playPath = Path().apply {
+                    val cx = w * 0.52f
+                    val cy = h * 0.62f
+                    val sz = r * 0.18f
+                    moveTo(cx - sz * 0.7f, cy - sz)
+                    lineTo(cx + sz, cy)
+                    lineTo(cx - sz * 0.7f, cy + sz)
+                    close()
+                }
+                canvas.drawPath(playPath, whiteFill)
+            } else if (appPackage.contains("youtube")) {
+                // YouTube Shorts Red
+                bgPaint.shader = null
+                bgPaint.color = 0xFFFF0000.toInt()
+                canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
+
+                // Play Triangle
                 val playPath = Path().apply {
                     val cx = w * 0.53f
                     val cy = h * 0.50f
-                    val sz = r * 0.22f
+                    val sz = r * 0.24f
                     moveTo(cx - sz * 0.8f, cy - sz)
                     lineTo(cx + sz, cy)
                     lineTo(cx - sz * 0.8f, cy + sz)
                     close()
                 }
                 canvas.drawPath(playPath, whiteFill)
+            } else {
+                var drawn = false
+                try {
+                    val pm = context.packageManager
+                    val icon = pm.getApplicationIcon(appPackage)
+                    val path = Path().apply {
+                        addRoundRect(0f, 0f, w, h, corner, corner, Path.Direction.CW)
+                    }
+                    canvas.save()
+                    canvas.clipPath(path)
+                    icon.setBounds(0, 0, w.toInt(), h.toInt())
+                    icon.draw(canvas)
+                    canvas.restore()
+                    drawn = true
+                } catch (_: Exception) {}
+
+                if (!drawn) {
+                    bgPaint.shader = LinearGradient(0f, 0f, w, h, 0xFFFF9500.toInt(), 0xFFFF5E3A.toInt(), Shader.TileMode.CLAMP)
+                    canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
+                    val playPath = Path().apply {
+                        val cx = w * 0.53f
+                        val cy = h * 0.50f
+                        val sz = r * 0.22f
+                        moveTo(cx - sz * 0.8f, cy - sz)
+                        lineTo(cx + sz, cy)
+                        lineTo(cx - sz * 0.8f, cy + sz)
+                        close()
+                    }
+                    canvas.drawPath(playPath, whiteFill)
+                }
             }
+        } catch (t: Throwable) {
+            android.util.Log.e("ReelIconView", "Draw error", t)
         }
     }
 }
@@ -421,9 +436,10 @@ class ChipOverlay(
             clipToPadding = false
         }
 
-        // 1. Camera Punch-Hole Halo Ring
+        // 1. Camera Punch-Hole Halo Ring (always a ring, never a solid dot)
         val halo = LivingOrbView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(26f), dp(26f))
+            isHaloRing = true
+            layoutParams = LinearLayout.LayoutParams(dp(28f), dp(28f))
         }
         cameraHalo = halo
         r.addView(halo)
@@ -549,16 +565,15 @@ class ChipOverlay(
             val haloSize = if (cutout.hasCutout) {
                 minOf(cutout.size, dp(34f)) + dp(6f) // bounded halo around punch-hole lens
             } else {
-                dp(26f)
+                dp(28f)
             }
 
             cameraHalo?.apply {
-                if (cutout.hasCutout) {
-                    isHaloRing = true
-                    cutoutRadiusPx = minOf(cutout.size / 2f, dp(17f).toFloat())
+                isHaloRing = true
+                cutoutRadiusPx = if (cutout.hasCutout) {
+                    minOf(cutout.size / 2f, dp(17f).toFloat())
                 } else {
-                    isHaloRing = false
-                    cutoutRadiusPx = 0f
+                    dp(6.5f).toFloat() // Default camera punch-hole lens radius (13dp cutout)
                 }
                 layoutParams = LinearLayout.LayoutParams(haloSize, haloSize)
             }
@@ -1035,66 +1050,18 @@ class ChipOverlay(
     }
 }
 
-/** Small cards under the chip: nudges, quick actions, intention prompt, today's breakdown. */
+/**
+ * Legacy popup cards have been permanently removed per user requirement.
+ * Alerts, nudges, and reel lock status now appear via the camera capsule strip
+ * and floating subtitle HUD without intrusive full-screen blocking cards.
+ */
 class OverlayCards(private val ctx: Context, private val wm: WindowManager, private val windowType: Int) {
-    private val main = Handler(Looper.getMainLooper())
-    private var card: View? = null
-    private val dismiss = Runnable { remove() }
-
-    private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics).toInt()
-
-    @SuppressLint("ClickableViewAccessibility")
     fun show(title: String?, body: String, actions: List<Pair<String, String>>, belowY: Int, timeoutMs: Long,
-             bigText: Boolean = false, onAction: (String) -> Unit) = main.post {
-        remove()
-        val textSize = if (bigText) 17f else 14f
-        val box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16f), dp(12f), dp(16f), dp(10f))
-            background = GradientDrawable().apply { cornerRadius = dp(18f).toFloat(); setColor(0xF0111114.toInt()); setStroke(1, 0x33FFFFFF) }
-        }
-        if (!title.isNullOrEmpty()) box.addView(TextView(ctx).apply {
-            text = title; setTextColor(0xFFF5F5F7.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize + 1)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        })
-        box.addView(TextView(ctx).apply {
-            text = body; setTextColor(0xFFF5F5F7.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
-            setLineSpacing(0f, 1.15f)
-        })
-        if (actions.isNotEmpty()) {
-            val row = LinearLayout(ctx).apply {
-                orientation = if (actions.size > 2 || bigText) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-                gravity = Gravity.END
-                setPadding(0, dp(6f), 0, 0)
-            }
-            actions.forEachIndexed { i, (id, label) ->
-                row.addView(Button(ctx, null, android.R.attr.borderlessButtonStyle).apply {
-                    text = label
-                    isAllCaps = false
-                    setTextColor(if (i == 0) 0xFF0A84FF.toInt() else 0xFFA1A1A6.toInt())
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
-                    setOnClickListener { remove(); onAction(id) }
-                })
-            }
-            box.addView(row)
-        }
-        box.setOnTouchListener { _, e ->
-            if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) { remove(); onAction("dismiss") }
-            false
-        }
-        val lp = WindowManager.LayoutParams(
-            (ctx.resources.displayMetrics.widthPixels * 0.92).toInt(), WindowManager.LayoutParams.WRAP_CONTENT, windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = belowY + dp(8f) }
-        try { wm.addView(box, lp); card = box } catch (_: Exception) { return@post }
-        if (timeoutMs > 0) main.postDelayed(dismiss, timeoutMs)
+             bigText: Boolean = false, onAction: (String) -> Unit) {
+        // No-op: legacy popup cards removed per user architecture.
     }
 
     fun remove() {
-        main.removeCallbacks(dismiss)
-        card?.let { try { wm.removeView(it) } catch (_: Exception) { } }
-        card = null
+        // No-op
     }
 }

@@ -31,8 +31,15 @@ class ChipService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!canRun(this) || intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         startInForeground()
+        if (!canRun(this) || intent?.action == ACTION_STOP) {
+            try {
+                if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+                else @Suppress("DEPRECATION") stopForeground(true)
+            } catch (_: Throwable) {}
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (rc == null) {
             rc = RealCountController(this, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, counting = false).also { it.start() }
             poll()

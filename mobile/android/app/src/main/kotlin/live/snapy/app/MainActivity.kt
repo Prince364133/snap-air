@@ -8,7 +8,11 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        SnapyChannels.register(flutterEngine, this)
+        try {
+            SnapyChannels.register(flutterEngine, this)
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "Error configuring FlutterEngine", t)
+        }
     }
 
 

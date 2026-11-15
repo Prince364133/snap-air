@@ -184,7 +184,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
   final TextEditingController _aiCtrl = TextEditingController(text: 'Snapy');
 
   Map<String, bool> _permStatus = const {};
-  bool _wakeWordOptIn = true;
+  bool _wakeWordOptIn = false;
   bool _saving = false;
 
   @override
