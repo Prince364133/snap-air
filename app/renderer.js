@@ -650,8 +650,11 @@ const SETTINGS = [
         { key: 'headphones', type: 'switch', label: 'I use headphones', sub: 'No speaker echo — interrupting works even when you speak softly' },
     ]],
     ['Voice', [
-        { key: 'native_indic_voices', type: 'switch', label: 'Native Indian voices', sub: 'Native-speaker voices for Hindi, Telugu, Malayalam, Marathi, Bengali, Nepali and Urdu (downloaded on first use; free for personal use)' },
-        { key: 'indic_voices', type: 'hindi_voice', label: 'Hindi voice' },
+        { key: 'native_indic_voices', type: 'switch', label: 'Native Indian voices', sub: 'Native-speaker voices for Indian languages (downloaded on first use)' },
+        { key: 'native_status', type: 'native_status', label: 'Languages' },
+        { key: 'open_speech_settings', type: 'action', label: 'Hindi, Tamil and more', sub: 'Add Windows’ own voices (e.g. Hindi Hemant / Kalpana): Speech → Add voices', button: 'Add voices', action: 'open_speech_settings' },
+        { key: 'personal_use_voices', type: 'switch', label: 'Personal-use voices', sub: 'Extra Hindi and Malayalam voices whose licence allows personal, non-commercial use only' },
+        { key: 'indic_voices', type: 'hindi_voice', label: 'Personal-use Hindi voice', when: () => S.personal_use_voices },
         { key: 'tts_enabled', type: 'switch', label: 'Speak replies' },
         { key: 'tts_voice', type: 'select', label: 'Voice', options: () => (models.voices || [['af_heart', 'Heart']]) },
         { key: 'tts_speed', type: 'range', label: 'Speed', min: 0.8, max: 1.3, step: 0.05 },
@@ -660,6 +663,12 @@ const SETTINGS = [
         { key: 'tts_preview', type: 'action', label: 'Hear how I sound', button: 'Preview', action: 'tts_test' },
     ]],
     ['AI brain', 'models'],
+    ['Screen vision', [
+        { key: 'vision_mode', type: 'select', label: 'When I can’t read a window', options: [['auto', 'Use text recognition and a vision model'], ['off', 'Don’t look at the screen']] },
+        { key: 'vision_local', type: 'select', label: 'Local vision model', options: [['auto', 'Only with a graphics card (fast)'], ['on', 'Always (private, slow on CPU)'], ['off', 'Never']] },
+        { key: 'vision_status', type: 'vision_status', label: 'Status' },
+        { key: 'vision_install', type: 'action', label: 'Install local vision model', sub: 'Qwen3.5 4B (about 3.4 GB). Only installs if this PC can run it.', button: 'Install', action: 'vision_install', when: () => !(models.vision || {}).local_model },
+    ]],
     ['Gestures', [
         { key: 'gestures_enabled', type: 'switch', label: 'Hand gestures (uses the camera)', sub: 'Point to move, pinch to click, two fingers to scroll' },
         { key: 'show_camera_preview', type: 'switch', label: 'Small camera preview' },
@@ -681,6 +690,19 @@ const SETTINGS = [
 
 function settingControl(it) {
     const v = S[it.key];
+    if (it.type === 'native_status') {
+        const names = { hi: 'Hindi', te: 'Telugu', ml: 'Malayalam', mr: 'Marathi', bn: 'Bengali', ne: 'Nepali', ur: 'Urdu', ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', pa: 'Punjabi' };
+        const st = models.native_voices || {};
+        const parts = Object.keys(names).filter((k) => st[k]).map((k) => `${names[k]}: ${st[k].voice ? st[k].voice + (st[k].source === 'windows' ? ' (Windows)' : '') : 'multilingual voice'}`);
+        return h('span', { class: 'caption', style: 'max-width:260px;text-align:right' }, parts.join(' · ') || '…');
+    }
+    if (it.type === 'vision_status') {
+        const v = models.vision || {};
+        const bits = ['Accessibility tree ✓', v.ocr ? 'Text recognition ✓' : 'Text recognition unavailable',
+            v.local_active ? `Local model ✓ (${v.local_model})` : v.local_model ? `Local model installed (${v.local_model}), off on this PC` : 'No local model',
+            v.cloud ? 'Cloud vision ✓' : 'Cloud vision off'];
+        return h('span', { class: 'caption', style: 'max-width:260px;text-align:right' }, bits.join(' · '));
+    }
     if (it.type === 'hindi_voice') {
         const cur = (S.indic_voices || {}).hi || 'hi_IN-priyamvada-medium';
         const sel = h('select', { class: 'select' }, ...[['hi_IN-priyamvada-medium', 'Priyamvada (female)'], ['hi_IN-pratham-medium', 'Pratham (male)'], ['hi_IN-rohan-medium', 'Rohan (male)']].map(([v, l]) => { const o = h('option', { value: v }, l); if (v === cur) o.selected = true; return o; }));
@@ -691,7 +713,7 @@ function settingControl(it) {
     if (it.type === 'switch') {
         const c = h('input', { type: 'checkbox', class: 'switch' });
         c.checked = !!v;
-        c.onchange = () => { updateSetting(it.key, c.checked); if (it.key === 'start_at_login') ipcRenderer.send('set-login-item', c.checked); };
+        c.onchange = () => { updateSetting(it.key, c.checked); if (it.key === 'start_at_login') ipcRenderer.send('set-login-item', c.checked); if (it.key === 'personal_use_voices') { renderSettings(); send({ type: 'request', what: 'models' }); } };
         return c;
     }
     if (it.type === 'select') {
@@ -733,7 +755,7 @@ function renderSettings() {
         if (items === 'models') { out.push(h('div', { id: 'model-section' })); continue; }
         if (items === 'privacy') { out.push(privacySection()); continue; }
         if (items === 'help') { out.push(helpSection()); continue; }
-        out.push(h('div', { class: 'grouped' }, ...items.map((it) => {
+        out.push(h('div', { class: 'grouped' }, ...items.filter((it) => !it.when || it.when()).map((it) => {
             const row = h('div', { class: 'g-row', 'data-key': it.key }, h('span', {}, it.label, it.sub ? h('span', { class: 'sub' }, it.sub) : null), settingControl(it));
             if (it.meter) return h('div', { class: 'g-row col', 'data-key': it.key }, row, h('div', { class: 'meter' }, h('i', { id: 'mic-meter' })));
             return row;
@@ -1113,7 +1135,7 @@ ipcRenderer.on('hotkey', (_e, name) => {
 function renderName() {
     const h1 = document.querySelector('.drawer-title h1');
     if (h1) h1.textContent = NAME();
-    document.title = `${NAME()} HUD`;
+    // window title stays "Snapy HUD": the engine uses it to ignore its own window
 }
 function renderAll() {
     renderName();

@@ -74,7 +74,8 @@ def foreground_window():
         return None
 
 
-CAPTION = {"minimize", "maximize", "restore", "close", "restore down", "system", "system menu"}
+CAPTION = {"minimize", "minimise", "maximize", "maximise", "restore", "close", "restore down", "system",
+           "system menu", "back", "forward", "reload", "tab groups", "search tabs", "new tab"}
 
 
 def snapshot(window=None, max_elements=400, max_depth=40, time_budget=2.5):
@@ -87,12 +88,12 @@ def snapshot(window=None, max_elements=400, max_depth=40, time_budget=2.5):
         chromium = root is not None and root.ClassName.startswith("Chrome_WidgetWin")
     except Exception:
         chromium = False
-    if chromium and not any(e.ctype in ("HyperlinkControl", "EditControl", "DocumentControl", "ListItemControl")
-                            for e in els):
+    web = ("HyperlinkControl", "EditControl", "ListItemControl", "ComboBoxControl")
+    if chromium and not any(e.ctype in web for e in els):
         for _ in range(4):
             time.sleep(0.5)
             els, root = _snapshot(root, max_elements, max_depth, time_budget)
-            if any(e.ctype in ("HyperlinkControl", "EditControl", "ListItemControl") for e in els):
+            if any(e.ctype in web for e in els):
                 break
     return els, root
 
@@ -298,7 +299,8 @@ def describe(elements, root=None, limit=25):
     for e in elements:
         k = e.ctype.replace("Control", "").lower()
         counts[k] = counts.get(k, 0) + 1
-    main = sorted(elements, key=lambda e: (round(e.rect[1] / 60), e.rect[0]))
+    content = [e for e in elements if e.name.lower() not in CAPTION] or elements
+    main = sorted(content, key=lambda e: (round(e.rect[1] / 60), e.rect[0]))
     items = [e.as_dict(i) for i, e in enumerate(main[:limit])]
     parts = ", ".join(f"{v} {k}{'s' if v > 1 else ''}" for k, v in sorted(counts.items(), key=lambda x: -x[1])[:4])
     return {"title": title, "summary": f"“{title[:60]}” — {parts}." if title else parts, "items": items}

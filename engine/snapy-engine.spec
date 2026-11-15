@@ -6,7 +6,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 datas, binaries, hiddenimports = [], [], []
 for pkg in ("mediapipe", "faster_whisper", "ctranslate2", "onnxruntime", "kokoro_onnx", "espeakng_loader",
             "phonemizer", "language_tags", "segments", "csvw", "sounddevice", "_sounddevice_data", "soundcard",
-            "tokenizers", "cv2"):
+            "tokenizers", "cv2", "winrt", "uiautomation", "comtypes"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
@@ -25,7 +25,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    excludes=["playwright", "tkinter", "IPython", "pytest", "PyInstaller"],   # mediapipe needs matplotlib
+    excludes=["playwright", "tkinter", "IPython", "pytest", "PyInstaller", "comtypes.test"],   # mediapipe needs matplotlib
     noarchive=False,
 )
 pyz = PYZ(a.pure)

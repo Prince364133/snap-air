@@ -5,9 +5,12 @@ already ships, so no extra runtime. Piper voices are native-speaker recordings,
 which is why they sound far more native for Indian languages than a multilingual
 English-first model.
 
-License note: the Piper *engine* is MIT, but each *voice* has its own license.
-The hi_IN voices are trained on non-commercial datasets (CC BY-NC-SA 4.0 /
-IITM IndicTTS) — fine for personal use, not for a sold product.
+License note: each *voice* has its own license (taken from its MODEL_CARD).
+COMMERCIAL=True voices (CC0 / CC-BY / CC-BY-SA / MIT data) may be used in a sold
+product with attribution. COMMERCIAL=False voices (CC BY-NC-SA, IIT Madras
+IndicTTS licence) are for personal use only: Snapy never uses them unless the
+user turns on "personal-use voices", and they are downloaded by the user from
+Hugging Face, never shipped in the installer.
 """
 import json
 import os
@@ -18,21 +21,26 @@ import numpy as np
 _lock = threading.Lock()
 _backends = {}
 
-# Piper voices available in rhasspy/piper-voices (verified via the HF API)
+# Piper voices in rhasspy/piper-voices: (name, path, label, commercial_ok, data licence)
 CATALOG = {
-    "hi": [("hi_IN-priyamvada-medium", "hi/hi_IN/priyamvada/medium", "Priyamvada (female)"),
-           ("hi_IN-pratham-medium", "hi/hi_IN/pratham/medium", "Pratham (male)"),
-           ("hi_IN-rohan-medium", "hi/hi_IN/rohan/medium", "Rohan (male)")],
-    "te": [("te_IN-padmavathi-medium", "te/te_IN/padmavathi/medium", "Padmavathi (female)"),
-           ("te_IN-venkatesh-medium", "te/te_IN/venkatesh/medium", "Venkatesh (male)"),
-           ("te_IN-maya-medium", "te/te_IN/maya/medium", "Maya (female)")],
-    "ml": [("ml_IN-meera-medium", "ml/ml_IN/meera/medium", "Meera (female)"),
-           ("ml_IN-arjun-medium", "ml/ml_IN/arjun/medium", "Arjun (male)")],
-    "mr": [("mr_IN-google-medium", "mr/mr_IN/google/medium", "Marathi (Google)")],
-    "bn": [("bn_BD-google-medium", "bn/bn_BD/google/medium", "Bengali (Google)")],
-    "ne": [("ne_NP-chitwan-medium", "ne/ne_NP/chitwan/medium", "Chitwan")],
-    "ur": [("ur_PK-fasih-medium", "ur/ur_PK/fasih/medium", "Fasih (male)")],
+    "hi": [("hi_IN-priyamvada-medium", "hi/hi_IN/priyamvada/medium", "Priyamvada (female)", False, "CC BY-NC-SA 4.0"),
+           ("hi_IN-pratham-medium", "hi/hi_IN/pratham/medium", "Pratham (male)", False, "CC BY-NC-SA 4.0"),
+           ("hi_IN-rohan-medium", "hi/hi_IN/rohan/medium", "Rohan (male)", False, "IIT Madras IndicTTS (non-commercial)")],
+    "te": [("te_IN-padmavathi-medium", "te/te_IN/padmavathi/medium", "Padmavathi (female)", True, "CC-BY-4.0 (AI4Bharat IndicVoices-R)"),
+           ("te_IN-venkatesh-medium", "te/te_IN/venkatesh/medium", "Venkatesh (male)", True, "CC-BY-4.0 (AI4Bharat IndicVoices-R)"),
+           ("te_IN-maya-medium", "te/te_IN/maya/medium", "Maya (female)", False, "IIT Madras IndicTTS (non-commercial)")],
+    "ml": [("ml_IN-meera-medium", "ml/ml_IN/meera/medium", "Meera (female)", False, "IndicTTS corpus (non-commercial)"),
+           ("ml_IN-arjun-medium", "ml/ml_IN/arjun/medium", "Arjun (male)", False, "IndicTTS corpus (non-commercial)")],
+    "mr": [("mr_IN-google-medium", "mr/mr_IN/google/medium", "Marathi (Google)", True, "CC-BY-SA 4.0 (OpenSLR 64)")],
+    "bn": [("bn_BD-google-medium", "bn/bn_BD/google/medium", "Bengali (Google)", True, "CC-BY-SA 4.0 (OpenSLR 37) + CMU")],
+    "ne": [("ne_NP-chitwan-medium", "ne/ne_NP/chitwan/medium", "Chitwan", True, "CC0"),
+           ("ne_NP-google-medium", "ne/ne_NP/google/medium", "Nepali (Google)", True, "CC-BY-SA 4.0 (OpenSLR 43)")],
+    "ur": [("ur_PK-fasih-medium", "ur/ur_PK/fasih/medium", "Fasih (male)", True, "MIT")],
 }
+
+
+def entry(lang, name):
+    return next((e for e in CATALOG.get(lang, []) if e[0] == name), None)
 BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
 
 

@@ -62,7 +62,8 @@ class ScreenFindTests(unittest.TestCase):
     def test_describe(self):
         d = screen.describe(PAGE)
         self.assertIn("hyperlink", d["summary"])
-        self.assertEqual(d["items"][0]["type"], "button")
+        self.assertNotIn("Minimize", [i["name"] for i in d["items"]])      # window buttons are noise
+        self.assertEqual(d["items"][0]["name"], "Search")
 
 
 class NativeVoiceTests(unittest.TestCase):
@@ -105,3 +106,117 @@ class AgentNameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceLicenceTests(unittest.TestCase):
+    def speaker(self, settings):
+        from src.voice.tts import Speaker
+        sp = Speaker.__new__(Speaker)
+        sp.settings, sp._piper, sp._downloading = settings, {}, {"te_IN-padmavathi-medium", "hi_IN-rohan-medium",
+                                                                 "hi_IN-priyamvada-medium"}
+        sp._windows_voice = lambda lang: None            # no Windows Hindi voice on the test machine
+        return sp
+
+    def test_non_commercial_voices_need_opt_in(self):
+        from src.voice.piper_voice import CATALOG
+        self.assertTrue(all(not e[3] for e in CATALOG["hi"]))          # every Hindi Piper voice is NC
+        sp = self.speaker({"indic_voices": {"hi": "hi_IN-rohan-medium"}})
+        self.assertIsNone(sp._native_voice("hi"))                       # not used without opt-in
+
+    def test_commercial_voice_preferred(self):
+        from src.voice.piper_voice import CATALOG
+        te = [e for e in CATALOG["te"] if e[3]]
+        self.assertEqual(te[0][0], "te_IN-padmavathi-medium")
+        sp = self.speaker({"indic_voices": {"te": "te_IN-maya-medium"}})   # NC choice is ignored
+        sp._native_voice("te")
+        self.assertNotIn("te_IN-maya-medium", sp._downloading)
+
+
+class VisionParseTests(unittest.TestCase):
+    def test_point_parsing(self):
+        from src.os_control.vision import _parse_point
+        self.assertEqual(_parse_point('{"found": true, "x": 500, "y": 250, "label": "Play"}'), (0.5, 0.25, "Play"))
+        self.assertEqual(_parse_point('sure: {"found": true, "x": 0.5, "y": 0.25}')[:2], (0.5, 0.25))
+        self.assertIsNone(_parse_point('{"found": false}'))
+        self.assertIsNone(_parse_point('{"x": 4000, "y": 10}'))
+        self.assertIsNone(_parse_point("no json"))
+
+
+class ScreenTaskTests(unittest.TestCase):
+    def setUp(self):
+        from unittest import mock
+        self._p = mock.patch("time.sleep", lambda s: None)
+        self._p.start()
+
+    def tearDown(self):
+        self._p.stop()
+
+    def assistant(self, plan=None):
+        from src.brain.assistant import Assistant
+        a = Assistant.__new__(Assistant)
+        a.settings, a.vision = {}, None
+        a.agent = AgentController(settings={}, os_actions=FakeOS(), app_index=FakeApps())
+        a.replies, a.clicked, a.typed = [], [], []
+        a.reply = lambda text, *x, **k: a.replies.append((text, k.get("error", False))) or text
+        a.emit = lambda m: None
+        a._s = lambda k, d=None: d
+
+        class FakeScreen:
+            Element = screen.Element
+            find = staticmethod(screen.find)
+
+            @staticmethod
+            def snapshot(*x, **k):
+                class Root:
+                    Name = "Videos"
+                return list(PAGE), Root()
+
+            @staticmethod
+            def click(el, **k):
+                a.clicked.append(el.name)
+
+            @staticmethod
+            def type_into(el, text, submit=False):
+                a.typed.append((el.name, text))
+        a.screen = FakeScreen
+
+        class FakeLLM:
+            calls = 0
+
+            def ready(self):
+                return True
+
+            def chat_json(self, msgs, schema, **k):
+                FakeLLM.calls += 1
+                return (plan or [{"action": "done"}]).pop(0) if plan else {"action": "done"}
+        a.llm = FakeLLM()
+        return a
+
+    def test_chain_runs_without_model(self):
+        a = self.assistant()
+        a.screen_task("type lofi in the search box and then click the second video")
+        self.assertEqual(a.typed, [("Search", "lofi")])
+        self.assertTrue(a.clicked[0].startswith("Lofi"))
+        self.assertEqual(a.replies[-1][0], "Done.")
+        self.assertEqual(a.llm.calls, 0)
+
+    def test_find_and_open_it(self):
+        a = self.assistant()
+        a.screen_task("find the biryani video and open it")
+        self.assertTrue(a.clicked[0].startswith("Cooking"))
+
+    def test_failed_step_is_not_reported_done(self):
+        a = self.assistant()
+        a.screen_task("click the purple dinosaur button")
+        self.assertTrue(a.replies[-1][1])                      # error, not "Done."
+
+    def test_model_loop_stops_before_risky_click(self):
+        PAGE.append(el("Delete account", "ButtonControl", (0, 5, 60, 30)))       # first in reading order
+        try:
+            a = self.assistant(plan=[{"action": "click", "id": 0}])
+            a.screen_task("make the page tidy please")
+            # whatever the model picked first, a destructive button is never clicked without being named
+            self.assertNotIn("Delete account", a.clicked)
+            self.assertIn("confirm", a.replies[-1][0])
+        finally:
+            PAGE.pop()

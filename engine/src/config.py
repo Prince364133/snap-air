@@ -48,6 +48,10 @@ DEFAULTS = {
     "tts_speed": 1.0,
     "native_indic_voices": True,   # native-speaker Piper voices for Hindi, Telugu, Malayalam, Marathi, Bengali…
     "indic_voices": {},            # per-language choice, e.g. {"hi": "hi_IN-rohan-medium"}
+    "personal_use_voices": False,  # allow voices whose licence is non-commercial (personal use only)
+    "vision_mode": "auto",         # auto: OCR + local/cloud vision when the accessibility tree can't see it | off
+    "vision_local": "auto",        # auto: local vision model only with a GPU (CPU ~90 s/screenshot) | on | off
+    "vision_model": "",            # Ollama vision model; empty = best installed
     "speak_typed_replies": False,  # also speak answers to typed questions
     "speak_confirmations": False,  # speak "Scrolled down" etc. for quick commands
 

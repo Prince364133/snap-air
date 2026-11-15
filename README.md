@@ -44,7 +44,9 @@ First-time setup: `cd engine && python -m venv .venv && .venv\Scripts\pip instal
 
 **Screen control:** "click the subscribe button", "click the second video", "click the video on the top left", "type hello in the search box", "what's on my screen?", "play the best video on React hooks". Snapy reads the Windows accessibility tree (exact, local, free; no screenshots), works in Chrome, Edge and most apps, and never clicks window controls unless you name them. Design and roadmap (OCR, local vision model, multi-step plans): [docs/COMPUTER_USE.md](docs/COMPUTER_USE.md).
 
-**Native Indian voices:** Hindi, Telugu, Malayalam, Marathi, Bengali, Nepali and Urdu use native-speaker Piper voices (about 63 MB each, downloaded on first use; about 10× faster than real time on CPU). Spoken Hindi replies are written in Devanagari so they're pronounced natively. Choose the Hindi voice in *Settings → Voice*. Compare samples in `docs/voice-samples/`.
+**Native Indian voices:** Telugu, Marathi, Bengali, Nepali and Urdu use native-speaker Piper voices (about 63 MB each, downloaded on first use; about 10× faster than real time on CPU). Hindi, Tamil and others use Windows' own voices once added in *Settings → Voice → Add voices*. Extra personal-use Hindi voices can be turned on separately (see Licensing). Spoken Hindi replies are written in Devanagari so they're pronounced natively. Compare samples in `docs/voice-samples/`.
+
+**Screen vision:** when a window has no accessibility info, Snapy falls back to Windows text recognition, then a vision model (local with a GPU, or cloud with your key). "On screen, …" runs multi-step goals and asks before anything irreversible.
 
 **Your assistant's name:** Snapy by default; rename it in onboarding or *Settings → General* ("Hey Meera, …"). Similar spellings from speech recognition are matched, and "Snapy" always works too.
 
@@ -62,8 +64,24 @@ First-time setup: `cd engine && python -m venv .venv && .venv\Scripts\pip instal
 All data is plain JSON in `%APPDATA%\SnapAir\` (profile, memories, journal, notes, tasks, activity). Activity tracking stores app, project and site names with durations. It never stores keystrokes, screen contents, URLs, or private windows. The internet is used only when you ask for a web search or weather. Settings has **Open folder**, **Export**, and **Delete all my data**.
 
 ## Licensing notes (read before selling)
-- The **Piper voices for Hindi** (priyamvada, pratham, rohan) were trained on non-commercial datasets (CC BY-NC-SA 4.0 / IITM). They are fine for personal use but **not for a paid product**. Before selling, license commercial Indic voices (for example AI4Bharat Indic-Parler-TTS, Apache-2.0, heavier) or offer a cloud Indic TTS.
-- **espeak-ng** and **phonemizer** (used by Kokoro and Piper for pronunciation) are GPL-3.0. Get a legal review of how they're bundled before commercial distribution.
+**Voices: handled in code.** Each voice carries the licence from its model card (`src/voice/piper_voice.py`). By default Snapy only uses voices that allow commercial use:
+
+| Language | Default native voice | Licence |
+|---|---|---|
+| Telugu | Piper Padmavathi / Venkatesh | CC-BY-4.0 (attribution) |
+| Marathi, Bengali | Piper Google voices | CC-BY-SA 4.0 (attribution) |
+| Nepali | Piper Chitwan | CC0 |
+| Urdu | Piper Fasih | MIT |
+| Hindi, Tamil, others | Windows' own voices (e.g. Microsoft Hemant / Kalpana), added in *Settings → Voice → Add voices* | Licensed with Windows |
+
+The Hindi Piper voices (priyamvada, pratham, rohan), Telugu Maya and Malayalam use CC BY-NC-SA / IIT Madras data. They are **personal use only**. Snapy uses them only if the user turns on *Personal-use voices*. They are downloaded by the user from Hugging Face and are **never shipped in the installer**. Credit the CC-BY voices in your About page or EULA.
+
+**espeak-ng / phonemizer (GPL-3.0): still needs a decision.** Kokoro and Piper use them for pronunciation, and the installer bundles them. Before selling, choose one:
+1. Get a legal opinion on shipping espeak-ng as a separate dynamically loaded library (aggregation).
+2. Move pronunciation into a separate helper process (the cleanest GPL boundary).
+3. Replace it with a permissive G2P: misaki (Apache) for English, plus licensed Indic voices.
+
+AI4Bharat's FastPitch/HiFi-GAN Indic-TTS models appear to be MIT-licensed. They would give commercial Hindi/Tamil/Kannada/Gujarati voices, but check the official LICENSE before relying on them.
 
 ## Tests
 ```

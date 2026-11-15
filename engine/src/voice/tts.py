@@ -235,10 +235,26 @@ class Speaker:
         return "en" if lang in ("hi", "hinglish") else lang     # Latin text: an English voice reads it best
 
     def _native_voice(self, lang):
-        """A native Piper voice for this language (downloaded on first use), or None."""
-        if not self._s("native_indic_voices", True) or lang not in PIPER_CATALOG:
+        """Best native voice for an Indian language, licence-aware:
+        1. an open Piper voice that allows commercial use (Telugu, Marathi, Bengali, Nepali, Urdu)
+        2. Windows' own voice for the language (Hindi Hemant/Kalpana…, licensed with Windows)
+        3. a personal-use-only Piper voice, only if the user opted in
+        Otherwise None (the multilingual Kokoro voice is used)."""
+        if lang == "en" or not self._s("native_indic_voices", True):
             return None
-        chosen = (self._s("indic_voices", {}) or {}).get(lang) or PIPER_CATALOG[lang][0][0]
+        personal = bool(self._s("personal_use_voices", False))
+        options = PIPER_CATALOG.get(lang, [])
+        chosen = (self._s("indic_voices", {}) or {}).get(lang)
+        allowed = [e for e in options if e[3] or personal]
+        pick = next((e for e in allowed if e[0] == chosen), None) or next((e for e in allowed if e[3]), None)
+        if pick is None:
+            win = self._windows_voice(lang)
+            if win is not None:
+                return win
+            pick = allowed[0] if allowed else None
+        if pick is None:
+            return None
+        chosen = pick[0]
         if chosen in self._piper:
             return self._piper[chosen]
         path = os.path.join(piper_dir(), chosen + ".onnx")
@@ -251,7 +267,7 @@ class Speaker:
                 return None
         if chosen not in self._downloading:
             self._downloading.add(chosen)
-            rel = next(r for n, r, _ in PIPER_CATALOG[lang] if n == chosen)
+            rel = pick[1]
 
             def fetch():
                 try:
@@ -264,6 +280,40 @@ class Speaker:
                     self._downloading.discard(chosen)
             threading.Thread(target=fetch, daemon=True).start()
         return None          # meanwhile the multilingual voice is used
+
+    def _windows_voice(self, lang):
+        key = "win:" + lang
+        if key in self._piper:
+            return self._piper[key]
+        try:
+            from src.voice import windows_voice
+            found = windows_voice.find(lang)
+            self._piper[key] = windows_voice.WindowsVoice(found[2]) if found else None
+        except Exception as e:
+            print("[TTS] Windows voice unavailable:", e)
+            self._piper[key] = None
+        return self._piper[key]
+
+    def voice_status(self):
+        """What each Indian language will sound like, for Settings."""
+        from src.voice import windows_voice
+        installed = {v[1].split("-")[0].lower(): v[0] for v in windows_voice.voices()}
+        personal = bool(self._s("personal_use_voices", False))
+        out = {}
+        for lang, opts in PIPER_CATALOG.items():
+            commercial = [e for e in opts if e[3]]
+            if commercial:
+                out[lang] = {"source": "piper", "voice": commercial[0][2], "licence": commercial[0][4]}
+            elif lang in installed:
+                out[lang] = {"source": "windows", "voice": installed[lang], "licence": "Windows"}
+            elif personal:
+                out[lang] = {"source": "piper-personal", "voice": opts[0][2], "licence": opts[0][4]}
+            else:
+                out[lang] = {"source": "missing", "voice": None, "licence": None}
+        for lang in ("ta", "gu", "kn", "pa"):
+            out[lang] = ({"source": "windows", "voice": installed[lang], "licence": "Windows"} if lang in installed
+                         else {"source": "missing", "voice": None, "licence": None})
+        return out
 
     def _voice_for(self, text, lang):
         if DEVANAGARI.search(text):

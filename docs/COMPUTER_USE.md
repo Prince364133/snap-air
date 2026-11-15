@@ -111,11 +111,24 @@ Check each license before shipping. Moondream's newest weights and some GUI mode
   - The bottom-right video sat under the On-Screen Keyboard. The first version's mouse click hit the keyboard instead, so clicks now use UIA Invoke first and a visibility-checked point second.
 - 132 unit tests pass, including the spatial, naming, safety and Hinglish-ordinal cases in `tests/test_v4.py`.
 
+## Phase 2 results (tiers 2–4 + the task loop, implemented)
+
+`src/os_control/vision.py`, `Assistant._locate()` and `Assistant.screen_task()`. All measured on this PC: CPU only, 16 GB RAM.
+
+| Tier | Result |
+|---|---|
+| 2 · Windows OCR | 77 text items in the test window. First call is 8.7 s while WinRT loads, so it is warmed at startup; after that **0.5 s**. "Cooking the perfect biryani" was found and clicked. |
+| 3 · Local VLM (Qwen3.5 4B via Ollama) | Pointed at "Subscribe" within **6 px** of its true centre, but took **94 s** on CPU. At 512/384 px it took 24/19 s and **missed**. The local vision model therefore runs automatically **only with a GPU** (≥4 GB VRAM); on CPU it's an opt-in "private but slow" setting. |
+| 4 · Cloud vision | Gemini / OpenAI request builders are implemented and use the user's key, only in Auto/Cloud mode. **Not tested live: no key on this PC.** |
+| Task loop | Chains such as "type lofi beats in the search box and then click the second video" run deterministically, with no AI: **3.6 s, correct**. Open-ended goals use the local 1.7B model with a text element list, relevance-ranked. It reaches the goal but can take a wrong step first, so a bigger or cloud model is recommended for long goals. |
+| Safety | Snapy stops and asks before clicking anything named send / delete / buy / pay / submit / post… unless the user said it. Window caption buttons are never chosen implicitly. 8-step budget; it stops when the screen stops changing. |
+
 ## Roadmap
 
 1. ✅ UIA snapshot, find (name, type, ordinal, corner), click / type / read, "play the best video on X".
-2. Windows OCR tier, plus "click the text that says …" on any app.
-3. Multi-step plan/act/verify loop with a step budget and confirmations.
-4. Optional Moondream tier, installed only when the compatibility check passes (same rule as LLMs).
-5. Macro learning and element aliases.
-6. macOS (AX) back-end.
+2. ✅ Windows OCR tier (text with no accessibility info).
+3. ✅ Local vision model tier (GPU-gated), ✅ cloud vision tier (untested without a key).
+4. ✅ Multi-step plan/act/verify loop with a step budget and confirmations ("on screen, …").
+5. Smaller, faster local grounding on CPU: crop around the likely region before asking the VLM, or use a dedicated small grounding model (Moondream 0.5B / ShowUI-2B via ONNX).
+6. Macro learning and element aliases.
+7. macOS (AX) back-end.

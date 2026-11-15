@@ -139,6 +139,8 @@ def _on_caption(text):
 
 
 speaker = Speaker(settings, on_level=_on_speak_level, on_state=_on_speaking, on_caption=_on_caption)
+from src.os_control.vision import Vision, ocr_available  # noqa: E402
+vision = Vision(settings, cloud)          # OCR / local / cloud screen vision (fallback after UI Automation)
 time.sleep(4) if os.environ.get("SNAPY_PROBE") else None
 _probe("Kokoro loaded")
 # Full duplex: the mic stays open while Snapy talks. An echo guard raises the bar for
@@ -209,6 +211,8 @@ briefing = Briefing(memory, tasks, notes, activity, settings=settings, weather_f
 assistant = Assistant(settings, agent, memory, tasks, notes, activity, briefing, meeting, brain, speaker,
                       emit=lambda p: (_track_assistant(p), send_all(p)), web=webtools)
 assistant.on_follow_up = lambda seconds: voice.arm(seconds)
+assistant.vision = vision
+threading.Thread(target=ocr_available, daemon=True).start()
 
 
 def _track_assistant(p):
@@ -345,6 +349,14 @@ def models_payload():
     st["tts_engine"] = speaker.engine
     st["whisper"] = whisper_model_name()
     st["installing_ollama"] = _ollama_install
+    try:
+        st["native_voices"] = speaker.voice_status()
+    except Exception:
+        st["native_voices"] = {}
+    try:
+        st["vision"] = vision.status()
+    except Exception:
+        st["vision"] = {}
     st["cloud"] = {"provider": cloud.provider, "model": cloud.model, "base_url": cloud.base_url,
                    "configured": cloud.configured(), "key": secrets_store.masked(f"cloud_{cloud.provider}"),
                    "providers": PROVIDERS, "active": brain.is_cloud, "error": cloud.last_error}
@@ -708,6 +720,10 @@ async def ws_handler(ws):
                         toast(f"Cloud test failed: {e}", False, "cloud")
                     send_all(models_payload())
                 bg(_test)
+            elif t == "open_speech_settings":
+                os.startfile("ms-settings:speech")
+            elif t == "vision_install":
+                bg(pull_model, "qwen3.5:4b")
             elif t == "install_ollama":
                 bg(install_ollama)
             elif t == "model_pull" and d.get("name"):

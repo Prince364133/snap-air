@@ -74,7 +74,7 @@ remember {fact}: lasting fact about the user, third person | forget {fact}
 web_search {query}: current info/news/prices | read_page {}: the browser tab the user is looking at | clipboard {action: explain|summarize|translate, text: target language}
 meeting_notes {action: start|stop|bookmark} | start_my_day {} | day_summary {} | standup_draft {}
 focus {minutes} | work_context {action: park|resume, name} | open_panel {panel: today|assistant|notes|tasks|memory|activity|settings} | activity {app}
-screen {action: click|type|read, text: what to type, query: the on-screen thing, e.g. "second video", "search box", "Subscribe button"}
+screen {action: click|type|read|task, text: what to type, query: the on-screen thing, e.g. "second video", "search box", "Subscribe button", goal: for task = a multi-step goal on the current screen}
 When you use a tool, "say" is a short confirmation of what you are doing.
 Answer from PROFILE, MEMORY and OPEN TASKS yourself (tool "none") when they contain the answer; explain general knowledge yourself; use web_search only for current or unknown facts.
 Use memories only when relevant to the request; never recite them unprompted. Never repeat secrets.
@@ -736,6 +736,9 @@ class Assistant:
         elif tool == "screen":
             act = (args.get("action") or "read").lower()
             q = args.get("query") or args.get("title") or ""
+            if act == "task":
+                self.screen_task(args.get("goal") or q, lang, speak)
+                return
             phrase = {"click": f"click {q}", "type": f"type {args.get('text', '')} in {q} field",
                       "read": "what's on my screen"}.get(act)
             if phrase:
@@ -758,15 +761,49 @@ class Assistant:
             self.screen = sc
         return self.screen
 
+    def _vision(self):
+        if getattr(self, "vision", None) is None:
+            from src.os_control.vision import Vision
+            self.vision = Vision(self.settings, getattr(self.llm, "cloud", None))
+        return self.vision
+
+    def _locate(self, query):
+        """Accessibility tree first (exact, instant), then OCR / vision model on the window."""
+        sc = self._screen_backend()
+        els, root = sc.snapshot()
+        el, why = sc.find(query, els)
+        if el is not None:
+            return el, why
+        rect = None
+        try:
+            r = root.BoundingRectangle
+            rect = (r.left, r.top, r.right, r.bottom)
+        except Exception:
+            pass
+        if rect is None or rect[2] - rect[0] < 20:
+            return None, why
+        try:
+            vel, tier = self._vision().locate(query, rect)
+        except Exception as e:
+            print("[Screen] vision fallback failed:", e)
+            return None, why
+        return (vel, tier) if vel is not None else (None, tier)
+
     SCREEN_CLICK = re.compile(r"^(?:please )?(?:click|tap|double click|right click|select|choose|hit)(?: on)?(?: the)? (.+)$")
     SCREEN_OPEN = re.compile(r"^(?:open|play|watch)(?: the)? (.+?\b(?:video|result|link|tab|button|menu|thumbnail|option|item)\b.*)$")
     SCREEN_TYPE = re.compile(r"^(?:type|write|enter|fill in|put|search(?: for)?)\s+(.+?)\s+(?:in|into|inside|on|in to)\s+(?:the\s+)?(.+?)$")
     SCREEN_READ = re.compile(r"^(?:what(?:'s| is) on (?:my|the) screen|read (?:my|the) screen|what (?:can|do) you see"
                              r"|describe (?:my|the) screen|screen (?:pe|par) kya hai)")
+    SCREEN_TASK = re.compile(r"^(?:on (?:the |my )?screen|on this page|in this window|screen task)[,:]?\s+(.+)$")
+    RISKY = re.compile(r"\b(send|delete|remove|buy|pay|purchase|checkout|place order|submit|post|publish|transfer|"
+                       r"uninstall|format|sign out|log out|unsubscribe)\b", re.I)
     SCREEN_BEST = re.compile(r"^(?:find|play|open|show)(?: me)? (?:the )?(?:best|most relevant|top|good) (?:video|result)s?"
                              r"(?: (?:on|about|for) (.+))?$")
 
     def _screen_intent(self, t, low, lang, speak):
+        m = self.SCREEN_TASK.match(low)
+        if m:
+            return self.screen_task(m.group(1), lang, speak)
         m = self.SCREEN_BEST.match(low)
         if m:
             return self._screen_best(m.group(1) or "", lang, speak)
@@ -775,6 +812,15 @@ class Assistant:
             sc = self._screen_backend()
             els, root = sc.snapshot()
             d = sc.describe(els, root)
+            visual = re.search(r"\b(see|picture|image|photo|look|describe)\b", low)
+            if visual or not els:
+                try:
+                    r = root.BoundingRectangle
+                    text = self._vision().describe((r.left, r.top, r.right, r.bottom))
+                except Exception:
+                    text = None
+                if text:
+                    return self.reply(text, lang, speak, tool="screen", screen=d)
             names = "; ".join(i["name"] for i in d["items"][:6])
             return self.reply(f"You're on {d['summary']} I can see: {names}." if els else "I can't read this window.",
                               lang, speak, tool="screen", screen=d)
@@ -785,9 +831,9 @@ class Assistant:
                           raw, re.I)
             text = om.group(1) if om else m.group(1)
             sc = self._screen_backend()
-            els, _ = sc.snapshot()
-            el, why = sc.find(m.group(2), els)
+            el, why = self._locate(m.group(2))
             if not el:
+                self._step_error = True
                 return self.reply(why, lang, speak, error=True)
             sc.type_into(el, text, submit=low.startswith("search"))
             return self.reply(f"Typed “{text}” into {el.name[:40] or 'the field'}.", lang,
@@ -798,14 +844,134 @@ class Assistant:
             if target in ("it", "that", "here", "this"):
                 return None                       # plain mouse click: handled by the command grammar
             sc = self._screen_backend()
-            els, _ = sc.snapshot()
-            el, why = sc.find(target, els)
+            el, why = self._locate(target)
             if not el:
+                self._step_error = True
                 return self.reply(why, lang, speak, error=True)
+            if self.RISKY.search(el.name) and not self.RISKY.search(target):
+                return self.reply(f"That looks like “{el.name[:50]}”. Say “click {el.name[:30]}” if you really want it.",
+                                  lang, speak)
             sc.click(el, double=low.startswith("double"), right=low.startswith("right"))
             return self.reply(f"Clicked “{el.name[:60]}”.", lang, speak and self._s("speak_confirmations", False),
                               tool="screen")
         return None
+
+    TASK_SCHEMA = {"type": "object", "properties": {
+        "action": {"type": "string", "enum": ["click", "type", "key", "scroll", "wait", "done", "fail"]},
+        "id": {"type": "integer"}, "text": {"type": "string"}, "say": {"type": "string"}},
+        "required": ["action"]}
+
+    def screen_task(self, goal, lang="en", speak=False, max_steps=8):
+        """Plan -> act -> verify on the live screen, one small step at a time.
+        The model sees a compact TEXT list of on-screen elements (not a screenshot), so a
+        1.7B local model can do it. Stops before anything irreversible and asks first."""
+        if not self.llm.ready():
+            return self.reply("I need an AI model for multi-step screen tasks. Set one up in Settings → AI brain.",
+                              lang, speak, error=True)
+        sc = self._screen_backend()
+        # 1) Steps that are single, well-formed commands run deterministically (exact, no model).
+        goal = re.sub(r"^(?:find|locate|look for|search for)\s+(.+?)\s+(?:and|then)\s+(?:open|play|click|select|watch)\s+(?:it|that)\W*$",
+                      r"click \1", goal.strip(), flags=re.I)
+        clauses = [c.strip(" ,.") for c in re.split(r"\s*(?:,\s*)?\b(?:and then|then|and)\b\s*", goal) if c.strip(" ,.")]
+        if clauses and all(self._screen_step_kind(c) for c in clauses):
+            self._step_error = False
+            for c in clauses:
+                self._screen_intent(c, re.sub(r"[.!?,]+", " ", c.lower()).strip(), lang, False)
+                if self._step_error:
+                    return None                      # the failing step already explained why
+                time.sleep(1.0)
+            return self.reply("Done.", lang, speak, tool="screen")
+        # 2) Otherwise: plan -> act -> verify with the AI, one small step at a time.
+        goal_words = set(re.findall(r"[a-z0-9]{3,}", goal.lower())) - {"the", "and", "click", "open", "video", "type",
+                                                                         "into", "search", "box", "field", "button"}
+        history, last_sig, stuck = [], None, 0
+        for step in range(max_steps):
+            els, root = sc.snapshot()
+            title = ""
+            try:
+                title = root.Name
+            except Exception:
+                pass
+            els = [e for e in els if e.ctype != "DocumentControl" and e.name != title]
+            # relevance to the goal first, so a small model sees the likely targets at the top
+            main = sorted(els, key=lambda e: (-len(goal_words & set(re.findall(r"[a-z0-9]{3,}", e.name.lower()))),
+                                              round(e.rect[1] / 60), e.rect[0]))[:45]
+            sig = (title, tuple(e.name for e in main[:15]))
+            stuck = stuck + 1 if sig == last_sig else 0
+            if stuck >= 1 and history and history[-1] == (history[-2] if len(history) > 1 else None):
+                return self.reply("Done: " + history[-1] + ".", lang, speak, tool="screen")
+            if stuck >= 2:
+                return self.reply("The screen isn't changing, so I stopped. " + (history[-1] if history else ""),
+                                  lang, speak, error=True, tool="screen")
+            last_sig = sig
+            listing = "\n".join(f"{i}: [{e.ctype.replace('Control', '').lower()}] {e.name[:90]}{self._field_value(e)}"
+                                for i, e in enumerate(main))
+            try:
+                out = self.llm.chat_json([
+                    {"role": "system", "content":
+                        "You operate a Windows PC for the user, one step at a time. Choose ONE next action.\n"
+                        "click {id} | type {id, text} (types into that field and presses Enter) | key {text: e.g. "
+                        "ctrl+l, enter, alt+left} | scroll {text: up|down} | wait | done {say} | fail {say}.\n"
+                        "Only use ids from the list. Elements most related to the goal are listed first. "
+                        "If DONE SO FAR already achieves the GOAL, answer done. Never repeat the same action. "
+                        "To open, play or pick something that is already in the list, click it: don't search for it."},
+                    {"role": "user", "content": f"GOAL: {goal}\nWINDOW: {title}\nDONE SO FAR: {'; '.join(history) or 'nothing'}"
+                                                f"\nELEMENTS:\n{listing}"}],
+                    self.TASK_SCHEMA, max_tokens=80, background=False)
+            except Exception as e:
+                return self.reply(f"I couldn't plan the next step ({e}).", lang, speak, error=True)
+            act = (out.get("action") or "fail").lower()
+            if act in ("done", "fail"):
+                return self.reply(out.get("say") or ("Done." if act == "done" else "I couldn't finish that."),
+                                  lang, speak, tool="screen", error=act == "fail")
+            el = None
+            if act in ("click", "type"):
+                i = out.get("id")
+                if not isinstance(i, int) or not 0 <= i < len(main):
+                    history.append(f"step {step + 1}: invalid id")
+                    continue
+                el = main[i]
+                if self.RISKY.search(el.name) and not self.RISKY.search(goal):
+                    return self.reply(f"Next I'd click “{el.name[:50]}”. That can't be undone, so please confirm "
+                                      f"by saying “click {el.name[:30]}”.", lang, speak, tool="screen")
+            if act == "click":
+                sc.click(el)
+                history.append(f"clicked '{el.name[:40]}'")
+            elif act == "type":
+                sc.type_into(el, out.get("text") or "", submit=True)
+                history.append(f"typed '{(out.get('text') or '')[:40]}' into '{el.name[:30]}'")
+            elif act == "key":
+                combo = (out.get("text") or "").lower()
+                ok = bool(combo) and self.agent.execute_intent("press " + combo).ok
+                history.append(f"pressed {combo}" if ok else f"could not press {combo}")
+            elif act == "scroll":
+                import pyautogui
+                pyautogui.scroll(-600 if "down" in (out.get("text") or "down") else 600)
+                history.append("scrolled " + (out.get("text") or "down"))
+            else:
+                history.append("waited")
+            self.emit({"type": "screen_step", "step": step + 1, "text": history[-1]})
+            time.sleep(1.2)
+        return self.reply("I stopped after " + str(max_steps) + " steps: " + "; ".join(history[-3:]), lang, speak,
+                          tool="screen")
+
+    def _screen_step_kind(self, c):
+        low = re.sub(r"[.!?,]+", " ", c.lower()).strip()
+        if self.SCREEN_TYPE.match(low) and re.search(r"\b(field|box|bar|search|input|area|form|textbox)\b", low):
+            return "type"
+        if self.SCREEN_CLICK.match(low) or self.SCREEN_OPEN.match(low):
+            return "click"
+        return None
+
+    @staticmethod
+    def _field_value(e):
+        if e.ctype not in ("EditControl", "ComboBoxControl") or e.control is None:
+            return ""
+        try:
+            v = e.control.GetValuePattern().Value
+            return f" (current text: '{v[:40]}')" if v else " (empty)"
+        except Exception:
+            return ""
 
     def _screen_best(self, topic, lang, speak):
         """'Play the best video on X': search if a topic is given, then let the AI pick
