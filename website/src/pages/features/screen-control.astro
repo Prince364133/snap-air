@@ -1,0 +1,31 @@
+---
+import Feature from '../../layouts/Feature.astro';
+---
+<Feature
+  seoTitle="AI Screen Control for Windows — Click & Type by Voice"
+  description="Snapy understands your screen: say “click the second video”, “type hello in the search box” or “what’s on my screen?”. It reads Windows accessibility data first, then on-device text recognition and vision — and asks before anything irreversible."
+  crumb="Screen control"
+  path="/features/screen-control/"
+  eyebrow="Screen control"
+  title="It uses your screen the way you do."
+  lead="Tell Snapy what to click or type and it finds it — buttons, links, search boxes, video thumbnails — in Chrome, Edge and most Windows apps."
+  examples={['click the subscribe button', 'click the video on the top left', 'type hello world in the search box', 'what’s on my screen?', 'play the best video on React hooks', 'doosra video chalao', 'on screen, search for lofi and play the second video']}
+  points={[
+    { icon: 'window', c: 'i-blue', t: 'Reads the window', d: 'Windows describes every control — its name, type and position. Snapy uses that first, so clicks are exact and instant, with no screenshots.' },
+    { icon: 'eye', c: 'i-purple', t: 'Reads the pixels when it must', d: 'Apps that don’t describe themselves fall back to Windows’ built-in text recognition (about half a second), then a vision model for icons and pictures.' },
+    { icon: 'cursor', c: 'i-teal', t: 'Understands “top left”', d: '“Second”, “last”, “bottom right”, “upar wala” — positions are worked out from the real layout, in reading order.' },
+    { icon: 'bolt', c: 'i-green', t: 'Multi-step tasks', d: '“Type lofi in the search box and then click the second video” runs step by step. Longer goals are planned one action at a time, up to eight steps.' },
+    { icon: 'shield', c: 'i-orange', t: 'Asks before it’s final', d: 'Anything that sends, deletes, pays, buys or submits needs you to say it. Window buttons like Close are never clicked by accident.' },
+    { icon: 'lock', c: 'i-pink', t: 'Screens stay private', d: 'The screen is read on your PC. A screenshot only leaves it if you turned on cloud vision with your own API key.' },
+  ]}
+  faqs={[
+    { q: 'Which apps does screen control work with?', a: 'Chrome, Edge, File Explorer, Settings, Office and most Windows apps expose their controls to Windows accessibility, so they work instantly. Other apps use text recognition or a vision model.' },
+    { q: 'Do I need a graphics card?', a: 'No. Reading windows and text recognition run on any PC. The optional local vision model is used automatically only when your PC has a graphics card; without one you can add a cloud key or turn it on as “private but slow”.' },
+    { q: 'Can it do things on its own?', a: 'Only what you ask, one step at a time, with a step limit — and it stops to ask before anything that can’t be undone.' },
+  ]}
+  related={[
+    { href: '/features/voice/', label: 'Voice assistant', d: 'Wake word, interruptions and every keyboard shortcut.' },
+    { href: '/security/', label: 'Security', d: 'How Snapy keeps your PC and data safe.' },
+    { href: '/commands/', label: 'Voice commands', d: 'Everything you can say, in one place.' },
+  ]}
+/>

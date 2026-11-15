@@ -22,7 +22,11 @@ __pycache__/
 *.pyo
 *.lnk
 
+# Astro cache
+.astro/
+
 # installer icons are source files
+
 !app/build/
 !app/build/**
 # PyInstaller output

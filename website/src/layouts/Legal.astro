@@ -1,0 +1,27 @@
+---
+import Base from './Base.astro';
+import { SITE } from '../config';
+interface Props { seoTitle: string; title: string; description: string; crumb: string; path: string; toc: [string, string][] }
+const { seoTitle, title, description, crumb, path, toc } = Astro.props;
+---
+<Base title={seoTitle} description={description} crumbs={[{ name: crumb, href: path }]} ogType="article">
+  <header class="page-hero" style="padding-bottom:24px">
+    <div class="wrap">
+      <span class="eyebrow">Legal</span>
+      <h1>{title}</h1>
+      <p class="muted" style="margin-top:12px">Last updated {SITE.legalUpdated}</p>
+    </div>
+  </header>
+  <section class="section-tight" style="padding-top:16px">
+    <div class="wrap doc-layout">
+      <nav class="toc" aria-label="On this page">
+        <p class="fine" style="margin-bottom:12px;font-weight:600">On this page</p>
+        <ol>{toc.map(([id, t]) => <li><a href={`#${id}`}>{t}</a></li>)}</ol>
+      </nav>
+      <article class="prose legal">
+        <slot />
+      </article>
+    </div>
+  </section>
+</Base>
+<style>.legal :global(h2) { scroll-margin-top: 84px; }</style>

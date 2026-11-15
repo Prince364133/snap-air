@@ -1,0 +1,74 @@
+---
+import Base from './Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Icon from '../components/Icon.astro';
+import CtaBand from '../components/CtaBand.astro';
+
+interface Point { icon: string; c: string; t: string; d: string }
+interface QA { q: string; a: string }
+interface Props {
+  seoTitle: string; description: string; crumb: string; path: string;
+  eyebrow: string; title: string; lead: string;
+  examples?: string[]; points: Point[]; faqs?: QA[];
+  related: { href: string; label: string; d: string }[];
+}
+const { seoTitle, description, crumb, path, eyebrow, title, lead, examples = [], points, faqs = [], related } = Astro.props;
+const schema = faqs.length ? [{
+  '@type': 'FAQPage',
+  mainEntity: faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+}] : [];
+---
+<Base title={seoTitle} description={description} crumbs={[{ name: 'Features', href: '/features/' }, { name: crumb, href: path }]} schema={schema}>
+  <PageHero eyebrow={eyebrow} title={title} lead={lead}>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/download/"><Icon name="windows" size={18} />Download for Windows</a>
+      <a class="btn btn-ghost" href="/commands/">All voice commands</a>
+    </div>
+  </PageHero>
+
+  {examples.length > 0 && (
+    <div class="wrap" style="padding-bottom:8px">
+      <ul class="chips" aria-label="Things you can say" style="list-style:none">
+        {examples.map((e) => <li class="chip">“{e}”</li>)}
+      </ul>
+    </div>
+  )}
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="grid grid-3">
+        {points.map((p) => (
+          <div class="card reveal">
+            <div class={`icon ${p.c}`}><Icon name={p.icon} /></div>
+            <h3>{p.t}</h3>
+            <p>{p.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <slot />
+
+  {faqs.length > 0 && (
+    <section class="section-tight">
+      <div class="wrap narrow">
+        <h2 style="margin-bottom:24px">Questions</h2>
+        <div class="faq">
+          {faqs.map((f) => <details><summary>{f.q}</summary><div class="answer"><p>{f.a}</p></div></details>)}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="section-tight alt">
+    <div class="wrap">
+      <h2 style="margin-bottom:28px;font-size:clamp(24px,3vw,32px)">Keep exploring</h2>
+      <div class="grid grid-3">
+        {related.map((r) => <a class="card" href={r.href}><h3>{r.label}</h3><p>{r.d}</p><span class="more">Learn more →</span></a>)}
+      </div>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>

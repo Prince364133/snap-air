@@ -1,0 +1,270 @@
+---
+import Base from '../layouts/Base.astro';
+import HudMock from '../components/HudMock.astro';
+import Icon from '../components/Icon.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { SITE, RELEASE } from '../config';
+
+const app = {
+  '@type': 'SoftwareApplication',
+  '@id': `${SITE.url}/#app`,
+  name: SITE.name,
+  description: SITE.description,
+  applicationCategory: 'UtilitiesApplication',
+  applicationSubCategory: 'AI assistant',
+  operatingSystem: 'Windows 10, Windows 11',
+  softwareVersion: RELEASE.version,
+  datePublished: RELEASE.date,
+  downloadUrl: new URL('/download/', SITE.url).href,
+  installUrl: new URL('/install/', SITE.url).href,
+  fileSize: `${RELEASE.sizeMB}MB`,
+  memoryRequirements: '8 GB RAM (16 GB recommended)',
+  storageRequirements: '4 GB free disk space',
+  inLanguage: ['en', 'hi'],
+  image: `${SITE.url}/og.png`,
+  publisher: { '@id': `${SITE.url}/#org` },
+  featureList: [
+    'Voice control in English, Hindi and Hinglish',
+    'Click, type and read anything on screen',
+    'On-device AI language model',
+    'Meeting notes with action items',
+    'Tasks, reminders and timers',
+    'Morning briefing and Start my day',
+    'Local memory you can see and delete',
+    'Any keyboard shortcut by voice',
+    'Optional hand gestures',
+  ],
+};
+
+const commands = [
+  'Snapy, start my day', 'remind me at 5 to push the PR', 'click the second video', 'type hello in the search box',
+  'take meeting notes', 'press Windows H', 'youtube kholo', 'awaaz badhao', 'what’s on my screen?', 'prepare my standup',
+  'focus for 45 minutes', 'kal subah gym yaad dilana', 'summarise this page', 'remember that I prefer Slack', 'open clipboard history',
+];
+
+const features = [
+  { icon: 'mic', c: 'i-blue', t: 'Talk, don’t click', d: 'Say “Snapy” and ask. It answers out loud in about two seconds and stops the moment you speak over it.', href: '/features/voice/' },
+  { icon: 'cursor', c: 'i-purple', t: 'Uses your screen like you do', d: '“Click the video on the top left.” “Type my email in this field.” Snapy reads what’s on screen and acts on it.', href: '/features/screen-control/' },
+  { icon: 'notes', c: 'i-teal', t: 'Meeting notes that write themselves', d: 'Captures you and the other side of the call, then gives you a summary, decisions and action items to review.', href: '/features/meetings/' },
+  { icon: 'brain', c: 'i-pink', t: 'Remembers what matters', d: 'Your projects, people and preferences — stored as plain files on your PC, with a Memory tab to edit or erase.', href: '/features/memory/' },
+  { icon: 'globe', c: 'i-orange', t: 'Speaks your language', d: 'English, Hindi and Hinglish, with native Indian voices. Say “kal 5 baje yaad dilana” and it just works.', href: '/features/indian-languages/' },
+  { icon: 'sun', c: 'i-green', t: 'Start my day', d: 'One morning greeting with yesterday’s work and today’s plan — and a button that opens your editor and project.', href: '/features/' },
+];
+---
+<Base
+  fullTitle
+  title={`${SITE.name} — Private AI Assistant for Windows | Voice, Screen Control & Hindi`}
+  description={SITE.description}
+  schema={[app]}
+>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="wrap center">
+      <a class="pill reveal" href="/changelog/"><span class="orb" style="--size:18px"></span>New in {RELEASE.version}: screen control &amp; native Indian voices<Icon name="arrow" size={14} /></a>
+      <h1 class="display reveal">Your AI assistant<br />that <span class="gradient-text">lives on your PC.</span></h1>
+      <p class="lead reveal hero-lead">Talk to Snapy in English, Hindi or Hinglish. It controls your apps, clicks and types on screen, takes your meeting notes and plans your day — with the AI running on your own laptop.</p>
+      <div class="cta-row reveal">
+        <a class="btn btn-primary" href="/download/"><Icon name="windows" size={18} />Download for Windows</a>
+        <a class="btn btn-ghost" href="#how">See how it works</a>
+      </div>
+      <p class="fine reveal">Windows 10 &amp; 11 · {RELEASE.sizeMB} MB · Sets itself up automatically · No account needed</p>
+    </div>
+    <div class="wrap hero-visual reveal">
+      <HudMock />
+    </div>
+  </section>
+
+  <!-- COMMAND MARQUEE -->
+  <section class="section-tight marquee-section" aria-labelledby="say-it">
+    <div class="wrap center">
+      <h2 id="say-it" class="h-small">Just say it.</h2>
+    </div>
+    <div class="marquee" aria-label="Example things you can say to Snapy">
+      <ul class="marquee-track">
+        {[...commands, ...commands].map((c, i) => <li class="chip" aria-hidden={i >= commands.length ? 'true' : undefined}>“{c}”</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <!-- FEATURES BENTO -->
+  <section id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="eyebrow">What Snapy does</span>
+        <h2 id="features-title">A real assistant, not a chat window.</h2>
+        <p class="lead">Snapy sits quietly at the top of your screen. When you need it, you talk — and things happen on your PC.</p>
+      </div>
+      <div class="bento">
+        {features.map((f, i) => (
+          <a class:list={['card', 'bento-card', 'reveal', { wide: i === 0 || i === 1, full: i === features.length - 1 }]} href={f.href}>
+            <div class={`icon ${f.c}`}><Icon name={f.icon} /></div>
+            <h3>{f.t}</h3>
+            <p>{f.d}</p>
+            <span class="more">Learn more →</span>
+          </a>
+        ))}
+      </div>
+      <div class="mini-grid reveal">
+        <div><Icon name="keyboard" /><strong>Any shortcut by voice</strong><span>“Press Windows V”, “Control Shift T”, “F5 three times”</span></div>
+        <div><Icon name="bell" /><strong>Tasks &amp; reminders</strong><span>Spoken, on screen and as Windows notifications</span></div>
+        <div><Icon name="clock" /><strong>Focus &amp; timers</strong><span>“Focus for 45 minutes” keeps things quiet</span></div>
+        <div><Icon name="hand" /><strong>Hand gestures</strong><span>Point, pinch and scroll — camera off until you turn it on</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRIVATE BY DESIGN -->
+  <section class="alt" aria-labelledby="private-title">
+    <div class="wrap split">
+      <div class="reveal">
+        <span class="eyebrow">Private by design</span>
+        <h2 id="private-title">Your voice and your day stay on your laptop.</h2>
+        <p class="lead" style="margin-top:16px">Speech recognition, the AI model and your memory all run on your PC. Nothing is uploaded unless you choose to connect a cloud AI.</p>
+        <ul class="checks">
+          <li><Icon name="check" size={18} />Audio is processed in memory and never saved</li>
+          <li><Icon name="check" size={18} />Memories, notes and tasks are plain files you own</li>
+          <li><Icon name="check" size={18} />No account, no sign-in, works offline</li>
+          <li><Icon name="check" size={18} />Export or delete everything in one click</li>
+        </ul>
+        <a class="btn btn-ghost" href="/privacy/" style="margin-top:28px">Read the privacy policy</a>
+      </div>
+      <div class="reveal">
+        <div class="device" aria-label="Diagram: everything runs inside your PC; a cloud AI is optional.">
+          <div class="device-label"><Icon name="window" size={16} />Your PC</div>
+          <div class="flow">
+            <div class="node"><Icon name="mic" size={18} />Your voice</div>
+            <div class="arrow" aria-hidden="true"></div>
+            <div class="node"><Icon name="wave" size={18} />Speech recognition</div>
+            <div class="arrow" aria-hidden="true"></div>
+            <div class="node accent"><span class="orb" style="--size:18px"></span>Local AI model</div>
+            <div class="arrow" aria-hidden="true"></div>
+            <div class="node"><Icon name="bolt" size={18} />Action + spoken reply</div>
+          </div>
+          <div class="memory-chip"><Icon name="lock" size={16} />Memory, notes &amp; tasks — stored on this PC</div>
+        </div>
+        <div class="cloud-opt"><Icon name="cloud" size={18} /><span><strong>Optional:</strong> on older laptops, connect your own Gemini or OpenAI key. Snapy decides automatically — or you choose.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN UNDERSTANDING -->
+  <section aria-labelledby="screen-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Screen control</span>
+        <h2 id="screen-title">It sees your screen the smart way.</h2>
+        <p class="lead">Snapy reads the structure Windows already provides — every button, link and field — so it’s exact and instant. Pictures and icons fall back to on-device text recognition and vision.</p>
+      </div>
+      <ol class="tiers">
+        <li class="reveal"><span class="tier-n">1</span><div><h3>Reads the window</h3><p>Names, buttons, links and text fields from Windows accessibility. Instant, exact, free.</p></div><span class="tag">Instant</span></li>
+        <li class="reveal"><span class="tier-n">2</span><div><h3>Reads the text</h3><p>Built-in Windows text recognition for apps that don’t describe themselves.</p></div><span class="tag">~0.5 s</span></li>
+        <li class="reveal"><span class="tier-n">3</span><div><h3>Looks at the picture</h3><p>A vision model finds icons and thumbnails — on your GPU, or your own cloud key.</p></div><span class="tag">When needed</span></li>
+      </ol>
+      <div class="callout reveal" style="margin-top:24px"><span class="dot"></span><p>Snapy never clicks anything that sends, deletes, pays or submits unless you said so — it asks first.</p></div>
+    </div>
+  </section>
+
+  <!-- HOW IT SETS ITSELF UP -->
+  <section id="how" class="alt" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Up and running in minutes</span>
+        <h2 id="how-title">Download. Open. Say hello.</h2>
+        <p class="lead">One installer does everything. Snapy checks your PC and installs the AI model that runs smoothly on it — never one it can’t handle.</p>
+      </div>
+      <div class="grid grid-3">
+        <div class="card how reveal"><div class="icon i-blue"><Icon name="download" /></div><h3>1 · Download</h3><p>Get <code>{RELEASE.file}</code> — a single {RELEASE.sizeMB} MB installer for Windows 10 and 11.</p></div>
+        <div class="card how reveal"><div class="icon i-purple"><Icon name="cpu" /></div><h3>2 · It sets itself up</h3><p>Run it. Snapy installs, checks your RAM, CPU and graphics, and downloads the right AI model in the background.</p></div>
+        <div class="card how reveal"><div class="icon i-green"><Icon name="chat" /></div><h3>3 · Say “Snapy, start my day”</h3><p>A short voice setup learns your name and work hours. From then on, just talk.</p></div>
+      </div>
+      <div class="center" style="margin-top:36px"><a class="btn btn-ghost" href="/install/">Read the full install guide</a></div>
+    </div>
+  </section>
+
+  <!-- NUMBERS -->
+  <section class="section-tight" aria-label="Snapy at a glance">
+    <div class="wrap">
+      <dl class="stats reveal">
+        <div><dt>~2 s</dt><dd>from your question to Snapy’s first spoken word, on a modern laptop</dd></div>
+        <div><dt>1B–14B</dt><dd>local AI models, matched to what your PC can run</dd></div>
+        <div><dt>3</dt><dd>ways to talk: English, Hindi, Hinglish</dd></div>
+        <div><dt>0</dt><dd>accounts or sign-ins required</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .hero { position: relative; padding-top: clamp(56px, 8vw, 104px); padding-bottom: clamp(48px, 7vw, 96px); overflow: hidden; }
+  .hero-glow { position: absolute; left: 50%; top: -200px; width: 1200px; height: 800px; transform: translateX(-50%); z-index: -1; opacity: .55;
+    background: radial-gradient(closest-side at 35% 50%, rgb(var(--orb-1) / .45), transparent), radial-gradient(closest-side at 65% 45%, rgb(var(--orb-2) / .4), transparent),
+                radial-gradient(closest-side at 50% 70%, rgb(var(--orb-3) / .35), transparent); filter: blur(60px); }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; border: 1px solid var(--hair-strong);
+          background: var(--card-2); backdrop-filter: blur(12px); font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 28px; }
+  .pill:hover { text-decoration: none; border-color: var(--accent); }
+  .hero-lead { max-width: 720px; margin: 24px auto 32px; }
+  .hero .fine { margin-top: 18px; }
+  .hero-visual { margin-top: clamp(48px, 7vw, 80px); max-width: 1080px; }
+
+  .h-small { font-size: clamp(24px, 3vw, 32px); margin-bottom: 28px; }
+  .marquee { overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+  .marquee-track { list-style: none; display: flex; gap: 12px; width: max-content; animation: scroll 60s linear infinite; padding: 4px 0; }
+  .marquee:hover .marquee-track { animation-play-state: paused; }
+  @keyframes scroll { to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .marquee-track { flex-wrap: wrap; width: auto; justify-content: center; padding: 0 var(--gutter); } .marquee-track [aria-hidden] { display: none; } }
+
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; }
+  .bento-card { grid-column: span 2; padding: 32px; }
+  .bento-card.wide { grid-column: span 3; padding: 40px; }
+  .bento-card.wide h3 { font-size: clamp(22px, 2.4vw, 28px); }
+  .bento-card.wide:first-child { background: linear-gradient(160deg, rgb(var(--orb-1) / .10), transparent 60%), var(--card); }
+  .bento-card.wide:nth-child(2) { background: linear-gradient(160deg, rgb(var(--orb-2) / .10), transparent 60%), var(--card); }
+  .bento-card.full { grid-column: span 6; display: grid; grid-template-columns: auto 1fr auto; gap: 8px 24px; align-items: center; padding: 32px 40px;
+                     background: linear-gradient(100deg, rgb(var(--orb-3) / .10), transparent 55%), var(--card); }
+  .bento-card.full .icon { grid-row: span 2; margin: 0; width: 56px; height: 56px; border-radius: 16px; }
+  .bento-card.full h3 { font-size: clamp(22px, 2.4vw, 28px); margin: 0; }
+  .bento-card.full .more { grid-column: 3; grid-row: 1 / span 2; margin: 0; }
+  @media (max-width: 960px) { .bento { grid-template-columns: repeat(2, 1fr); } .bento-card.full { grid-column: span 2; display: block; padding: 28px; } .bento-card.full .icon { margin-bottom: 18px; width: 44px; height: 44px; } .bento-card.full .more { margin-top: 14px; } .bento-card, .bento-card.wide { grid-column: span 1; padding: 28px; } }
+  @media (max-width: 640px) { .bento { grid-template-columns: 1fr; } }
+  .mini-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 20px; }
+  .mini-grid > div { display: grid; gap: 4px; padding: 22px; border-radius: var(--r-lg); border: 1px solid var(--hair); background: var(--card-2); }
+  .mini-grid svg { color: var(--accent); margin-bottom: 8px; }
+  .mini-grid strong { font-size: 16px; }
+  .mini-grid span { font-size: 14px; color: var(--text-2); }
+  @media (max-width: 960px) { .mini-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .mini-grid { grid-template-columns: 1fr; } }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 80px); align-items: center; }
+  @media (max-width: 880px) { .split { grid-template-columns: 1fr; } }
+  .checks { list-style: none; display: grid; gap: 12px; margin-top: 28px; }
+  .checks li { display: flex; gap: 12px; align-items: flex-start; }
+  .checks svg { color: var(--green); margin-top: 4px; flex: none; }
+  .device { border-radius: var(--r-xl); border: 1.5px solid var(--hair-strong); background: var(--card); padding: 28px; box-shadow: var(--shadow); }
+  .device-label { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 20px; }
+  .flow { display: grid; gap: 6px; }
+  .node { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--r); background: var(--bg-2); border: 1px solid var(--hair); font-weight: 600; font-size: 16px; }
+  .node svg { color: var(--accent); }
+  .node.accent { background: linear-gradient(120deg, rgb(var(--orb-1) / .16), rgb(var(--orb-2) / .16)); border-color: rgb(var(--orb-1) / .35); }
+  .arrow { width: 2px; height: 14px; margin-left: 26px; background: var(--hair-strong); }
+  .memory-chip { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding: 12px 16px; border-radius: var(--r); border: 1px dashed var(--hair-strong); font-size: 15px; color: var(--text-2); }
+  .memory-chip svg { color: var(--green); }
+  .cloud-opt { display: flex; gap: 12px; margin-top: 16px; padding: 16px 20px; border-radius: var(--r); border: 1px dashed var(--hair-strong); font-size: 15px; color: var(--text-2); }
+  .cloud-opt svg { flex: none; margin-top: 2px; color: var(--text-3); }
+
+  .tiers { list-style: none; display: grid; gap: 14px; }
+  .tiers li { display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; padding: 24px 28px; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--hair); }
+  .tiers p { color: var(--text-2); font-size: 16px; margin-top: 4px; }
+  .tier-n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; font-family: var(--font-display);
+            background: linear-gradient(135deg, rgb(var(--orb-1)), rgb(var(--orb-2))); }
+  .tag { font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); white-space: nowrap; }
+  @media (max-width: 600px) { .tiers li { grid-template-columns: auto 1fr; } .tag { grid-column: 2; justify-self: start; } }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .stats > div { padding: 28px; border-radius: var(--r-lg); border: 1px solid var(--hair); background: var(--card); }
+  .stats dt { font-family: var(--font-display); font-size: clamp(36px, 4vw, 48px); font-weight: 700; letter-spacing: -0.03em; }
+  .stats dd { color: var(--text-2); font-size: 15px; margin-top: 4px; }
+  @media (max-width: 880px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+</style>

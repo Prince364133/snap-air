@@ -1,0 +1,53 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import { RELEASE } from '../config';
+
+const sections = [
+  { t: 'Getting started', qs: [
+    ['What is Snapy?', 'Snapy is a private AI assistant for Windows. You talk to it — in English, Hindi or Hinglish — and it controls your PC, clicks and types on screen, takes meeting notes, manages tasks and reminders, and remembers what matters to you. The AI runs on your own laptop.'],
+    ['How do I install Snapy?', `Download ${RELEASE.file} from the download page and run it. Snapy installs for your Windows user, then sets itself up on first launch — including downloading the right AI model for your PC. The install guide walks through every step.`],
+    ['Do I need an account?', 'No. There is no sign-up, sign-in or account. Snapy works as soon as it is installed.'],
+    ['Is Snapy open source?', 'No. Snapy is proprietary software, licensed to you under the Snapy License Agreement (EULA). It includes some third-party components that are distributed under their own licences.'],
+    ['Does Snapy work on Mac or Linux?', 'Not yet. Snapy currently supports Windows 10 and Windows 11 (64-bit).'],
+  ] },
+  { t: 'Privacy & data', qs: [
+    ['Does Snapy send my data to the cloud?', 'Not by default. Speech recognition, the AI model, memory, notes and tasks all run and stay on your PC. Data only leaves your PC if you choose to add your own cloud AI key, ask for a web search or weather, or turn on cloud vision.'],
+    ['Does Snapy record my voice?', 'No. Audio is processed in memory and discarded. It is never saved to disk or uploaded.'],
+    ['Where is my data stored?', 'In plain files in %APPDATA%\\SnapAir on your PC. Settings lets you open the folder, export everything, or delete all your data.'],
+    ['Does Snapy track what I do?', 'Only if you turn on activity tracking. Then it stores app, project and site names with durations — never keystrokes, screen contents, URLs or private windows.'],
+  ] },
+  { t: 'AI & performance', qs: [
+    ['Which AI model does Snapy use?', 'A local language model chosen for your hardware, from 1B to 14B parameters (Qwen 3 1.7B by default). You can switch models in Settings — models your PC can’t run smoothly are blocked.'],
+    ['My laptop is old. Will it be slow?', 'Commands and reminders are instant on any PC. For conversation on older laptops, add your own Gemini or OpenAI API key and choose Auto: Snapy uses the cloud only when your PC would be slow.'],
+    ['Does Snapy work offline?', 'Yes. After the first setup, voice, AI, memory, notes and screen control work without internet. Web search, weather and cloud AI need a connection.'],
+  ] },
+  { t: 'Using Snapy', qs: [
+    ['Can I rename Snapy?', 'Yes. Choose a name during setup or in Settings → General. Your assistant answers to that name, and “Snapy” always works too.'],
+    ['Which languages does Snapy understand?', 'English, Hindi and Hinglish (in Latin or Devanagari script). It can speak Hindi, Telugu, Marathi, Bengali, Nepali, Urdu and more with native voices.'],
+    ['Can Snapy click things on my screen?', 'Yes. Say “click the second video” or “type hello in the search box”. Snapy asks before anything that sends, deletes, pays or submits.'],
+    ['Why does Windows show a SmartScreen warning?', 'New apps can trigger SmartScreen until they build a download reputation. Click More info → Run anyway, or verify the SHA-256 fingerprint on the download page first.'],
+    ['How do I uninstall Snapy?', 'Windows Settings → Apps → Installed apps → Snapy → Uninstall. Use Settings → Delete all my data first if you also want your memories and notes removed.'],
+  ] },
+];
+const schema = [{
+  '@type': 'FAQPage',
+  mainEntity: sections.flatMap((s) => s.qs).map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+}];
+---
+<Base title="FAQ — Snapy AI Assistant for Windows" description="Answers to common questions about Snapy: installation, privacy, offline use, AI models, Hindi support, screen control, SmartScreen warnings and uninstalling." crumbs={[{ name: 'FAQ', href: '/faq/' }]} schema={schema}>
+  <PageHero eyebrow="FAQ" title="Questions, answered." lead="Can’t find what you need? Our support team reads every message." />
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap narrow">
+      {sections.map((s) => (
+        <div style="margin-bottom:48px">
+          <h2 style="font-size:24px;margin-bottom:8px">{s.t}</h2>
+          <div class="faq">
+            {s.qs.map(([q, a]) => <details><summary>{q}</summary><div class="answer"><p>{a}</p></div></details>)}
+          </div>
+        </div>
+      ))}
+      <div class="callout"><span class="dot"></span><p>Still stuck? <a href="/support/">Contact support</a> — or read the <a href="/install/">install guide</a>.</p></div>
+    </div>
+  </section>
+</Base>

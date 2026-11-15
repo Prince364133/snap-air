@@ -1,0 +1,19 @@
+---
+import Icon from './Icon.astro';
+import { RELEASE } from '../config';
+interface Props { title?: string; lead?: string }
+const { title = 'Meet the assistant that lives on your PC.', lead = 'Download one file. It installs itself, sets up its AI on your laptop and says hello. No account, no setup wizard to fight with.' } = Astro.props;
+---
+<section class="section-tight">
+  <div class="wrap">
+    <div class="cta-band reveal">
+      <h2>{title}</h2>
+      <p class="lead">{lead}</p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="btn btn-primary" href="/download/"><Icon name="windows" size={18} />Download for Windows</a>
+        <a class="btn btn-ghost" href="/install/">How it installs</a>
+      </div>
+      <p class="fine">Version {RELEASE.version} · {RELEASE.sizeMB} MB · Windows 10 &amp; 11 (64-bit)</p>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,63 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { SITE } from '../config';
+const toc: [string, string][] = [
+  ['summary', 'The short version'], ['on-device', 'Data that stays on your PC'], ['leaves', 'When data leaves your PC'],
+  ['website', 'This website'], ['control', 'Your controls & rights'], ['retention', 'Retention'], ['children', 'Children'], ['contact', 'Contact'],
+];
+---
+<Legal seoTitle="Privacy Policy" title="Privacy Policy" crumb="Privacy policy" path="/privacy/" toc={toc}
+  description="How Snapy handles your data: voice, memory, notes, tasks and activity stay on your PC. Data leaves your device only when you choose cloud features, and you can export or delete everything.">
+  <p class="note">This policy explains how the Snapy desktop app and the snappy.live website handle personal data. By default, your data never leaves your computer.</p>
+
+  <h2 id="summary">The short version</h2>
+  <ul>
+    <li>Snapy runs on your PC. Your voice, memories, notes, tasks and activity history are processed and stored there.</li>
+    <li>We do not run servers that receive your conversations, recordings or files, and we don’t sell data.</li>
+    <li>Data only leaves your PC when you choose features that need the internet, and then it goes directly to the service you chose.</li>
+    <li>You can export or delete everything from Settings at any time.</li>
+  </ul>
+
+  <h2 id="on-device">Data that stays on your PC</h2>
+  <table>
+    <thead><tr><th>Data</th><th>What Snapy does with it</th></tr></thead>
+    <tbody>
+      <tr><td>Microphone audio</td><td>Turned into text in memory, then discarded. Never saved or uploaded.</td></tr>
+      <tr><td>Profile &amp; memories</td><td>Stored as plain JSON in <code>%APPDATA%\SnapAir</code>. Passwords and API keys are filtered out.</td></tr>
+      <tr><td>Notes, tasks, meeting summaries</td><td>Stored locally in the same folder.</td></tr>
+      <tr><td>Activity (optional, off by default)</td><td>App, project and site names with durations. Never keystrokes, screen contents, URLs or private windows.</td></tr>
+      <tr><td>Screen contents</td><td>Read on demand when you ask Snapy to click, type or describe the screen; not stored.</td></tr>
+      <tr><td>Camera (optional)</td><td>Only while hand gestures are on; frames are analysed in memory and never stored.</td></tr>
+      <tr><td>API keys you add</td><td>Encrypted with Windows Data Protection (DPAPI).</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="leaves">When data leaves your PC</h2>
+  <ul>
+    <li><strong>Setup and downloads.</strong> Snapy downloads its AI runtime, models and optional voices from their publishers. These requests carry standard technical data (such as your IP address), not your personal content.</li>
+    <li><strong>Cloud AI (optional).</strong> With your own Gemini, OpenAI or compatible key, the text needed to answer is sent to that provider under your account and its terms.</li>
+    <li><strong>Cloud vision (optional).</strong> If enabled, a screenshot of the relevant window is sent to your provider only when on-device methods can’t find what you asked for.</li>
+    <li><strong>Web answers.</strong> Web searches, weather and page summaries fetch data from the relevant websites.</li>
+  </ul>
+  <p>Snapy contains no advertising and no third-party analytics.</p>
+
+  <h2 id="website">This website</h2>
+  <p>snappy.live is a static website with no cookies, sign-in or third-party trackers. Our host may keep standard server logs for security and reliability for a limited period.</p>
+
+  <h2 id="control">Your controls &amp; rights</h2>
+  <ul>
+    <li>See and edit everything in the Memory, Notes, Tasks and Activity tabs.</li>
+    <li>Export or delete all your data from Settings → Privacy.</li>
+    <li>Turn off listening modes, activity tracking, gestures, cloud AI and screen vision in Settings.</li>
+  </ul>
+  <p>Where data protection law (such as India’s Digital Personal Data Protection Act, 2023 or the GDPR) gives you rights over data we hold, such as support emails, contact us and we will respond within the legal time limit.</p>
+
+  <h2 id="retention">Retention</h2>
+  <p>On your PC, data is kept until you delete it; activity history is trimmed after the number of days you choose (30 by default).</p>
+
+  <h2 id="children">Children</h2>
+  <p>Snapy is not directed at children under 13.</p>
+
+  <h2 id="contact">Contact</h2>
+  <p><a href={`mailto:${SITE.email.privacy}`}>{SITE.email.privacy}</a></p>
+</Legal>

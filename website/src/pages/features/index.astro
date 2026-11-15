@@ -1,0 +1,66 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import Icon from '../../components/Icon.astro';
+import CtaBand from '../../components/CtaBand.astro';
+
+const main = [
+  { href: '/features/voice/', icon: 'mic', c: 'i-blue', t: 'Voice assistant', d: 'Wake word, push-to-talk, interruptions, 60+ instant PC commands and any keyboard shortcut by voice.' },
+  { href: '/features/screen-control/', icon: 'cursor', c: 'i-purple', t: 'Screen control', d: 'Click, type and read anything on screen. “Click the second video.” “Type hello in the search box.”' },
+  { href: '/features/meetings/', icon: 'notes', c: 'i-teal', t: 'Meeting notes', d: 'You and the other side of the call → summary, decisions and action items you review.' },
+  { href: '/features/memory/', icon: 'brain', c: 'i-pink', t: 'Memory & routines', d: 'Learns your people, projects and habits. Every memory visible, editable and deletable.' },
+  { href: '/features/indian-languages/', icon: 'globe', c: 'i-orange', t: 'Hindi & Indian languages', d: 'Hindi, Hinglish and English — with native-speaker voices for Indian languages.' },
+];
+const more = [
+  { icon: 'sun', t: 'Start my day', d: 'A morning greeting with yesterday’s work and today’s plan, plus one button that opens your editor and project.' },
+  { icon: 'bell', t: 'Tasks & reminders', d: '“Remind me at 5 to push the PR.” Spoken, on screen and as Windows notifications, with snooze and done.' },
+  { icon: 'clock', t: 'Focus & timers', d: '“Focus for 45 minutes” keeps Snapy quiet; “set a timer for 10 minutes” does what it says.' },
+  { icon: 'chat', t: 'Stand-up drafts', d: '“Prepare my standup” writes yesterday / today / blockers from your git history and tasks.' },
+  { icon: 'globe', t: 'Web answers', d: 'Weather, quick web searches and “summarise this page” for the tab you’re reading in Chrome.' },
+  { icon: 'hand', t: 'Hand gestures', d: 'Point to move, pinch to click, two fingers to scroll. The camera stays off until you turn gestures on.' },
+  { icon: 'cpu', t: 'Right-sized AI', d: 'Local models from 1B to 14B. Snapy checks your RAM, CPU and graphics and only installs what runs smoothly.' },
+  { icon: 'cloud', t: 'Optional cloud brain', d: 'On older laptops, add your own Gemini or OpenAI key. Choose On this PC, Auto or Cloud.' },
+  { icon: 'user', t: 'Make it yours', d: 'Rename your assistant, pick its voice and speed, choose how it listens and what it remembers.' },
+];
+---
+<Base title="Features — Voice, Screen Control, Meeting Notes & Memory" description="Everything Snapy can do on your Windows PC: voice control, on-screen clicking and typing, meeting notes, reminders, memory, Hindi and Hinglish, hand gestures and on-device AI." crumbs={[{ name: 'Features', href: '/features/' }]}>
+  <PageHero eyebrow="Features" title="Everything you’d ask a great assistant to do." lead="Snapy combines a voice you can talk to, hands that can use your PC and a memory that knows your day — running on your own laptop." />
+
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap">
+      <div class="grid grid-2 feature-main">
+        {main.map((f, i) => (
+          <a class:list={['card', 'reveal', { span: i === 0 }]} href={f.href}>
+            <div class={`icon ${f.c}`}><Icon name={f.icon} /></div>
+            <h2 class="h3">{f.t}</h2>
+            <p>{f.d}</p>
+            <span class="more">Learn more →</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head reveal"><h2>And a lot more.</h2></div>
+      <div class="grid grid-3">
+        {more.map((m) => (
+          <div class="card reveal">
+            <div class="icon i-gray"><Icon name={m.icon} /></div>
+            <h3>{m.t}</h3>
+            <p>{m.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .h3 { font-size: clamp(22px, 2.4vw, 28px); margin-bottom: 8px; }
+  .feature-main .span { grid-column: 1 / -1; background: linear-gradient(120deg, rgb(var(--orb-1) / .1), transparent 60%), var(--card); }
+  @media (max-width: 640px) { .feature-main .span { grid-column: auto; } }
+</style>

@@ -1,0 +1,31 @@
+---
+import Feature from '../../layouts/Feature.astro';
+---
+<Feature
+  seoTitle="AI Meeting Notes on Windows — Summary & Action Items"
+  description="Snapy takes meeting notes on your PC: it hears you and the other side of the call, then gives you a summary, key points, decisions and action items to review before they become tasks. Audio is never saved."
+  crumb="Meeting notes"
+  path="/features/meetings/"
+  eyebrow="Meeting notes"
+  title="Be in the meeting. Snapy takes the notes."
+  lead="Works with any call app — Teams, Zoom, Meet, a phone on speaker. Snapy listens to your microphone and your PC’s audio, and writes it all up when you’re done."
+  examples={['Snapy, take meeting notes', 'mark that', 'stop taking notes', 'what notes did we create today?']}
+  points={[
+    { icon: 'mic', c: 'i-teal', t: 'Both sides of the call', d: 'Your voice from the microphone and everyone else from your PC’s sound output are captured separately, so the summary knows who said what.' },
+    { icon: 'notes', c: 'i-blue', t: 'Summary you can use', d: 'Key points, decisions and action items. Say “mark that” to flag an important moment while you talk.' },
+    { icon: 'check', c: 'i-green', t: 'You review, then it acts', d: 'Action items are suggestions until you accept them. Accepted items become tasks in your Tasks tab.' },
+    { icon: 'bolt', c: 'i-purple', t: 'Starts when you do', d: 'Snapy offers to take notes when a call starts, or press Ctrl+Alt+N. It stops by itself after 20 minutes of silence.' },
+    { icon: 'lock', c: 'i-orange', t: 'Audio is never saved', d: 'Speech is turned into text on your PC and the audio is thrown away. Only the notes are kept.' },
+    { icon: 'calendar', c: 'i-pink', t: 'Find it later', d: '“What notes did we create today?” — every note is searchable in the Notes tab and stays on your PC.' },
+  ]}
+  faqs={[
+    { q: 'Do other people on the call need to install anything?', a: 'No. Snapy hears the call through your own PC. Always tell participants when you take notes, and follow your organisation’s rules and local law about recording and transcription.' },
+    { q: 'Does it work offline?', a: 'Yes. Transcription and summaries run on your PC. If you connected a cloud AI, you can choose to use it for faster summaries.' },
+    { q: 'Which languages are supported in meetings?', a: 'English is the most accurate. Hindi and Hinglish are understood too; accuracy depends on the speech model you choose in Settings.' },
+  ]}
+  related={[
+    { href: '/features/memory/', label: 'Memory & routines', d: 'Snapy remembers people and projects from your meetings.' },
+    { href: '/features/voice/', label: 'Voice assistant', d: 'Hands-free control of your whole PC.' },
+    { href: '/privacy/', label: 'Privacy policy', d: 'What is kept, and what never is.' },
+  ]}
+/>

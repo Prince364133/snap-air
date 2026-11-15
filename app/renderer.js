@@ -146,7 +146,6 @@ const HANDLERS = {
 const orbs = {
     island: new Orb($('island-orb')), drawer: new Orb($('drawer-orb')),
     empty: new Orb($('empty-orb')), greeting: new Orb($('greeting-orb')),
-    presence: new Orb($('presence-orb')),
 };
 const GESTURE_SHORT = { POINTING: 'Point', SCROLL: 'Scroll', PINCH_INDEX: 'Pinch', PINCH_MIDDLE: 'Right-click', OPEN_PALM: 'Palm', FIST: 'Hold' };
 let captionAt = 0;
@@ -162,7 +161,6 @@ function hideCaption() {
     const cap = $('island-caption');
     if (cap) cap.classList.add('hidden');
 }
-$('presence').addEventListener('click', () => talk());
 function renderFocus() {
     const on = focus && focus.active;
     $('island-focus').classList.toggle('hidden', !on);
@@ -221,8 +219,6 @@ function renderIsland() {
     const gestureOn = eng.camera === 'ok' && eng.hand_visible && !eng.gestures_paused;
     $('island-gesture').classList.toggle('hidden', !gestureOn);
     if (gestureOn) $('island-gesture').textContent = (GESTURE_SHORT[eng.gesture] || 'Hand');
-    const pres = $('presence');
-    pres.classList.toggle('active', st !== 'idle' && st !== 'off');
     if (st === 'idle' && Date.now() - captionAt > 2500) hideCaption();
     $('island-rec').classList.toggle('hidden', !meeting.recording);
 
@@ -276,6 +272,12 @@ $('drawer-close').onclick = closeDrawer;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !obOpen) closeDrawer(); });
 
 function selectTab(tab) {
+    if (tab === 'notes' && activeTab === 'notes' && openNoteId) {
+        openNoteId = null;
+        $('drawer').classList.remove('wide');
+        renderNotes();
+        return;
+    }
     activeTab = tab;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
@@ -454,25 +456,41 @@ function openNoteDetail(id) { openNoteId = id; $('drawer').classList.add('wide')
 function renderNoteDetail(n) {
     const box = $('notes-list');
     const list = (title, items) => (items && items.length ? [h('h4', {}, title), h('ul', {}, ...items.map((x) => h('li', {}, x)))] : []);
-    box.replaceChildren(h('div', { class: 'note-detail' },
-        h('button', { class: 'mini', onclick: () => { openNoteId = null; $('drawer').classList.remove('wide'); renderNotes(); } }, '‹ All notes'),
-        h('h2', {}, n.title || 'Meeting'),
-        h('div', { class: 'caption' }, `${dayLabel(n.ts)} · ${clock(n.ts)} · ${fmtDur(n.duration || 0)}${n.ai_summary === false ? ' · summary without AI' : ''}`),
-        h('div', { class: 'detail-cols' },
+    const isMeeting = n.kind === 'meeting';
+    let detailContent;
+    if (isMeeting) {
+        detailContent = h('div', { class: 'detail-cols' },
             h('div', {},
                 ...list('Summary', n.summary), ...list('Key points', n.key_points), ...list('Decisions', n.decisions),
                 n.actions && n.actions.length ? [h('h4', {}, 'Action items'), ...n.actions.map((a) => actionRow(n, a))] : [],
                 n.bookmarks && n.bookmarks.length ? [h('h4', {}, 'Bookmarks'), h('ul', {}, ...n.bookmarks.map((b) => h('li', {}, `${Math.floor(b.t / 60)}:${String(b.t % 60).padStart(2, '0')} — ${b.label}`)))] : []),
-            h('div', {}, h('h4', {}, 'Transcript'), h('pre', { class: 'transcript' }, n.transcript || '—'))),
+            h('div', {}, h('h4', {}, 'Transcript'), h('pre', { class: 'transcript' }, n.transcript || '—')));
+    } else {
+        detailContent = h('div', { style: 'margin: 14px 0;' },
+            h('pre', { class: 'transcript', style: 'max-height: none;' }, n.text || '—'));
+    }
+
+    box.replaceChildren(h('div', { class: 'note-detail' },
+        h('button', { class: 'mini', style: 'margin-bottom: 8px;', onclick: () => { openNoteId = null; $('drawer').classList.remove('wide'); renderNotes(); } }, '‹ All notes'),
+        h('h2', {}, n.title || (isMeeting ? 'Meeting' : 'Note')),
+        h('div', { class: 'caption', style: 'margin-bottom: 12px;' }, `${dayLabel(n.ts)} · ${clock(n.ts)}${n.duration ? ' · ' + fmtDur(n.duration) : ''}${n.ai_summary === false ? ' · summary without AI' : ''}`),
+        detailContent,
         h('div', { class: 'row gap8', style: 'margin-top:12px' },
-            h('button', { class: 'btn small', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy notes'),
-            h('button', { class: 'btn small danger', onclick: () => confirmDo('Delete this meeting note?', "This can't be undone.", () => { send({ type: 'note_delete', id: n.id }); openNoteId = null; $('drawer').classList.remove('wide'); }) }, 'Delete'))));
+            h('button', { class: 'btn small', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, isMeeting ? 'Copy notes' : 'Copy note'),
+            h('button', { class: 'btn small danger', onclick: () => confirmDo(isMeeting ? 'Delete this meeting note?' : 'Delete this note?', "This can't be undone.", () => { send({ type: 'note_delete', id: n.id }); openNoteId = null; $('drawer').classList.remove('wide'); }) }, 'Delete'))));
 }
 function renderNotes() {
+    const isDetail = !!openNoteId;
+    $('note-input')?.closest('.add-row')?.classList.toggle('hidden', isDetail);
+    $('note-filter')?.classList.toggle('hidden', isDetail);
+    $('note-search')?.classList.toggle('hidden', isDetail);
     if (openNoteId) {
         const n = notes.find((x) => x.id === openNoteId);
         if (n) { renderNoteDetail(n); return; }
         openNoteId = null; $('drawer').classList.remove('wide');
+        $('note-input')?.closest('.add-row')?.classList.remove('hidden');
+        $('note-filter')?.classList.remove('hidden');
+        $('note-search')?.classList.remove('hidden');
     }
     const q = $('note-search').value.trim().toLowerCase();
     const today = new Date().toDateString();
@@ -487,21 +505,19 @@ function renderNotes() {
         const dl = dayLabel(n.ts);
         if (dl !== lastDay) { out.push(h('div', { class: 'day-label' }, dl)); lastDay = dl; }
         const actions = h('div', { class: 'row-actions' },
-            h('button', { class: 'mini', title: 'Copy', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy'),
-            h('button', { class: 'mini', title: 'Delete', onclick: () => confirmDo('Delete this note?', 'This can\'t be undone.', () => send({ type: 'note_delete', id: n.id })) }, '✕'));
+            h('button', { class: 'mini', title: 'Copy', onclick: (e) => { e.stopPropagation(); navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy'),
+            h('button', { class: 'mini', title: 'Delete', onclick: (e) => { e.stopPropagation(); confirmDo('Delete this note?', 'This can\'t be undone.', () => send({ type: 'note_delete', id: n.id })); } }, '✕'));
         if (n.kind === 'meeting') {
-            out.push(h('div', { class: 'note meeting clickable', onclick: (e) => { if (!e.target.closest('.row-actions, a, details')) openNoteDetail(n.id); } }, actions,
+            out.push(h('div', { class: 'note meeting clickable', title: 'Click to open details', onclick: (e) => { if (!e.target.closest('.row-actions, button, a')) openNoteDetail(n.id); } }, actions,
                 h('div', { class: 'note-title' }, h('span', { class: 'badge' }, 'MEETING'), n.title || 'Meeting',
                     n.review_pending ? h('span', { class: 'badge warn' }, 'REVIEW') : null),
-                h('div', { class: 'note-meta' }, `${clock(n.ts)} · ${fmtDur(n.duration || 0)}`),
-                n.summary && n.summary.length ? [h('h4', {}, 'Summary'), h('ul', {}, ...n.summary.map((s) => h('li', {}, s)))] : h('p', { class: 'caption' }, n.text),
-                n.decisions && n.decisions.length ? [h('h4', {}, 'Decisions'), h('ul', {}, ...n.decisions.map((s) => h('li', {}, s)))] : null,
-                n.actions && n.actions.length ? [h('h4', {}, 'Action items'), h('ul', {}, ...n.actions.map((a) => h('li', {}, `${a.task}${a.owner && a.owner !== 'unassigned' ? ' — ' + a.owner : ''}${a.due ? ' (' + a.due + ')' : ''}`)))] : null,
-                n.transcript ? h('details', {}, h('summary', {}, 'Transcript'), h('pre', {}, n.transcript)) : null));
+                h('div', { class: 'note-meta' }, `${clock(n.ts)} · ${fmtDur(n.duration || 0)}`)));
         } else {
-            out.push(h('div', { class: 'note' }, actions,
-                n.kind && n.kind !== 'note' ? h('div', { class: 'note-title' }, h('span', { class: 'badge' }, n.kind.toUpperCase()), n.title || '') : null,
-                h('div', { class: 'note-text' }, n.text), h('div', { class: 'note-meta' }, clock(n.ts))));
+            out.push(h('div', { class: 'note clickable', title: 'Click to open details', onclick: (e) => { if (!e.target.closest('.row-actions, button, a')) openNoteDetail(n.id); } }, actions,
+                h('div', { class: 'note-title' },
+                    n.kind && n.kind !== 'note' ? h('span', { class: 'badge' }, n.kind.toUpperCase()) : null,
+                    n.title || (n.text.length > 60 ? n.text.slice(0, 57) + '…' : n.text)),
+                h('div', { class: 'note-meta' }, clock(n.ts))));
         }
     }
     box.replaceChildren(...out);

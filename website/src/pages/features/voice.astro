@@ -1,0 +1,32 @@
+---
+import Feature from '../../layouts/Feature.astro';
+---
+<Feature
+  seoTitle="Voice Assistant for Windows — Talk to Your PC"
+  description="Control your Windows PC by voice. Snapy listens for its name, answers out loud in about two seconds, stops when you talk over it and understands any keyboard shortcut — in English, Hindi or Hinglish."
+  crumb="Voice assistant"
+  path="/features/voice/"
+  eyebrow="Voice assistant"
+  title="Talk to your PC like you’d talk to a person."
+  lead="Say “Snapy” and ask. Speech is recognised on your laptop, the AI thinks on your laptop, and a natural voice answers — usually starting in about two seconds."
+  examples={['Snapy, switch to Chrome', 'next tab', 'press Windows H', 'volume up', 'open clipboard history', 'set a timer for 10 minutes', 'explain my clipboard', 'what’s the weather?']}
+  points={[
+    { icon: 'mic', c: 'i-blue', t: 'Wake word or hotkey', d: 'Say “Snapy, …”, press Ctrl+Alt+Space, or type with Ctrl+Alt+K. You choose how it listens: wake word, push-to-talk or always-on for commands.' },
+    { icon: 'wave', c: 'i-purple', t: 'Interrupt any time', d: 'Start talking while Snapy is speaking and it stops to listen. It ignores its own voice, so it won’t answer itself.' },
+    { icon: 'keyboard', c: 'i-teal', t: 'Every shortcut, by voice', d: '“Press Windows V”, “Control Shift T”, “Alt F4”, “F5 three times”. Misheard keys are corrected — “window plus edge” becomes Win+H.' },
+    { icon: 'window', c: 'i-green', t: '60+ instant PC commands', d: 'Switch apps, snap windows, change tabs, scroll, adjust volume, open voice typing, emoji panel, task manager and new desktops — instantly, no AI wait.' },
+    { icon: 'sparkle', c: 'i-pink', t: 'Real conversation', d: 'Anything that isn’t a command goes to the AI: questions, drafting, explaining what you copied, summarising the page you’re on.' },
+    { icon: 'user', c: 'i-orange', t: 'Rename your assistant', d: 'Call it Snapy, or anything you like — “Hey Meera, …”. Similar spellings from speech recognition still wake it.' },
+  ]}
+  faqs={[
+    { q: 'Does Snapy record what I say?', a: 'No. Audio is processed in memory on your PC and discarded. It is never saved to disk or uploaded.' },
+    { q: 'Is it always listening?', a: 'In wake-word mode it listens locally for its name and ignores everything else. You can switch to push-to-talk (Ctrl+Alt+Space) so the microphone is only used when you press the key.' },
+    { q: 'How fast does it answer?', a: 'Simple PC commands run instantly. AI answers usually start speaking in about two seconds on a modern laptop; slower PCs can use a cloud AI key for faster replies.' },
+    { q: 'Can it press Ctrl+Alt+Delete?', a: 'No app can — Windows reserves that combination for security. Every other shortcut works.' },
+  ]}
+  related={[
+    { href: '/features/screen-control/', label: 'Screen control', d: 'Click, type and read anything on screen by voice.' },
+    { href: '/features/indian-languages/', label: 'Hindi & Hinglish', d: 'Talk in your language, hear a native voice.' },
+    { href: '/commands/', label: 'Voice commands', d: 'The complete list of things you can say.' },
+  ]}
+/>

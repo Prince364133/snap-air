@@ -1,0 +1,108 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+
+const groups = [
+  { id: 'day', t: 'Your day', items: [
+    ['Snapy, start my day', 'Morning briefing, then opens your editor and project'],
+    ['what are my tasks?', 'Reads today’s open tasks'],
+    ['prepare my standup', 'Yesterday / today / blockers from git and tasks'],
+    ['wrap up my day', 'What you did, what’s left for tomorrow'],
+    ['focus for 45 minutes', 'Quiet focus timer'],
+    ['park this as login bug / resume login bug', 'Save and return to a piece of work'],
+  ] },
+  { id: 'tasks', t: 'Tasks, reminders & timers', items: [
+    ['remind me at 5 to push the PR', 'Reminder with notification'],
+    ['kal subah gym yaad dilana', 'Hinglish works too'],
+    ['10 minute baad padhai ka reminder lagao', 'Relative times in Hindi'],
+    ['set a timer for 10 minutes', 'Countdown timer'],
+    ['mark “push the PR” as done', 'Complete a task'],
+  ] },
+  { id: 'meetings', t: 'Meetings & notes', items: [
+    ['take meeting notes', 'Start notes (or Ctrl+Alt+N)'],
+    ['mark that', 'Flag an important moment'],
+    ['stop taking notes', 'Finish and summarise'],
+    ['take note: call mom after lunch', 'Quick note'],
+    ['what notes did we create today?', 'Search your notes'],
+  ] },
+  { id: 'screen', t: 'Screen control', items: [
+    ['click the subscribe button', 'Click by name'],
+    ['click the second video / the video on the top left', 'Click by position'],
+    ['type hello world in the search box', 'Type into a field'],
+    ['what’s on my screen?', 'Describe the current window'],
+    ['play the best video on React hooks', 'Search YouTube and pick the best result'],
+    ['on screen, search for lofi and play the second video', 'Multi-step task'],
+  ] },
+  { id: 'pc', t: 'Apps, windows & tabs', items: [
+    ['open Spotify / youtube kholo', 'Open apps and sites'],
+    ['switch to Chrome', 'Focus a window'],
+    ['next tab / previous tab / close tab', 'Browser tabs'],
+    ['snap left / maximise / minimise', 'Window layout'],
+    ['scroll down / scroll up', 'Scroll the page'],
+    ['volume up / awaaz badhao / mute', 'Sound'],
+  ] },
+  { id: 'keys', t: 'Keyboard & Windows', items: [
+    ['press Windows H', 'Any shortcut by voice'],
+    ['control shift t', 'Reopen closed tab'],
+    ['press F5 three times', 'Repeat keys'],
+    ['open voice typing / clipboard history / emoji panel', 'Windows tools'],
+    ['open task manager / new desktop / snap layouts', 'System actions'],
+    ['lock my PC', 'Locks Windows'],
+  ] },
+  { id: 'memory', t: 'Memory & conversation', items: [
+    ['remember that I prefer Slack', 'Save a memory'],
+    ['what do you know about me?', 'See what Snapy remembers'],
+    ['forget that I use Slack', 'Delete a memory'],
+    ['explain my clipboard', 'Explain copied text or code'],
+    ['summarise this page', 'Summarise the Chrome tab you’re on'],
+    ['what’s the weather?', 'Quick answers from the web'],
+  ] },
+  { id: 'snapy', t: 'Snapy itself', items: [
+    ['open settings', 'Open Snapy settings'],
+    ['stop / be quiet', 'Stop speaking'],
+    ['pause gestures', 'Turn hand gestures off (Ctrl+Alt+G)'],
+  ] },
+];
+const hotkeys = [['Ctrl+Alt+Space', 'Talk / interrupt'], ['Ctrl+Alt+K', 'Type a request'], ['Ctrl+Alt+J', 'Assistant'], ['Ctrl+Alt+T', 'Today'], ['Ctrl+Alt+N', 'Meeting notes'], ['Ctrl+Alt+G', 'Pause gestures'], ['Ctrl+Alt+S', 'Settings'], ['Ctrl+Alt+H', 'Hide Snapy']];
+---
+<Base title="Voice Commands — Everything You Can Say to Snapy" description="The complete list of Snapy voice commands for Windows: tasks and reminders, meeting notes, screen control, apps and tabs, keyboard shortcuts, memory — in English, Hindi and Hinglish." crumbs={[{ name: 'Voice commands', href: '/commands/' }]}>
+  <PageHero eyebrow="Voice commands" title="Everything you can say." lead="Start with “Snapy, …” (or your assistant’s name), press Ctrl+Alt+Space, or type. You don’t need exact words — these are examples, not a script." />
+
+  <div class="wrap">
+    <nav aria-label="Command groups" class="chips" style="margin-bottom:8px">
+      {groups.map((g) => <a class="chip" href={`#${g.id}`}>{g.t}</a>)}
+    </nav>
+  </div>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="grid grid-2">
+        {groups.map((g) => (
+          <div class="card cmd" id={g.id}>
+            <h2 class="h3">{g.t}</h2>
+            <dl>
+              {g.items.map(([say, does]) => <div><dt>“{say}”</dt><dd>{does}</dd></div>)}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap">
+      <h2 style="margin-bottom:24px;font-size:clamp(24px,3vw,32px)">Keyboard shortcuts</h2>
+      <div class="grid grid-4">
+        {hotkeys.map(([k, d]) => <div class="card" style="padding:20px"><p style="margin-bottom:6px">{k.split('+').map((x, i) => <>{i > 0 && '+'}<kbd>{x}</kbd></>)}</p><p>{d}</p></div>)}
+      </div>
+    </div>
+  </section>
+</Base>
+<style>
+  .h3 { font-size: 22px; margin-bottom: 14px; }
+  .cmd { scroll-margin-top: 84px; }
+  .cmd dl > div { padding: 12px 0; border-top: 1px solid var(--hair); }
+  .cmd dl > div:first-child { border-top: none; padding-top: 0; }
+  .cmd dt { font-weight: 600; color: var(--text); }
+  .cmd dd { color: var(--text-2); font-size: 15px; }
+</style>

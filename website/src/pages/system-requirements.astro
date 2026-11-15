@@ -1,0 +1,55 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+
+const rows = [
+  ['Operating system', 'Windows 10 64-bit, version 1903+', 'Windows 11 64-bit'],
+  ['Memory (RAM)', '8 GB', '16 GB or more'],
+  ['Processor', '4-core x64 CPU (Intel Core i5 / AMD Ryzen 5, 2018 or newer)', '8+ cores, recent generation'],
+  ['Graphics', 'Not required', 'NVIDIA / AMD / Intel GPU with 4 GB+ VRAM for bigger models and local vision'],
+  ['Disk space', '4 GB free', '10 GB free for larger models and extra voices'],
+  ['Microphone', 'Any built-in or headset microphone', 'A headset for noisy rooms and meetings'],
+  ['Camera', 'Only for hand gestures (optional)', 'Any 720p webcam'],
+  ['Internet', 'For first setup and model download', 'Optional afterwards — Snapy works offline'],
+];
+const models = [
+  ['8 GB RAM, no GPU', '1B–1.7B models', 'Commands, reminders, notes and short answers'],
+  ['16 GB RAM, no GPU', 'Up to ~4B models', 'Comfortable everyday conversation'],
+  ['16 GB+ RAM, 6–8 GB GPU', '7B–8B models', 'Richer answers and faster local vision'],
+  ['32 GB RAM, 12 GB+ GPU', 'Up to 14B models', 'The most capable on-device assistant'],
+];
+---
+<Base title="System Requirements — Will Snapy Run on My PC?" description="Snapy runs on Windows 10 and 11 (64-bit) with 8 GB RAM minimum and 16 GB recommended. No graphics card required. See which on-device AI model your PC can run." crumbs={[{ name: 'System requirements', href: '/system-requirements/' }]}>
+  <PageHero eyebrow="System requirements" title="Built for the laptop you already have." lead="Snapy checks your PC during setup and only installs an AI model that runs smoothly on it. No graphics card required." />
+
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap">
+      <div class="spec" role="table" aria-label="Minimum and recommended requirements">
+        <div class="spec-row head" role="row"><span role="columnheader">Component</span><span role="columnheader">Minimum</span><span role="columnheader">Recommended</span></div>
+        {rows.map(([a, b, c]) => <div class="spec-row" role="row"><span role="cell">{a}</span><span role="cell">{b}</span><span role="cell">{c}</span></div>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Which AI model will I get?</h2>
+        <p class="lead">Snapy offers local models from 1B to 14B parameters. It picks the best one your hardware can run, and blocks the ones that would make your PC crawl — with a clear “your system isn’t compatible” message.</p>
+      </div>
+      <div class="spec">
+        <div class="spec-row head"><span>Your PC</span><span>Local model size</span><span>Good for</span></div>
+        {models.map(([a, b, c]) => <div class="spec-row"><span>{a}</span><span>{b}</span><span>{c}</span></div>)}
+      </div>
+      <p class="fine" style="margin-top:16px">Guidance only — actual speed depends on your processor, memory speed and what else is running. On any PC you can add your own cloud AI key for faster answers.</p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap narrow center">
+      <h2 style="font-size:clamp(24px,3vw,32px)">Not supported</h2>
+      <p class="muted" style="margin-top:12px">macOS, Linux, ChromeOS, Windows on ARM in S mode and 32-bit Windows are not supported at the moment.</p>
+      <div class="cta-row" style="justify-content:center;margin-top:24px"><a class="btn btn-primary" href="/download/">Download for Windows</a></div>
+    </div>
+  </section>
+</Base>

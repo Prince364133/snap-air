@@ -1,0 +1,113 @@
+---
+// A faithful, live HTML rendering of the Snapy HUD on a desktop (not a screenshot):
+// the island at the top, a spoken caption, and the drawer with the Today tab.
+---
+<div class="desk" role="img" aria-label="Snapy on a Windows desktop: the voice island at the top of the screen and the Today drawer on the right showing the morning briefing, tasks and a meeting note.">
+  <div class="desk-bg" aria-hidden="true"></div>
+  <div class="win" aria-hidden="true">
+    <div class="win-bar"><span></span><span></span><span></span><em>youtube.com — lofi hip hop radio</em></div>
+    <div class="win-body">
+      <div class="yt-search"></div>
+      <div class="yt-grid">
+        <div class="yt"><i></i><b></b><s></s></div>
+        <div class="yt hit"><i></i><b></b><s></s><span class="ring"></span></div>
+        <div class="yt"><i></i><b></b><s></s></div>
+        <div class="yt"><i></i><b></b><s></s></div>
+        <div class="yt"><i></i><b></b><s></s></div>
+        <div class="yt"><i></i><b></b><s></s></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="island" aria-hidden="true">
+    <span class="orb" style="--size:26px"></span>
+    <span class="island-text">Playing “Lofi hip hop radio”</span>
+    <span class="bars"><i></i><i></i><i></i><i></i></span>
+  </div>
+  <div class="caption" aria-hidden="true">“Snapy, click the second video”</div>
+
+  <div class="drawer" aria-hidden="true">
+    <div class="d-head"><span class="orb" style="--size:22px"></span><strong>Snapy</strong><span class="d-x">⌄</span></div>
+    <div class="d-tabs"><b class="on">Today</b><b>Assistant</b><b>Notes</b><b>Tasks</b></div>
+    <div class="d-card greet">
+      <div class="d-cap">Good morning, Aarav</div>
+      <div class="d-title">Stand-up at 10:00 · 3 tasks today</div>
+      <div class="d-btn">Start my day</div>
+    </div>
+    <div class="d-group">
+      <div class="d-row"><span class="tick"></span>Push the login fix<em>5:00 PM</em></div>
+      <div class="d-row"><span class="tick"></span>Call the design team<em>2:30 PM</em></div>
+      <div class="d-row done"><span class="tick"></span>Review PR #142<em>Done</em></div>
+    </div>
+    <div class="d-card note">
+      <div class="d-cap">Meeting notes · Sprint planning</div>
+      <div class="d-line" style="width:92%"></div><div class="d-line" style="width:78%"></div><div class="d-line" style="width:64%"></div>
+    </div>
+    <div class="d-input"><span>Ask Snapy anything…</span><span class="d-mic">●</span></div>
+  </div>
+</div>
+
+<style>
+  .desk { position: relative; aspect-ratio: 16 / 10; width: 100%; border-radius: 22px; overflow: hidden; border: 1px solid var(--hair-strong);
+          box-shadow: var(--shadow); background: #dfe6f3; isolation: isolate; container-type: inline-size; }
+  .desk-bg { position: absolute; inset: 0; z-index: -1;
+    background: radial-gradient(circle at 18% 22%, rgb(var(--orb-3) / .55), transparent 45%), radial-gradient(circle at 82% 78%, rgb(var(--orb-2) / .55), transparent 45%),
+                radial-gradient(circle at 60% 30%, rgb(var(--orb-1) / .45), transparent 50%), linear-gradient(135deg, #e9eefb, #d8def0); }
+  @media (prefers-color-scheme: dark) { .desk { background: #0b0d16; } .desk-bg { background: radial-gradient(circle at 18% 22%, rgb(var(--orb-3) / .35), transparent 45%),
+      radial-gradient(circle at 82% 78%, rgb(var(--orb-2) / .4), transparent 45%), radial-gradient(circle at 60% 30%, rgb(var(--orb-1) / .3), transparent 50%), #0b0d16; } }
+
+  .win { position: absolute; left: 4%; top: 15%; width: 58%; height: 76%; border-radius: 1.4cqi; background: var(--card); border: 1px solid var(--hair);
+         box-shadow: 0 2cqi 5cqi rgba(0,0,0,.18); overflow: hidden; }
+  .win-bar { height: 7%; display: flex; align-items: center; gap: .6cqi; padding: 0 1.4cqi; border-bottom: 1px solid var(--hair); background: var(--bg-2); }
+  .win-bar span { width: .9cqi; height: .9cqi; border-radius: 50%; background: var(--hair-strong); }
+  .win-bar em { font-style: normal; font-size: 1.15cqi; color: var(--text-3); margin-left: 1cqi; white-space: nowrap; overflow: hidden; }
+  .win-body { padding: 2.2cqi; }
+  .yt-search { height: 3.2cqi; width: 55%; margin: 0 auto 2.4cqi; border-radius: 99px; border: 1px solid var(--hair-strong); }
+  .yt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6cqi; }
+  .yt { position: relative; }
+  .yt i { display: block; aspect-ratio: 16 / 9; border-radius: .8cqi; background: linear-gradient(135deg, var(--fill), rgba(118,118,128,.28)); }
+  .yt b { display: block; height: .9cqi; width: 90%; margin-top: .9cqi; border-radius: 4px; background: var(--hair-strong); }
+  .yt s { display: block; height: .8cqi; width: 55%; margin-top: .6cqi; border-radius: 4px; background: var(--hair); }
+  .yt.hit i { background: linear-gradient(135deg, rgb(var(--orb-1) / .6), rgb(var(--orb-2) / .6)); }
+  .ring { position: absolute; inset: -.6cqi -.6cqi auto; aspect-ratio: 16 / 9; border-radius: 1.2cqi; border: .3cqi solid var(--accent);
+          animation: ring 2.6s ease-in-out infinite; }
+  @keyframes ring { 0%, 100% { opacity: .25; transform: scale(.98); } 50% { opacity: 1; transform: scale(1.01); } }
+
+  .island { position: absolute; top: 3%; left: 50%; transform: translateX(-50%); height: 5.2cqi; display: flex; align-items: center; gap: 1cqi;
+            padding: 0 1.6cqi 0 .9cqi; border-radius: 99px; background: var(--surface); border: 1px solid var(--hair);
+            backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6); box-shadow: 0 1.2cqi 3cqi rgba(0,0,0,.18);
+            font-size: 1.45cqi; font-weight: 600; white-space: nowrap; }
+  .island .orb { --size: 3.4cqi !important; }
+  .bars { display: flex; gap: .3cqi; align-items: center; height: 2cqi; }
+  .bars i { width: .35cqi; border-radius: 2px; background: var(--accent); animation: bar 1s ease-in-out infinite; }
+  .bars i:nth-child(1) { height: 40%; } .bars i:nth-child(2) { height: 90%; animation-delay: .15s; } .bars i:nth-child(3) { height: 60%; animation-delay: .3s; } .bars i:nth-child(4) { height: 80%; animation-delay: .45s; }
+  @keyframes bar { 50% { transform: scaleY(.4); } }
+  .caption { position: absolute; top: 10.6%; left: 50%; transform: translateX(-50%); padding: .8cqi 1.6cqi; border-radius: 1.2cqi; font-size: 1.3cqi;
+             background: var(--surface); border: 1px solid var(--hair); color: var(--text-2); white-space: nowrap; backdrop-filter: blur(16px); }
+
+  .drawer { position: absolute; right: 2.4%; top: 4%; bottom: 4%; width: 31%; border-radius: 2cqi; padding: 1.6cqi; background: var(--surface);
+            border: 1px solid var(--hair); backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
+            box-shadow: 0 2cqi 6cqi rgba(0,0,0,.22); display: flex; flex-direction: column; gap: 1.2cqi; font-size: 1.25cqi; }
+  .d-head { display: flex; align-items: center; gap: .8cqi; font-size: 1.6cqi; }
+  .d-head .orb { --size: 2.6cqi !important; }
+  .d-x { margin-left: auto; color: var(--text-3); }
+  .d-tabs { display: flex; gap: .4cqi; padding: .4cqi; border-radius: 1cqi; background: var(--fill); }
+  .d-tabs b { flex: 1; text-align: center; font-weight: 500; padding: .5cqi 0; border-radius: .7cqi; color: var(--text-2); font-size: 1.1cqi; }
+  .d-tabs b.on { background: var(--card); color: var(--text); box-shadow: var(--shadow-sm); }
+  .d-card { border-radius: 1.2cqi; padding: 1.3cqi; background: var(--card); border: 1px solid var(--hair); }
+  .d-cap { color: var(--text-2); font-size: 1.1cqi; }
+  .d-title { font-weight: 600; font-size: 1.45cqi; margin: .4cqi 0 1cqi; }
+  .d-btn { display: inline-block; padding: .6cqi 1.4cqi; border-radius: 99px; background: var(--accent); color: #fff; font-weight: 600; font-size: 1.15cqi; }
+  .greet { background: linear-gradient(135deg, rgb(var(--orb-1) / .14), rgb(var(--orb-2) / .14)), var(--card); }
+  .d-group { border-radius: 1.2cqi; background: var(--card); border: 1px solid var(--hair); overflow: hidden; }
+  .d-row { display: flex; align-items: center; gap: .8cqi; padding: 1cqi 1.2cqi; border-top: 1px solid var(--hair); }
+  .d-row:first-child { border-top: none; }
+  .d-row em { margin-left: auto; font-style: normal; color: var(--text-3); font-size: 1.05cqi; }
+  .tick { width: 1.4cqi; height: 1.4cqi; border-radius: 50%; border: 1.5px solid var(--hair-strong); flex: none; }
+  .d-row.done { color: var(--text-3); text-decoration: line-through; }
+  .d-row.done .tick { background: var(--green); border-color: var(--green); }
+  .d-input { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 1cqi 1.2cqi; border-radius: 99px;
+             background: var(--card); border: 1px solid var(--hair); color: var(--text-3); }
+  .d-mic { color: var(--accent); font-size: 1cqi; }
+  .d-line { height: .8cqi; border-radius: 4px; background: var(--hair-strong); margin-top: .8cqi; }
+</style>

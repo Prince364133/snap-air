@@ -353,19 +353,14 @@ body.drawer-open .island-caption { display: none; }
 .banners { top: 58px; right: auto; left: 50%; transform: translateX(-50%); width: 380px; }
 body.drawer-open .banners { right: auto; left: calc(50% - 210px); }
 .greeting { top: 58px; }
-.presence { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column;
-            align-items: center; gap: 6px; z-index: 44; opacity: 0; pointer-events: none; transition: opacity .35s; cursor: pointer; }
-.presence.active, .presence.captioning { opacity: 1; pointer-events: auto; }
-.presence-caption { display: none !important; }
-.presence:not(.captioning) .presence-caption { display: none; }
-body.drawer-open .presence { left: calc(50% - 210px); }
+.presence { display: none !important; }
 .segmented button svg, .round-btn svg { vertical-align: middle; }
 .round-btn { display: grid; place-items: center; }
 .segmented.small { margin: 2px 0 6px; }
 .segmented.small button:last-child { flex: 1; }
 .badge.warn { color: var(--orange); background: rgba(255, 159, 10, .15); }
-.note.clickable { cursor: pointer; }
-.note.clickable:hover { border-color: var(--accent); }
+.note.clickable { cursor: pointer; transition: border-color .15s, background-color .15s; }
+.note.clickable:hover { border-color: var(--accent); background: var(--card-hover); }
 .drawer { transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .2s, width .25s ease; }
 .drawer.wide { width: 720px; }
 body.drawer-open:has(.drawer.wide) .banners { left: calc(50% - 370px); }

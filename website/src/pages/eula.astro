@@ -1,0 +1,33 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { SITE } from '../config';
+const toc: [string, string][] = [
+  ['license', 'License grant'], ['restrictions', 'Restrictions'], ['ownership', 'Ownership'], ['models', 'AI models & voices'],
+  ['third-party', 'Third-party components'], ['warranty', 'No warranty'], ['liability', 'Liability'], ['general', 'General'],
+];
+---
+<Legal seoTitle="End User License Agreement (EULA)" title="Snapy License Agreement" crumb="License agreement" path="/eula/" toc={toc}
+  description="The Snapy End User License Agreement: how you may install and use Snapy, a proprietary AI assistant for Windows.">
+  <p class="note">Snapy is proprietary software. This End User License Agreement (“EULA”) is between you and {SITE.company}. By installing or using Snapy you accept it.</p>
+  <h2 id="license">License grant</h2>
+  <p>{SITE.company} grants you a personal, non-exclusive, non-transferable, revocable license to install and use Snapy on Windows computers you own or control, for personal or internal business use.</p>
+  <h2 id="restrictions">Restrictions</h2>
+  <ul>
+    <li>Don’t copy, modify or create derivative works of Snapy.</li>
+    <li>Don’t decompile, disassemble or reverse engineer Snapy, except where the law expressly allows it.</li>
+    <li>Don’t rent, sell, sublicense or redistribute Snapy or its installer without written permission.</li>
+    <li>Don’t remove proprietary notices or branding.</li>
+  </ul>
+  <h2 id="ownership">Ownership</h2>
+  <p>Snapy is licensed, not sold. {SITE.company} keeps all rights in Snapy, including its name and logo.</p>
+  <h2 id="models">AI models &amp; voices</h2>
+  <p>Snapy may download AI models, speech models and voices from their publishers, each under its own license. Voices marked <strong>personal use only</strong> in Settings may be used only for personal, non-commercial purposes.</p>
+  <h2 id="third-party">Third-party components</h2>
+  <p>Snapy includes third-party components licensed under their own terms, listed in the notices shipped with the app. Nothing here restricts rights you have under those licenses.</p>
+  <h2 id="warranty">No warranty</h2>
+  <p>Snapy is provided “as is”, without warranty of any kind, to the fullest extent permitted by law. AI output and automated actions may not always be correct.</p>
+  <h2 id="liability">Liability</h2>
+  <p>To the fullest extent permitted by law, {SITE.company}’s total liability is limited to the amount you paid for Snapy, if any, and excludes indirect or consequential damages.</p>
+  <h2 id="general">General</h2>
+  <p>This EULA, with the <a href="/terms/">Terms of Service</a> and <a href="/privacy/">Privacy Policy</a>, is the entire agreement about Snapy and is governed by the laws of {SITE.jurisdiction}. It ends automatically if you breach it. Contact: <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
+</Legal>

@@ -1,0 +1,39 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Icon from '../components/Icon.astro';
+import { SITE } from '../config';
+
+const fixes = [
+  ['Snapy doesn’t hear me', 'Check Windows Settings → Privacy & security → Microphone → “Let desktop apps access your microphone” is on. In Snapy, Settings → Voice lets you pick the microphone. Try push-to-talk with Ctrl+Alt+Space.'],
+  ['Answers are slow', 'Settings → AI brain shows your model. Pick a smaller one, close heavy apps, or add your own cloud key and choose Auto.'],
+  ['“Your system isn’t compatible” for a model', 'That model would run too slowly on your hardware, so Snapy blocks it. Choose a recommended model or use a cloud key.'],
+  ['It clicked the wrong thing', 'Be more specific: use the exact button text (“click Subscribe”) or a position (“the second video”). Say “undo” or press Ctrl+Z if needed.'],
+  ['Hindi sounds English', 'Add Windows’ Hindi voice: Settings → Voice → Add voices → add Hindi (India).'],
+  ['The AI model didn’t download', 'Check your internet connection, then Settings → AI brain → Install. Corporate networks may block model downloads.'],
+];
+---
+<Base title="Support — Get Help with Snapy" description="Get help with Snapy: fixes for common problems with the microphone, speed, AI models, screen control and Hindi voices, plus how to contact the Snapy support team." crumbs={[{ name: 'Support', href: '/support/' }]}>
+  <PageHero eyebrow="Support" title="We’re here to help." lead="Most questions are answered in a minute below. If not, write to us — a person reads every message." />
+
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap">
+      <div class="grid grid-3">
+        <a class="card" href={`mailto:${SITE.email.support}`}><div class="icon i-blue"><Icon name="mail" /></div><h2 class="h3">Email support</h2><p>{SITE.email.support}</p><span class="more">Write to us →</span></a>
+        <a class="card" href="/faq/"><div class="icon i-purple"><Icon name="info" /></div><h2 class="h3">FAQ</h2><p>Install, privacy, models, languages and more.</p><span class="more">Read the FAQ →</span></a>
+        <a class="card" href="/install/"><div class="icon i-green"><Icon name="download" /></div><h2 class="h3">Install guide</h2><p>Step-by-step, including SmartScreen and microphone setup.</p><span class="more">Open the guide →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap narrow">
+      <h2 style="margin-bottom:24px">Quick fixes</h2>
+      <div class="faq">
+        {fixes.map(([q, a]) => <details><summary>{q}</summary><div class="answer"><p>{a}</p></div></details>)}
+      </div>
+      <div class="callout" style="margin-top:32px"><span class="dot"></span><div><p><strong>When you email us</strong>, include your Snapy version, Windows version, and what you said or clicked. Please don’t send passwords or API keys.</p></div></div>
+    </div>
+  </section>
+</Base>
+<style>.h3 { font-size: 22px; margin-bottom: 6px; }</style>

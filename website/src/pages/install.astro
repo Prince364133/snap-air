@@ -1,0 +1,65 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Icon from '../components/Icon.astro';
+import { RELEASE } from '../config';
+---
+<Base title="How to Install Snapy on Windows — Step-by-Step Guide" description={`How to download and install Snapy on Windows 10 or 11: run ${RELEASE.file}, let Snapy set up its on-device AI automatically, allow the microphone and finish the one-minute voice setup.`} crumbs={[{ name: 'Install guide', href: '/install/' }]}>
+  <PageHero eyebrow="Install guide" title="Installing Snapy takes about five minutes." lead="Most of that is Snapy downloading its AI model in the background while you carry on working. Here is exactly what happens.">
+    <div class="cta-row"><a class="btn btn-primary" href="/download/"><Icon name="windows" size={18} />Download Snapy</a></div>
+  </PageHero>
+
+  <section class="section-tight" style="padding-top:8px">
+    <div class="wrap narrow">
+      <ol class="steps" style="list-style:none">
+        <li class="step">
+          <h2 class="h3">Download the installer</h2>
+          <p>Go to the <a href="/download/">download page</a> and click <strong>Download for Windows</strong>. You’ll get <code>{RELEASE.file}</code> ({RELEASE.sizeMB} MB) in your Downloads folder.</p>
+        </li>
+        <li class="step" id="smartscreen">
+          <h2 class="h3">Open it — and allow it if Windows asks</h2>
+          <p>Double-click the file. If you see <strong>“Windows protected your PC”</strong>, that’s Microsoft Defender SmartScreen being careful with an app it hasn’t seen many times yet.</p>
+          <ul>
+            <li>Click <strong>More info</strong>, check the file name is <code>{RELEASE.file}</code>, then <strong>Run anyway</strong>.</li>
+            <li>Want to be sure? Compare the file’s SHA-256 fingerprint with the one on the <a href="/download/">download page</a>.</li>
+          </ul>
+        </li>
+        <li class="step">
+          <h2 class="h3">Follow the installer</h2>
+          <p>Choose where to install (the default is fine) and click <strong>Install</strong>. Snapy installs for your Windows user only, so you don’t need administrator rights. It adds a Start menu entry and a desktop shortcut.</p>
+        </li>
+        <li class="step">
+          <h2 class="h3">Snapy sets itself up</h2>
+          <p>On first launch, Snapy appears as a small pill at the top of your screen and gets ready:</p>
+          <ul>
+            <li>Checks your RAM, processor and graphics card.</li>
+            <li>Installs its local AI runtime and downloads the AI model that runs smoothly on your PC (about 1–3 GB). Models your PC can’t run well are never installed.</li>
+            <li>Speech recognition and its voice are already inside the installer — they work immediately.</li>
+          </ul>
+        </li>
+        <li class="step">
+          <h2 class="h3">Allow the microphone</h2>
+          <p>Windows asks once for microphone access. If Snapy shows <em>“Microphone blocked”</em>, open <strong>Settings → Privacy &amp; security → Microphone</strong> and turn on <strong>Let desktop apps access your microphone</strong>. Snapy’s banner has a button that opens this page for you.</p>
+        </li>
+        <li class="step">
+          <h2 class="h3">Say hello</h2>
+          <p>A one-minute welcome asks your name, work hours, and what you’d like to call your assistant. Choose whether to turn on activity tracking, gestures and starting with Windows. Then say <strong>“Snapy, start my day”</strong>.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap narrow">
+      <h2 style="margin-bottom:24px">After installing</h2>
+      <div class="grid grid-2">
+        <div class="card"><h3>Keyboard shortcuts</h3><p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd> talk · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd> type · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> settings · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> hide</p></div>
+        <div class="card"><h3>Hindi voice</h3><p>Settings → Voice → <strong>Add voices</strong> opens Windows Speech settings. Add Hindi (India) and Snapy uses it automatically.</p></div>
+        <div class="card"><h3>Older or slower PC?</h3><p>Settings → AI brain → add your own Gemini or OpenAI key and choose <strong>Auto</strong>. Snapy uses the cloud only when your PC would be slow.</p></div>
+        <div class="card"><h3>Uninstall</h3><p>Windows Settings → Apps → Installed apps → Snapy → Uninstall. Your data stays in <code>%APPDATA%\SnapAir</code> until you delete it (or use Settings → Delete all my data first).</p></div>
+      </div>
+      <p class="muted" style="margin-top:28px">Stuck? See the <a href="/faq/">FAQ</a> or <a href="/support/">contact support</a>.</p>
+    </div>
+  </section>
+</Base>
+<style>.h3 { font-size: 22px; margin-bottom: 6px; } .step p + p, .step p + ul { margin-top: 8px; }</style>

@@ -1,0 +1,31 @@
+---
+import Feature from '../../layouts/Feature.astro';
+---
+<Feature
+  seoTitle="Personal AI Memory & Routines — Stored on Your PC"
+  description="Snapy remembers your projects, people, preferences and routines so it can help without being told twice. Everything is stored as plain files on your PC, and you can see, edit, pin or delete any memory."
+  crumb="Memory & routines"
+  path="/features/memory/"
+  eyebrow="Memory & routines"
+  title="An assistant that remembers — and lets you forget."
+  lead="Snapy learns lasting facts while you talk: your manager’s name, your main project, how you like to work. It uses them to help, and keeps them where you can see them."
+  examples={['remember that my manager is Arun', 'what do you know about me?', 'forget that I use Slack', 'prepare my standup', 'park this as login bug', 'resume login bug', 'how much time on YouTube today?']}
+  points={[
+    { icon: 'brain', c: 'i-pink', t: 'Learns in the background', d: 'Important details from your conversations are saved as short memories, scored by relevance, importance and recency — so recent and important things come first.' },
+    { icon: 'notes', c: 'i-blue', t: 'A Memory tab you control', d: 'See every memory, edit it, pin what matters or delete it. Say “forget that …” and it’s gone.' },
+    { icon: 'shield', c: 'i-green', t: 'Secrets are filtered out', d: 'Passwords, API keys and similar secrets are filtered out and never stored as memories.' },
+    { icon: 'clock', c: 'i-purple', t: 'Learns your routine (optional)', d: 'Turn on activity tracking and Snapy learns which apps, projects and sites you use when — names and durations only, never keystrokes or screen contents.' },
+    { icon: 'sun', c: 'i-orange', t: 'Start my day', d: 'One greeting each morning: yesterday’s work, today’s tasks and meetings, and a button that opens your editor and project.' },
+    { icon: 'window', c: 'i-teal', t: 'Work contexts', d: '“Park this as login bug” saves what you were working on; “resume login bug” picks it back up later.' },
+  ]}
+  faqs={[
+    { q: 'Where is my memory stored?', a: 'In plain JSON files in %APPDATA%\\SnapAir on your PC. Settings has buttons to open the folder, export everything, or delete all your data.' },
+    { q: 'Is activity tracking on by default?', a: 'No. It is off until you turn it on, and you can choose how many days of history to keep (30 by default).' },
+    { q: 'Does memory go to the cloud?', a: 'No. Even if you connect a cloud AI for conversation, memory processing stays on your PC unless you explicitly allow it in Settings.' },
+  ]}
+  related={[
+    { href: '/features/meetings/', label: 'Meeting notes', d: 'Summaries, decisions and action items from your calls.' },
+    { href: '/privacy/', label: 'Privacy policy', d: 'Exactly what is stored, where, and for how long.' },
+    { href: '/features/', label: 'All features', d: 'Everything Snapy can do.' },
+  ]}
+/>

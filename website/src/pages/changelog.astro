@@ -1,0 +1,46 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import { RELEASE } from '../config';
+
+const releases = [
+  { v: RELEASE.version, date: RELEASE.dateLabel, tag: 'Latest', groups: [
+    ['New', [
+      'Screen control: click, type and read anything on screen by voice — “click the second video”, “type hello in the search box”, “what’s on my screen?”.',
+      'Screen vision: Windows text recognition and an optional vision model for apps and images without accessibility information.',
+      'Multi-step tasks: “on screen, …” plans and performs a goal step by step, and asks before anything irreversible.',
+      'Native Indian voices for Telugu, Marathi, Bengali, Nepali and Urdu; Windows Hindi and Tamil voices supported.',
+      'Rename your assistant — it answers to the name you choose.',
+      'Keyboard by voice: any shortcut, including Windows keys and F-keys.',
+      'Cloud brain (optional): use your own Gemini, OpenAI or compatible key in Auto or Cloud mode.',
+      'Automatic model setup: Snapy checks your hardware and installs a model that runs smoothly.',
+    ]],
+    ['Improved', [
+      'Spoken Hindi replies are written in Devanagari for natural pronunciation.',
+      'Faster first reply — about two seconds to the first spoken word on a modern laptop.',
+      'Microphone fallback across audio drivers, with a clear banner when Windows blocks the mic.',
+    ]],
+  ] },
+];
+---
+<Base title="Release Notes — What’s New in Snapy" description={`What’s new in Snapy ${RELEASE.version}: screen control, screen vision, native Indian voices, assistant renaming and keyboard shortcuts by voice.`} crumbs={[{ name: 'Release notes', href: '/changelog/' }]}>
+  <PageHero eyebrow="Release notes" title="What’s new in Snapy." lead="To update, download the latest installer and run it over your current version — your memories, notes and settings are kept." />
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap narrow">
+      {releases.map((r) => (
+        <article class="release">
+          <header><h2>Snapy {r.v}</h2><span class="muted">{r.date}</span>{r.tag && <span class="tag">{r.tag}</span>}</header>
+          {r.groups.map(([g, items]) => (<><h3>{g}</h3><ul>{(items as string[]).map((i) => <li>{i}</li>)}</ul></>))}
+        </article>
+      ))}
+    </div>
+  </section>
+</Base>
+<style>
+  .release { padding: 32px 0; border-top: 1px solid var(--hair); }
+  .release header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin-bottom: 8px; }
+  .release h2 { font-size: 28px; }
+  .release h3 { font-size: 15px; color: var(--text-2); margin-top: 20px; letter-spacing: 0; }
+  .release ul { margin-top: 10px; padding-left: 20px; display: grid; gap: 8px; }
+  .tag { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); }
+</style>
