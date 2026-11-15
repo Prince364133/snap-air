@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import io.flutter.embedding.engine.FlutterEngine
@@ -48,6 +49,7 @@ object SnapyChannels {
                 "config" -> core.configAsync(str("path")) { result.success(it) }
                 "status" -> result.success(mapOf(
                     "usage" to usage.hasAccess(),
+                    "overlay" to Settings.canDrawOverlays(activity),
                     "realcount" to isAccessibilityOn(activity),
                     "pill" to (SnapyAccessibilityService.instance != null),
                     "microphone" to (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED),
@@ -62,7 +64,20 @@ object SnapyChannels {
                     result.success(true)
                 }
                 "openUsageAccess" -> { activity.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); result.success(true) }
+                "openOverlaySettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.packageName))
+                        activity.startActivity(intent)
+                    } catch (_: Exception) {
+                        activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                    }
+                    result.success(true)
+                }
                 "openRealCountSettings" -> { activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); result.success(true) }
+                "startChip" -> {
+                    SnapyAccessibilityService.instance?.showPillPublic()
+                    result.success(true)
+                }
                 "today" -> Thread {
                     val t = usage.today()
                     val rc = SnapyAccessibilityService.instance?.todayJson() ?: RealCountStore(activity).today()

@@ -30,7 +30,10 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -192,8 +195,12 @@ class SnapyAccessibilityService : AccessibilityService() {
     private lateinit var usage: UsageTracker
     private val main = Handler(Looper.getMainLooper())
 
-    private var pill: LivingOrbView? = null
-    private var liquidCard: View? = null
+    private var pillLayout: LinearLayout? = null
+    private var orbView: LivingOrbView? = null
+    private var counterBadge: LinearLayout? = null
+    private var counterText: TextView? = null
+    private var liquidOverlay: View? = null
+    private var isSocialActive = false
     private var card: View? = null
 
     private var socialApps = mapOf(
@@ -259,11 +266,17 @@ class SnapyAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun showPillPublic() = main.post { showPill() }
+
     private fun onWindow(pkg: String) {
         if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
         flushReelTime()
         val prev = currentPkg
         currentPkg = pkg
+
+        val isSocial = socialApps.containsKey(pkg) && !socialApps[pkg]!!.isNull("short_video")
+        setSocialAppActive(isSocial)
+
         if (socialApps.containsKey(pkg) && pkg != prev) nudge(pkg)
         updatePill()
     }
@@ -295,6 +308,7 @@ class SnapyAccessibilityService : AccessibilityService() {
         lastReelAt[pkg] = now
         if (reelTimeFrom == 0L) reelTimeFrom = now
         store.addReel(pkg)
+        animateReelNumberDrop()
         updatePill()
     }
 
@@ -311,10 +325,65 @@ class SnapyAccessibilityService : AccessibilityService() {
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
     private fun showPill() {
-        if (pill != null) return
+        if (pillLayout != null) return
         val size = dp(26f)
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        val orb = LivingOrbView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(size, size)
+        }
+        orbView = orb
+        container.addView(orb)
+
+        val badge = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = if (isSocialActive) View.VISIBLE else View.GONE
+            setPadding(dp(7f), dp(2f), dp(8f), dp(2f))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(11f).toFloat()
+                setColor(0xEE161824.toInt())
+                setStroke(dp(1f), 0x2EFFFFFF)
+            }
+            val tv = TextView(this@SnapyAccessibilityService).apply {
+                text = "${store.totalReels()}"
+                setTextColor(0xFFFFFFFF.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                fontFeatureSettings = "tnum"
+            }
+            counterText = tv
+            addView(tv)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(22f)
+            ).apply {
+                leftMargin = dp(4f)
+            }
+        }
+        counterBadge = badge
+        container.addView(badge)
+
+        container.setOnClickListener {
+            orb.nextPalette()
+            toggleLiquidCard()
+        }
+        container.setOnLongClickListener {
+            hiddenUntil = System.currentTimeMillis() + 3600_000
+            updatePill()
+            Toast.makeText(this@SnapyAccessibilityService, "Snapy dot hidden for 1 hour", Toast.LENGTH_SHORT).show()
+            true
+        }
+
         val lp = WindowManager.LayoutParams(
-            size, size,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            size,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -323,22 +392,63 @@ class SnapyAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= 30) lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         placeBesideCamera(lp, size)
 
-        val orbView = LivingOrbView(this).apply {
-            contentDescription = "Snapy AI — tap to view Real Count"
-            setOnClickListener {
-                nextPalette()
-                toggleLiquidCard()
-            }
-            setOnLongClickListener {
-                hiddenUntil = System.currentTimeMillis() + 3600_000
-                updatePill()
-                Toast.makeText(this@SnapyAccessibilityService, "Snapy dot hidden for 1 hour", Toast.LENGTH_SHORT).show()
-                true
-            }
-        }
-        wm.addView(orbView, lp)
-        pill = orbView
+        wm.addView(container, lp)
+        pillLayout = container
         updatePill()
+    }
+
+    private fun setSocialAppActive(active: Boolean) = main.post {
+        if (isSocialActive == active) return@post
+        isSocialActive = active
+        val badge = counterBadge ?: return@post
+        val tv = counterText ?: return@post
+
+        if (active) {
+            val count = store.totalReels()
+            tv.text = "$count"
+            badge.visibility = View.VISIBLE
+            badge.alpha = 0f
+            badge.translationX = -dp(8f).toFloat()
+            badge.animate()
+                .alpha(1f)
+                .translationX(0f)
+                .setDuration(220)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        } else {
+            badge.animate()
+                .alpha(0f)
+                .translationX(-dp(8f).toFloat())
+                .setDuration(160)
+                .withEndAction {
+                    badge.visibility = View.GONE
+                }
+                .start()
+        }
+    }
+
+    private fun animateReelNumberDrop() = main.post {
+        val badge = counterBadge ?: return@post
+        val tv = counterText ?: return@post
+        if (badge.visibility != View.VISIBLE) {
+            badge.visibility = View.VISIBLE
+        }
+        val count = store.totalReels()
+        tv.animate()
+            .translationY(-dp(8f).toFloat())
+            .alpha(0f)
+            .setDuration(110)
+            .withEndAction {
+                tv.text = "$count"
+                tv.translationY = dp(8f).toFloat()
+                tv.animate()
+                    .translationY(0f)
+                    .alpha(1f)
+                    .setDuration(140)
+                    .setInterpolator(DecelerateInterpolator(1.6f))
+                    .start()
+            }
+            .start()
     }
 
     /** Sit permanently in the status-bar row right beside the camera punch-hole (non-draggable). */
@@ -367,7 +477,7 @@ class SnapyAccessibilityService : AccessibilityService() {
     }
 
     private fun updatePill() = main.post {
-        val p = pill ?: return@post
+        val p = pillLayout ?: return@post
         p.visibility = if (System.currentTimeMillis() < hiddenUntil) View.GONE else View.VISIBLE
     }
 
@@ -383,15 +493,24 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     // ------------------------------------------------------------------ liquid flow card
     private fun toggleLiquidCard() {
-        if (liquidCard != null) dismissLiquidCard() else showLiquidCard()
+        if (liquidOverlay != null) dismissLiquidCard() else showLiquidCard()
     }
 
     private fun dismissLiquidCard() {
-        val c = liquidCard ?: return
-        c.animate().scaleX(0.85f).scaleY(0.85f).alpha(0f).translationY(-dp(12f).toFloat()).setDuration(180).withEndAction {
-            try { wm.removeView(c) } catch (_: Exception) {}
-            if (liquidCard == c) liquidCard = null
-        }.start()
+        val overlay = liquidOverlay ?: return
+        val card = overlay.findViewById<View>(android.R.id.content) ?: overlay
+        card.animate()
+            .scaleX(0.25f)
+            .scaleY(0.05f)
+            .translationY(-dp(20f).toFloat())
+            .alpha(0f)
+            .setDuration(180)
+            .setInterpolator(AccelerateInterpolator(1.4f))
+            .withEndAction {
+                try { wm.removeView(overlay) } catch (_: Exception) {}
+                if (liquidOverlay == overlay) liquidOverlay = null
+            }
+            .start()
     }
 
     private fun showLiquidCard() {
@@ -399,18 +518,27 @@ class SnapyAccessibilityService : AccessibilityService() {
         val screenW = resources.displayMetrics.widthPixels
         val cardW = minOf(screenW - dp(24f), dp(360f))
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24f).toFloat()
-                setColor(0xF4121522.toInt()) // Sleek frosted obsidian acrylic
-                setStroke(dp(1f), 0x2EFFFFFF) // Glassmorphic edge highlight
-            }
-            elevation = dp(16f).toFloat()
+        // Full-screen touch overlay: tapping outside automatically dismisses!
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(0x00000000)
+            setOnClickListener { dismissLiquidCard() }
         }
 
-        // 1. Header row
+        // Executive obsidian liquid card
+        val cardRoot = LinearLayout(this).apply {
+            id = android.R.id.content
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18f), dp(16f), dp(18f), dp(14f))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20f).toFloat()
+                setColor(0xF215161E.toInt()) // Deep executive obsidian (95% opaque)
+                setStroke(dp(1f), 0x22FFFFFF) // Clean subtle hairline
+            }
+            elevation = dp(14f).toFloat()
+            setOnClickListener { /* consume click inside card */ }
+        }
+
+        // 1. Minimalist Header (NO CROSS ICON)
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -419,79 +547,65 @@ class SnapyAccessibilityService : AccessibilityService() {
                     shape = GradientDrawable.OVAL
                     setColor(0xFF28C8FF.toInt())
                 }
-                layoutParams = LinearLayout.LayoutParams(dp(9f), dp(9f))
+                layoutParams = LinearLayout.LayoutParams(dp(7f), dp(7f))
             })
             addView(TextView(this@SnapyAccessibilityService).apply {
-                text = " Snapy Real Count"
-                setTextColor(0xFFFFFFFF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                text = "  Screen Activity"
+                setTextColor(0xFFF5F5F7.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                setPadding(dp(6f), 0, 0, 0)
-            })
-            addView(TextView(this@SnapyAccessibilityService).apply {
-                text = "TODAY"
-                setTextColor(0xFF28C8FF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                setPadding(dp(6f), dp(2f), dp(6f), dp(2f))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(6f).toFloat()
-                    setColor(0x2828C8FF.toInt())
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    leftMargin = dp(8f)
-                }
             })
             val spacer = View(this@SnapyAccessibilityService).apply {
                 layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
             }
             addView(spacer)
             addView(TextView(this@SnapyAccessibilityService).apply {
-                text = "✕"
-                setTextColor(0xFFA1A1A6.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                setPadding(dp(8f), dp(4f), dp(4f), dp(4f))
-                setOnClickListener { dismissLiquidCard() }
+                text = "TODAY"
+                setTextColor(0xFF8E8E93.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                setPadding(dp(7f), dp(2f), dp(7f), dp(2f))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(6f).toFloat()
+                    setColor(0x18FFFFFF)
+                }
             })
         }
-        root.addView(header)
+        cardRoot.addView(header)
 
-        // 2. Overview metrics container
-        val metricsBox = LinearLayout(this).apply {
+        // 2. Metrics Panel (Clean two-column corporate layout)
+        val metricsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+            setPadding(dp(14f), dp(12f), dp(14f), dp(12f))
             background = GradientDrawable().apply {
-                cornerRadius = dp(16f).toFloat()
-                setColor(0x1F22283C)
-                setStroke(dp(1f), 0x1FFFFFFF)
+                cornerRadius = dp(14f).toFloat()
+                setColor(0x1C222432)
+                setStroke(dp(1f), 0x1AFFFFFF)
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = dp(10f)
-                bottomMargin = dp(10f)
+                topMargin = dp(12f)
+                bottomMargin = dp(12f)
             }
 
             val timeCol = LinearLayout(this@SnapyAccessibilityService).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 addView(TextView(this@SnapyAccessibilityService).apply {
-                    text = "TOTAL SCREEN TIME"
+                    text = "SCREEN TIME"
                     setTextColor(0xFF8E8E93.toInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 })
                 addView(TextView(this@SnapyAccessibilityService).apply {
                     text = "⏱ " + UsageTracker.format(todayMs)
-                    setTextColor(0xFFFFFFFF.toInt())
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    setTextColor(0xFFF5F5F7.toInt())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                     typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                     fontFeatureSettings = "tnum"
-                    setPadding(0, dp(2f), 0, 0)
+                    setPadding(0, dp(3f), 0, 0)
                 })
             }
 
@@ -499,50 +613,40 @@ class SnapyAccessibilityService : AccessibilityService() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 addView(TextView(this@SnapyAccessibilityService).apply {
-                    text = "REELS & SHORTS"
+                    text = "REELS SCROLLED"
                     setTextColor(0xFF8E8E93.toInt())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 })
                 addView(TextView(this@SnapyAccessibilityService).apply {
-                    text = "▶ " + store.totalReels() + " reels"
-                    setTextColor(0xFF28C8FF.toInt())
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    text = "▶ " + store.totalReels()
+                    setTextColor(0xFF5E81FF.toInt())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                     typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                     fontFeatureSettings = "tnum"
-                    setPadding(0, dp(2f), 0, 0)
+                    setPadding(0, dp(3f), 0, 0)
                 })
             }
 
             addView(timeCol)
             addView(reelCol)
         }
-        root.addView(metricsBox)
+        cardRoot.addView(metricsPanel)
 
-        // 3. Horizontal Scrollable Row of Used Apps
+        // 3. Horizontal Scroll of Used Apps
         val labelRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(2f), 0, dp(6f))
             addView(TextView(this@SnapyAccessibilityService).apply {
-                text = "APPS SCROLLED TODAY"
+                text = "APPS USED TODAY"
                 setTextColor(0xFF8E8E93.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
             })
-            val sp = View(this@SnapyAccessibilityService).apply {
-                layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-            }
-            addView(sp)
-            addView(TextView(this@SnapyAccessibilityService).apply {
-                text = "swipe ➔"
-                setTextColor(0xFF5A5A60.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            })
         }
-        root.addView(labelRow)
+        cardRoot.addView(labelRow)
 
-        // Gather all candidate packages
         val pm = packageManager
         val candidatePkgs = LinkedHashSet<String>()
         candidatePkgs.addAll(socialApps.keys)
@@ -571,7 +675,6 @@ class SnapyAccessibilityService : AccessibilityService() {
         for (pkg in candidatePkgs) {
             val reels = store.reels(pkg)
             val ms = appMs[pkg] ?: 0L
-            // User requirement: ONLY show apps where data is recorded today!
             if (reels <= 0 && ms < 60_000L) continue
 
             try {
@@ -579,15 +682,10 @@ class SnapyAccessibilityService : AccessibilityService() {
                 val appLabel = pm.getApplicationLabel(appInfo).toString()
                 val appIcon = pm.getApplicationIcon(appInfo)
                 usedApps.add(UsedAppItem(pkg, appLabel, appIcon, reels, ms))
-            } catch (_: PackageManager.NameNotFoundException) {
-                // Not installed on phone: skip
-                continue
             } catch (_: Exception) {
                 continue
             }
         }
-
-        // Sort: apps with most reels first, then screen time
         usedApps.sortByDescending { it.reels * 1_000_000L + it.timeMs }
 
         val hScroll = HorizontalScrollView(this).apply {
@@ -611,15 +709,15 @@ class SnapyAccessibilityService : AccessibilityService() {
             val emptyCard = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14f), dp(12f), dp(14f), dp(12f))
+                setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
                 background = GradientDrawable().apply {
-                    cornerRadius = dp(14f).toFloat()
-                    setColor(0x18FFFFFF)
+                    cornerRadius = dp(12f).toFloat()
+                    setColor(0x14FFFFFF)
                 }
                 addView(TextView(this@SnapyAccessibilityService).apply {
-                    text = "🌱 Clean focus streak — no social feeds scrolled yet today!"
+                    text = "✨ No feeds scrolled yet today — 100% focused"
                     setTextColor(0xFFA1A1A6.toInt())
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
                 })
             }
             hContainer.addView(emptyCard)
@@ -628,21 +726,21 @@ class SnapyAccessibilityService : AccessibilityService() {
                 val appCard = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+                    setPadding(dp(10f), dp(9f), dp(10f), dp(9f))
                     background = GradientDrawable().apply {
-                        cornerRadius = dp(16f).toFloat()
-                        setColor(0x28202538)
-                        setStroke(dp(1f), 0x2EFFFFFF)
+                        cornerRadius = dp(14f).toFloat()
+                        setColor(0x24222432)
+                        setStroke(dp(1f), 0x1AFFFFFF)
                     }
-                    layoutParams = LinearLayout.LayoutParams(dp(105f), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(106f), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         rightMargin = dp(8f)
                     }
 
-                    // 1) Real App Icon
+                    // Real App Icon
                     val iv = ImageView(this@SnapyAccessibilityService).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(38f), dp(38f)).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(36f), dp(36f)).apply {
                             gravity = Gravity.CENTER_HORIZONTAL
-                            bottomMargin = dp(6f)
+                            bottomMargin = dp(5f)
                         }
                         if (item.icon != null) {
                             setImageDrawable(item.icon)
@@ -653,11 +751,11 @@ class SnapyAccessibilityService : AccessibilityService() {
                     }
                     addView(iv)
 
-                    // 2) App Label
+                    // App Label
                     val nameTv = TextView(this@SnapyAccessibilityService).apply {
                         text = item.label
-                        setTextColor(0xFFFFFFFF.toInt())
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                        setTextColor(0xFFF5F5F7.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                         typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                         maxLines = 1
                         ellipsize = TextUtils.TruncateAt.END
@@ -665,32 +763,30 @@ class SnapyAccessibilityService : AccessibilityService() {
                     }
                     addView(nameTv)
 
-                    // 3) Reels Scrolled
+                    // Reels Scrolled
                     val reelsTv = TextView(this@SnapyAccessibilityService).apply {
                         text = if (item.reels > 0) "▶ ${item.reels} reels" else "0 reels"
-                        setTextColor(if (item.reels > 0) 0xFF28C8FF.toInt() else 0xFF8E8E93.toInt())
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                        setTextColor(if (item.reels > 0) 0xFF5E81FF.toInt() else 0xFF8E8E93.toInt())
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
                         typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                         fontFeatureSettings = "tnum"
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(0, dp(2f), 0, 0)
+                        setPadding(0, dp(1f), 0, 0)
                     }
                     addView(reelsTv)
 
-                    // 4) Active Screen Time
+                    // Active Time
                     if (item.timeMs >= 60_000L) {
                         val timeTv = TextView(this@SnapyAccessibilityService).apply {
                             text = "⏱ " + UsageTracker.format(item.timeMs)
-                            setTextColor(0xFFA1A1A6.toInt())
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                            setTextColor(0xFF8E8E93.toInt())
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
                             fontFeatureSettings = "tnum"
                             gravity = Gravity.CENTER_HORIZONTAL
-                            setPadding(0, dp(1f), 0, 0)
                         }
                         addView(timeTv)
                     }
 
-                    // Tapping an app card opens Snapy AI bottom sheet
                     setOnClickListener {
                         dismissLiquidCard()
                         openSheet()
@@ -700,31 +796,25 @@ class SnapyAccessibilityService : AccessibilityService() {
             }
         }
         hScroll.addView(hContainer)
-        root.addView(hScroll)
+        cardRoot.addView(hScroll)
 
-        // 4. Chat with Snapy AI action button
-        val chatBtn = LinearLayout(this).apply {
+        // 4. Minimalist AI Hint (NOT a chunky button)
+        val hintRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(14f), dp(10f), dp(14f), dp(10f))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16f).toFloat()
-                colors = intArrayOf(0x3D28C8FF.toInt(), 0x2278A0FF.toInt())
-                orientation = GradientDrawable.Orientation.LEFT_RIGHT
-                setStroke(dp(1f), 0x6646C8FF.toInt())
-            }
+            setPadding(dp(8f), dp(8f), dp(8f), dp(4f))
             addView(TextView(this@SnapyAccessibilityService).apply {
-                text = "✨ Ask Snapy AI about your screen habits →"
-                setTextColor(0xFF5EE2FF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
-                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                text = "✨ Ask Snapy about your screen habits ➔"
+                setTextColor(0xFFA1A1A6.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             })
             setOnClickListener {
                 dismissLiquidCard()
                 openSheet()
             }
         }
-        root.addView(chatBtn)
+        cardRoot.addView(hintRow)
 
         var yPos = dp(44f)
         if (Build.VERSION.SDK_INT >= 30) {
@@ -733,24 +823,39 @@ class SnapyAccessibilityService : AccessibilityService() {
             if (bar > 0) yPos = bar + dp(8f)
         }
 
+        overlay.addView(cardRoot, FrameLayout.LayoutParams(
+            cardW, FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = yPos
+        })
+
         val lp = WindowManager.LayoutParams(
-            cardW, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = yPos
-        }
+        )
 
-        wm.addView(root, lp)
-        liquidCard = root
+        wm.addView(overlay, lp)
+        liquidOverlay = overlay
 
-        root.scaleX = 0.82f
-        root.scaleY = 0.82f
-        root.alpha = 0f
-        root.animate().scaleX(1.0f).scaleY(1.0f).alpha(1.0f).setDuration(240)
-            .setInterpolator(OvershootInterpolator(1.05f)).start()
+        // Fluid "drop from that icon and expand" animation
+        cardRoot.pivotX = cardW / 2f
+        cardRoot.pivotY = 0f
+        cardRoot.scaleX = 0.25f
+        cardRoot.scaleY = 0.05f
+        cardRoot.translationY = -dp(24f).toFloat()
+        cardRoot.alpha = 0f
+        cardRoot.animate()
+            .scaleX(1.0f)
+            .scaleY(1.0f)
+            .translationY(0f)
+            .alpha(1.0f)
+            .setDuration(280)
+            .setInterpolator(DecelerateInterpolator(2.0f))
+            .start()
     }
 
     // ------------------------------------------------------------------ nudge card
@@ -888,10 +993,10 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     /** Voice feedback in the pill (wake word or push-to-talk while another app is open). */
     fun showVoice(state: String, text: String) = main.post {
-        val p = pill ?: return@post
+        val p = pillLayout ?: return@post
         p.visibility = View.VISIBLE
         if (state == "listening" || state == "thinking") {
-            p.nextPalette()
+            orbView?.nextPalette()
         }
     }
 
@@ -902,8 +1007,8 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         flushReelTime()
-        pill?.let {
-            it.stop()
+        orbView?.stop()
+        pillLayout?.let {
             try { wm.removeView(it) } catch (_: Exception) { }
         }
         dismissLiquidCard()
