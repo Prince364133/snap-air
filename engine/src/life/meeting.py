@@ -14,6 +14,8 @@ import re
 import threading
 import time
 
+from src import core_loader as core
+
 try:
     import numpy as np
 except ImportError:                     # Android: text arrives from the phone's speech recognizer
@@ -24,31 +26,22 @@ WINDOW_S = 20
 SILENCE_STOP_S = 20 * 60
 LABELS = {"mic": "You", "system": "Others"}
 
-SUMMARY_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "summary": {"type": "array", "items": {"type": "string"}},
-        "key_points": {"type": "array", "items": {"type": "string"}},
-        "decisions": {"type": "array", "items": {"type": "string"}},
-        "action_items": {"type": "array", "items": {"type": "object", "properties": {
-            "task": {"type": "string"}, "owner": {"type": "string"}, "due": {"type": "string"},
-            "mine": {"type": "boolean"}}, "required": ["task", "owner", "due", "mine"]}},
-    },
-    "required": ["title", "summary", "key_points", "decisions", "action_items"],
-}
+# The AI's answer format and instructions: core/prompts/meeting_summary.{schema.json,md}
+SUMMARY_SCHEMA = core.prompt_json("meeting_summary.schema")
+SUMMARY_SYSTEM = core.prompt("meeting_summary")
 
-SUMMARY_SYSTEM = """You write meeting notes from a raw, imperfect speech transcript.
-Lines with "You:" are the user; "Others:" are other participants.
-Return: a short title (max 6 words); 2-4 summary bullets; key points; decisions made; action items with
-owner (a name, "me" for the user, or "unassigned"), due (as said, or "") and mine=true when the user
-committed to it or it was assigned to them. Only include things actually in the transcript.
-Write in the language the meeting was held in."""
 
-ACTION_HINT = re.compile(
-    r"\b(i'll|i will|i can|let me|i'm going to|we need to|we should|can you|could you|action item|todo|"
-    r"follow up|by (monday|tuesday|wednesday|thursday|friday|tomorrow|tonight|eod|end of day)|deadline)\b", re.I)
-DECISION_HINT = re.compile(r"\b(we decided|we agreed|agreed|decision|let's go with|we'll go with)\b", re.I)
+class _AnyOf:
+    def __init__(self, domain):
+        self.domain = domain
+
+    def search(self, text):
+        return core.any_match(self.domain, text or "")
+
+
+# No-AI fallback hints: core/intents (meeting_action_hint, meeting_decision_hint)
+ACTION_HINT = _AnyOf("meeting_action_hint")
+DECISION_HINT = _AnyOf("meeting_decision_hint")
 
 
 def heuristic_notes(segments):
@@ -62,7 +55,7 @@ def heuristic_notes(segments):
             if DECISION_HINT.search(sent):
                 decisions.append(sent)
             elif ACTION_HINT.search(sent):
-                mine = s["who"] == "You" and re.search(r"\b(i'll|i will|i can|let me|i'm going to)\b", sent, re.I)
+                mine = s["who"] == "You" and core.any_match("meeting_mine", sent)
                 actions.append({"task": sent, "owner": "me" if mine else "unassigned", "due": "", "mine": bool(mine)})
     words = sum(len(s["text"].split()) for s in segments)
     return {"title": "", "summary": [f"{len(segments)} transcript segments, {words} words (AI summary unavailable)."],
@@ -91,7 +84,7 @@ class MeetingRecorder:
         self._jobs = queue.Queue()
         self._threads = []
         self._windower_thread = None
-        self._pending = 0
+        self._pending = 0                       # queued windows not transcribed yet (guarded by _buf_lock)
         self.capture_devices = True             # False in tests: audio arrives via feed()
         self.error = None
         threading.Thread(target=self._worker, daemon=True).start()
@@ -174,7 +167,8 @@ class MeetingRecorder:
     def _queue(self, source, audio):
         offset = self._offsets[source]
         self._offsets[source] += len(audio) / SR
-        self._pending += 1
+        with self._buf_lock:                    # += from the windower, -= from the worker
+            self._pending += 1
         self._jobs.put((source, offset, audio))
 
     def _windower(self):
@@ -214,7 +208,8 @@ class MeetingRecorder:
                     self.segments.sort(key=lambda s: s["t"])
                     self.on_update(self.state())
             finally:
-                self._pending -= 1
+                with self._buf_lock:
+                    self._pending -= 1
 
     # ------------------------------------------------------------- stop
     def stop(self, wait=True):

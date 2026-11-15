@@ -1,0 +1,11 @@
+{
+  "_meta": {"schema_version": 1, "description": "The {{task}} sentence for prompts/clipboard.md, by clipboard action. 'default' when the action is unknown; {{target}} defaults to default_target."},
+  "tasks": {
+    "explain": "Explain this simply in 2-3 sentences",
+    "summarize": "Summarise this in 2-3 sentences",
+    "summarise": "Summarise this in 2-3 sentences",
+    "translate": "Translate this into {{target}}"
+  },
+  "default": "Explain this in 2-3 sentences",
+  "default_target": "English"
+}

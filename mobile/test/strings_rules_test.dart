@@ -37,7 +37,7 @@ void main() {
   });
 
   test('no shame language in any string', () {
-    final all = File('assets/i18n/en.json').readAsStringSync().toLowerCase();
+    final all = allEnglishText();
     for (final w in ['addict', 'shame', 'wasted', 'waste of', 'guilty', 'lazy', 'bad habit', 'too much']) {
       expect(all.contains(w), isFalse, reason: w);
     }

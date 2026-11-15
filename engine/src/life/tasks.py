@@ -5,14 +5,16 @@ import re
 import threading
 import uuid
 
+from src import core_loader as core
 from src import storage
 
-NUM = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
-       "eight": 8, "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40,
-       "forty five": 45, "half an": 0.5, "half a": 0.5, "couple of": 2, "few": 3}
-WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-_NUMRX = r"(\d+(?:\.\d+)?|half an|half a|couple of|forty five|an|a|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|few)"
-_UNIT = {"s": 1 / 60, "sec": 1 / 60, "second": 1 / 60, "m": 1, "min": 1, "minute": 1, "h": 60, "hr": 60, "hour": 60}
+# Word tables: core/rules/vocab.json (vocab.numbers.time, vocab.time). The order of the number
+# words is the regex alternation order.
+_T = core.config("vocab.time", {}) or {}
+NUM = core.config("vocab.numbers.time", {}) or {}
+WEEKDAYS = list(_T.get("weekdays", []))
+_NUMRX = r"(\d+(?:\.\d+)?|" + "|".join(NUM) + ")"
+_UNIT = _T.get("unit_minutes", {})
 
 
 def _num(s):
@@ -41,7 +43,8 @@ def _clock(h, m, ampm, now, day=None):
     if day is None and not ampm and h <= 12:
         # "at 5" -> the next 5 o'clock that's still ahead; prefer afternoon for 1-7
         options = [cand, cand + dt.timedelta(hours=12)] if h < 12 else [cand]
-        if 1 <= h <= 6:          # "at 4" means 4 PM; 7+ could be either, take the next one
+        lo, hi = _T.get("afternoon_first_hours", [1, 6])
+        if lo <= h <= hi:        # "at 4" means 4 PM; 7+ could be either, take the next one
             options = [cand + dt.timedelta(hours=12), cand]
         for c in options:
             if c > now:
@@ -81,12 +84,7 @@ def parse_when(text, now=None):
     dm = re.search(r"\b(tomorrow|kal|day after tomorrow|tonight|this evening|this afternoon|this morning|shaam ko|subah)\b", low)
     if dm:
         w = dm.group(1)
-        if w in ("tomorrow", "kal"):
-            day = now.date() + dt.timedelta(days=1)
-        elif w == "day after tomorrow":
-            day = now.date() + dt.timedelta(days=2)
-        else:
-            day = now.date()
+        day = now.date() + dt.timedelta(days=_T.get("day_offsets", {}).get(w, 0))
     wm = re.search(r"\b(?:on |next |this )?(" + "|".join(WEEKDAYS) + r")\b", low)
     if wm and not day:
         target = WEEKDAYS.index(wm.group(1))
@@ -110,17 +108,15 @@ def parse_when(text, now=None):
         span = nm.span()
 
     if when is None and day is not None:
-        defaults = {"tonight": 20, "this evening": 18, "shaam ko": 18, "this afternoon": 15, "this morning": 9,
-                    "subah": 9, "aaj raat": 20, "raat ko": 20}
-        hour = defaults.get(dm.group(1) if dm else "", 9)
+        defaults = _T.get("day_default_hours", {})
+        hour = defaults.get(dm.group(1) if dm else "", _T.get("fallback_hour", 9))
         # "kal subah" / "tomorrow evening": a part of day anywhere in the phrase sets the hour
         pod = re.search(r"\b(subah|morning|dopahar|afternoon|shaam|evening|raat|night)\b", low)
         if pod:
-            hour = {"subah": 9, "morning": 9, "dopahar": 14, "afternoon": 14, "shaam": 18, "evening": 18,
-                    "raat": 21, "night": 21}[pod.group(1)]
+            hour = _T["part_of_day_hours"][pod.group(1)]
         when = dt.datetime.combine(day, dt.time(hour))
         if when <= now:
-            when = now + dt.timedelta(minutes=30)
+            when = now + dt.timedelta(minutes=_T.get("past_day_fallback_min", 30))
 
     rest = t
     for m in (span and (span,)) or ():
@@ -134,10 +130,8 @@ def parse_when(text, now=None):
 
 
 def clean_title(text):
-    t = re.sub(r"^(please\s+)?(remind me (to|that|about)?|reminder (to|for)?|set a reminder (to|for)?|"
-               r"add (a )?task( to)?|create (a )?task( to)?|todo|to do|i need to|i have to|remember to|yaad dilana( ki)?)\s*",
-               "", text.strip(), flags=re.I)
-    t = re.sub(r"\s+(ka|ki|ke) reminder( lagao| laga do| set karo)?$", "", t, flags=re.I)
+    t = core.strip("task_title_prefix", text.strip())
+    t = core.strip("task_title_suffix", t)
     return t.strip(" ,.").strip() or text.strip()
 
 

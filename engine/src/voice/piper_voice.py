@@ -112,16 +112,11 @@ def voice_path(folder, name):
 
 
 def download(folder, name, rel):
-    import requests
+    from src.setup_assets import download_file
     os.makedirs(folder, exist_ok=True)
     for ext in (".onnx", ".onnx.json"):
         dest = os.path.join(folder, name + ext)
         if os.path.exists(dest) and os.path.getsize(dest) > 0:
             continue
-        with requests.get(BASE_URL + rel + "/" + name + ext, stream=True, timeout=(10, 300)) as r:
-            r.raise_for_status()
-            with open(dest + ".part", "wb") as f:
-                for chunk in r.iter_content(1 << 20):
-                    f.write(chunk)
-        os.replace(dest + ".part", dest)
+        download_file(BASE_URL + rel + "/" + name + ext, dest, timeout=(10, 300))   # size-checked, atomic
     return voice_path(folder, name)

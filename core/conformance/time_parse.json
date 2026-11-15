@@ -1,0 +1,367 @@
+{
+ "suite": "time_parse",
+ "schema_version": 1,
+ "doc": "parse_when(text, now) -> when (YYYY-MM-DDTHH:MM, local) + rest",
+ "cases": [
+  {
+   "id": "time_parse.001",
+   "input": "remind me to call mom in 10 minutes",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:10",
+    "rest": "remind me to call mom"
+   }
+  },
+  {
+   "id": "time_parse.002",
+   "input": "in half an hour stretch",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:30",
+    "rest": "stretch"
+   }
+  },
+  {
+   "id": "time_parse.003",
+   "input": "after 2 hours check oven",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T12:00",
+    "rest": "check oven"
+   }
+  },
+  {
+   "id": "time_parse.004",
+   "input": "10 minute baad chai",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:10",
+    "rest": "chai"
+   }
+  },
+  {
+   "id": "time_parse.005",
+   "input": "call rahul at 5",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T17:00",
+    "rest": "call rahul"
+   }
+  },
+  {
+   "id": "time_parse.006",
+   "input": "meeting at 5:30 pm",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T17:30",
+    "rest": "meeting"
+   }
+  },
+  {
+   "id": "time_parse.007",
+   "input": "at 9",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T21:00",
+    "rest": ""
+   }
+  },
+  {
+   "id": "time_parse.008",
+   "input": "at 9 am standup",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T09:00",
+    "rest": "standup"
+   }
+  },
+  {
+   "id": "time_parse.009",
+   "input": "5pm gym",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T17:00",
+    "rest": "gym"
+   }
+  },
+  {
+   "id": "time_parse.010",
+   "input": "17:30 review",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T17:30",
+    "rest": "review"
+   }
+  },
+  {
+   "id": "time_parse.011",
+   "input": "at noon lunch",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T12:00",
+    "rest": "lunch"
+   }
+  },
+  {
+   "id": "time_parse.012",
+   "input": "midnight backup",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T00:00",
+    "rest": "backup"
+   }
+  },
+  {
+   "id": "time_parse.013",
+   "input": "tomorrow 9am dentist",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T09:00",
+    "rest": "dentist"
+   }
+  },
+  {
+   "id": "time_parse.014",
+   "input": "kal subah yoga",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T09:00",
+    "rest": "yoga"
+   }
+  },
+  {
+   "id": "time_parse.015",
+   "input": "tomorrow evening movie",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T18:00",
+    "rest": "movie"
+   }
+  },
+  {
+   "id": "time_parse.016",
+   "input": "tonight pay bills",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T20:00",
+    "rest": "pay bills"
+   }
+  },
+  {
+   "id": "time_parse.017",
+   "input": "this afternoon groceries",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T14:00",
+    "rest": "groceries"
+   }
+  },
+  {
+   "id": "time_parse.018",
+   "input": "shaam ko walk",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T18:00",
+    "rest": "walk"
+   }
+  },
+  {
+   "id": "time_parse.019",
+   "input": "on friday send report",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-20T09:00",
+    "rest": "send report"
+   }
+  },
+  {
+   "id": "time_parse.020",
+   "input": "next monday plan sprint",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-23T09:00",
+    "rest": "plan sprint"
+   }
+  },
+  {
+   "id": "time_parse.021",
+   "input": "sunday call parents",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-22T09:00",
+    "rest": "call parents"
+   }
+  },
+  {
+   "id": "time_parse.022",
+   "input": "day after tomorrow trip",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-18T09:00",
+    "rest": "trip"
+   }
+  },
+  {
+   "id": "time_parse.023",
+   "input": "at 7 dinner",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T19:00",
+    "rest": "dinner"
+   }
+  },
+  {
+   "id": "time_parse.024",
+   "input": "at 11 meeting",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T11:00",
+    "rest": "meeting"
+   }
+  },
+  {
+   "id": "time_parse.025",
+   "input": "at 12 lunch",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T12:00",
+    "rest": "lunch"
+   }
+  },
+  {
+   "id": "time_parse.026",
+   "input": "buy milk",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": null,
+    "rest": "buy milk"
+   }
+  },
+  {
+   "id": "time_parse.027",
+   "input": "in 5 secs ping",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:00",
+    "rest": "ping"
+   }
+  },
+  {
+   "id": "time_parse.028",
+   "input": "in a few minutes leave",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:03",
+    "rest": "leave"
+   }
+  },
+  {
+   "id": "time_parse.029",
+   "input": "at 4 pm tomorrow interview",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T16:00",
+    "rest": "interview"
+   }
+  },
+  {
+   "id": "time_parse.030",
+   "input": "subah 7 baje yoga",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T10:30",
+    "rest": "7 baje yoga"
+   }
+  },
+  {
+   "id": "time_parse.031",
+   "input": "shaam 6 baje call",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": null,
+    "rest": "shaam 6 baje call"
+   }
+  },
+  {
+   "id": "time_parse.032",
+   "input": "kal subah 8 baje gym",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T09:00",
+    "rest": "8 baje gym"
+   }
+  },
+  {
+   "id": "time_parse.033",
+   "input": "raat 10 baje dawai",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": null,
+    "rest": "raat 10 baje dawai"
+   }
+  },
+  {
+   "id": "time_parse.034",
+   "input": "tomorrow at 10:15 call",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T10:15",
+    "rest": "call"
+   }
+  },
+  {
+   "id": "time_parse.035",
+   "input": "at 9.30 am",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-17T09:30",
+    "rest": ""
+   }
+  },
+  {
+   "id": "time_parse.036",
+   "input": "in 1.5 hours",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": "2026-11-16T11:30",
+    "rest": ""
+   }
+  },
+  {
+   "id": "time_parse.037",
+   "input": "at 25 something",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "when": null,
+    "rest": "at 25 something"
+   }
+  },
+  {
+   "id": "time_parse.038",
+   "input": "at 8",
+   "now": "2026-11-16T21:00:00",
+   "expect": {
+    "when": "2026-11-17T08:00",
+    "rest": ""
+   }
+  },
+  {
+   "id": "time_parse.039",
+   "input": "tonight",
+   "now": "2026-11-16T22:00:00",
+   "expect": {
+    "when": "2026-11-16T22:30",
+    "rest": ""
+   }
+  },
+  {
+   "id": "time_parse.040",
+   "input": "at 6",
+   "now": "2026-11-16T05:00:00",
+   "expect": {
+    "when": "2026-11-16T18:00",
+    "rest": ""
+   }
+  }
+ ]
+}

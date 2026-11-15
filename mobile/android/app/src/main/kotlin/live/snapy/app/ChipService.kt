@@ -49,21 +49,26 @@ class ChipService : Service() {
     }
 
     private fun startInForeground() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, Strings.t(this, "notif.chip_channel"), NotificationManager.IMPORTANCE_MIN))
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
+                nm.createNotificationChannel(NotificationChannel(CHANNEL, Strings.t(this, "notif.chip_channel"), NotificationManager.IMPORTANCE_MIN))
+            }
+            val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            val n: Notification = NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+                .setContentTitle(Strings.t(this, "notif.chip_title"))
+                .setContentText(Strings.t(this, "notif.chip_text"))
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setContentIntent(open)
+                .build()
+            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(NOTIF_ID, n)
+        } catch (e: Exception) {
+            android.util.Log.e("ChipService", "startForeground failed", e)
+            stopSelf()
         }
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
-            .setContentTitle(Strings.t(this, "notif.chip_title"))
-            .setContentText(Strings.t(this, "notif.chip_text"))
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setContentIntent(open)
-            .build()
-        if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        else startForeground(NOTIF_ID, n)
     }
 
     override fun onDestroy() {

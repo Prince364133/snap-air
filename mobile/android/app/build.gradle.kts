@@ -2,23 +2,14 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.chaquo.python")
 }
 
-// ---- Shared brain: the Windows engine's Python package (engine/src) is the single source of truth.
-// It's copied (code + src/data/app.json only) into the build on every configuration.
-val snapyCoreDir = layout.buildDirectory.dir("snapy-core").get().asFile
-delete(snapyCoreDir)
-copy {
-    from(file("../../../engine/src")) {
-        exclude("**/__pycache__/**", "**/*.pyc")
-    }
-    into(File(snapyCoreDir, "src"))
-}
+// Snapy's brain is the Dart core runtime (lib/core_runtime) reading the shared core/ from the
+// Flutter assets (copied by `dart run tool/sync_core.dart`). No Python in the APK any more.
 
 android {
     namespace = "live.snapy.app"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -28,7 +19,8 @@ android {
 
     defaultConfig {
         applicationId = "live.snapy.app"
-        minSdk = flutter.minSdkVersion
+        // Android 8.0 (the plan's floor; also the ML Kit GenAI Prompt API minimum)
+        minSdk = 26
         targetSdk = 34
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-APK-versions)
@@ -36,10 +28,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            // phones (arm64) + emulators (x86_64)
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        // ABIs: Flutter's defaults (armeabi-v7a, arm64-v8a, x86_64). Ship per-ABI APKs / an AAB:
+        //   flutter build apk --release --split-per-abi   (or flutter build appbundle)
     }
 
     buildTypes {
@@ -60,24 +50,14 @@ flutter {
     source = "../.."
 }
 
-chaquopy {
-    defaultConfig {
-        version = "3.13"
-        pip {
-            install("requests")
-        }
-    }
-    sourceSets {
-        getByName("main") {
-            srcDir(snapyCoreDir)
-        }
-    }
-}
-
 dependencies {
     // notifications (reminders)
     implementation("androidx.core:core-ktx:1.13.1")
     // "Hey Snapy": offline wake word (Apache-2.0), grammar-limited to the assistant's name
     implementation("com.alphacephei:vosk-android:0.3.75@aar")
     implementation("net.java.dev.jna:jna:5.18.1@aar")
+    // Gemini Nano on supported phones (ML Kit GenAI Prompt API; the model is managed by AICore,
+    // not shipped in the APK). Latest on Google Maven as of 2026-11: 1.0.0-beta5.
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }

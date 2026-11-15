@@ -13,6 +13,7 @@ import '../realcount/realcount_data.dart';
 import '../realcount/rules.dart';
 import '../realcount/signed_rules.dart' show RulesUpdate;
 import 'chip_settings.dart';
+import 'common.dart';
 import 'onboarding.dart';
 import 'report_page.dart';
 import 'reset_page.dart';
@@ -211,39 +212,9 @@ class _Dashboard extends StatelessWidget {
         final reels = t!.reels[pkg]?.reels ?? 0;
         final ms = t.perAppMs[pkg] ?? 0;
         final name = labels[pkg] ?? pkg.split('.').last;
-        Color badgeColor = c.accent;
-        if (pkg.contains('instagram')) {
-          badgeColor = const Color(0xFFDD2A7B);
-        } else if (pkg.contains('youtube')) {
-          badgeColor = const Color(0xFFFF0000);
-        } else if (pkg.contains('snapchat')) {
-          badgeColor = const Color(0xFFFFD600);
-        } else if (pkg.contains('facebook')) {
-          badgeColor = const Color(0xFF1877F2);
-        } else if (pkg.contains('twitter') || pkg.contains('x')) {
-          badgeColor = Colors.white70;
-        } else if (pkg.contains('whatsapp')) {
-          badgeColor = const Color(0xFF25D366);
-        } else if (pkg.contains('reddit')) {
-          badgeColor = const Color(0xFFFF4500);
-        }
-
         return ListTile(
           dense: true,
-          leading: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: badgeColor.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: badgeColor.withValues(alpha: 0.35), width: 1),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : 'A',
-              style: TextStyle(color: badgeColor == const Color(0xFFFFD600) ? Colors.amber : badgeColor, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ),
+          leading: AppIconView(package: pkg, label: name, size: 32),
           title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(tr('rc.opens', {'n': '${t.opens[pkg] ?? 0}'}) + (ms >= 60000 ? ' · ${formatMs(ms)}' : '')),
           trailing: reels > 0
@@ -255,7 +226,7 @@ class _Dashboard extends StatelessWidget {
                     border: Border.all(color: c.accent.withValues(alpha: 0.3), width: 1),
                   ),
                   child: Text(
-                    '▶ $reels reels',
+                    tr('breakdown.reels', {'n': '$reels'}),
                     style: TextStyle(color: c.accent, fontWeight: FontWeight.bold, fontSize: 12, fontFeatures: const [FontFeature.tabularFigures()]),
                   ),
                 )

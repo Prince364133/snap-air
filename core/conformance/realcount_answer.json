@@ -1,0 +1,277 @@
+{
+ "suite": "realcount_answer",
+ "schema_version": 1,
+ "doc": "RealCount.answer / weekly_summary over fixture day files (today fixed)",
+ "cases": [
+  {
+   "id": "realcount_answer.001",
+   "input": "how many shorts did I watch today?",
+   "today": "2026-11-16",
+   "files": {
+    "2026-11-16.json": {
+     "apps": {
+      "web.youtube.shorts": {
+       "reels": 12,
+       "reel_ms": 300000
+      },
+      "com.instagram.android": {
+       "reels": 7,
+       "reel_ms": 60000
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "You watched 19 reels and shorts today: 12 on YouTube Shorts, 7 on Instagram."
+   }
+  },
+  {
+   "id": "realcount_answer.002",
+   "input": "how many videos did I watch today?",
+   "today": "2026-11-16",
+   "files": {
+    "2026-11-16.json": {
+     "apps": {},
+     "videos": {
+      "web.youtube.videos": {
+       "count": 3,
+       "ms": 1800000
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "You started 3 videos today and watched about 30 min."
+   }
+  },
+  {
+   "id": "realcount_answer.003",
+   "input": "how many videos did I watch today?",
+   "today": "2026-11-16",
+   "files": {
+    "2026-11-16.json": {
+     "apps": {
+      "web.youtube.shorts": {
+       "reels": 5,
+       "reel_ms": 1000
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "No videos counted today."
+   }
+  },
+  {
+   "id": "realcount_answer.004",
+   "input": "how many videos this week",
+   "today": "2026-11-16",
+   "files": {
+    "2026-11-14.json": {
+     "videos": {
+      "web.youtube.videos": {
+       "count": 2,
+       "ms": 600000
+      }
+     }
+    },
+    "2026-11-16.json": {
+     "videos": {
+      "web.youtube.videos": {
+       "count": 1,
+       "ms": 4200000
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "You started 3 videos this week and watched about 1h 20m."
+   }
+  },
+  {
+   "id": "realcount_answer.005",
+   "input": "how many reels today",
+   "today": "2026-11-16",
+   "files": {},
+   "expect": {
+    "answer": "No reels or shorts counted today. Turn on Real Count to start counting."
+   }
+  },
+  {
+   "id": "realcount_answer.006",
+   "input": "how many reels yesterday",
+   "today": "2026-11-16",
+   "files": {
+    "2026-11-15.json": {
+     "apps": {
+      "web.instagram.reels": {
+       "reels": 4,
+       "reel_ms": 1
+      },
+      "web.tiktok": {
+       "reels": 9,
+       "reel_ms": 1
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "You watched 13 reels and shorts yesterday: 9 on TikTok, 4 on Instagram Reels."
+   }
+  },
+  {
+   "id": "realcount_answer.007",
+   "input": "what's my screen time",
+   "today": "2026-11-16",
+   "files": {},
+   "expect": {
+    "answer": "I don't have screen time for today yet."
+   }
+  },
+  {
+   "id": "realcount_answer.008",
+   "input": "screen time this week",
+   "today": "2026-11-16",
+   "files": {
+    "usage-2026-11-16.json": {
+     "screen_ms": 7200000,
+     "per_app_ms": {
+      "com.instagram.android": 3600000,
+      "com.whatsapp": 1200000
+     }
+    },
+    "usage-2026-11-15.json": {
+     "screen_ms": 3600000,
+     "per_app_ms": {
+      "com.google.android.youtube": 3000000
+     }
+    }
+   },
+   "expect": {
+    "answer": "Your screen time this week is 3h 0m (about 1h 30m a day). Most used: Instagram 1h 0m, YouTube 50 min, WhatsApp 20 min."
+   }
+  },
+  {
+   "id": "realcount_answer.009",
+   "input": "how much time on instagram today",
+   "today": "2026-11-16",
+   "files": {
+    "usage-2026-11-16.json": {
+     "screen_ms": 7200000,
+     "per_app_ms": {
+      "com.instagram.android": 3660000
+     }
+    },
+    "2026-11-16.json": {
+     "apps": {
+      "com.instagram.android": {
+       "reels": 40,
+       "reel_ms": 900000
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "You spent 1h 1m on Instagram today, and watched 40 reels."
+   }
+  },
+  {
+   "id": "realcount_answer.010",
+   "input": "open instagram",
+   "today": "2026-11-16",
+   "files": {},
+   "expect": {
+    "answer": null
+   }
+  },
+  {
+   "id": "realcount_answer.011",
+   "input": "aaj kitni reels dekhi",
+   "today": "2026-11-16",
+   "lang": "hi",
+   "files": {
+    "2026-11-16.json": {
+     "apps": {
+      "com.instagram.android": {
+       "reels": 3,
+       "reel_ms": 1
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "आज आपने 3 रील्स और शॉर्ट्स देखे: Instagram पर 3।"
+   }
+  },
+  {
+   "id": "realcount_answer.012",
+   "input": "",
+   "today": "2026-11-16",
+   "weekly": true,
+   "files": {
+    "2026-11-16.json": {
+     "apps": {
+      "web.youtube.shorts": {
+       "reels": 20,
+       "reel_ms": 1
+      }
+     }
+    },
+    "2026-11-08.json": {
+     "apps": {
+      "web.youtube.shorts": {
+       "reels": 10,
+       "reel_ms": 1
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "This week: 20 reels and shorts. That's 100% more reels than last week."
+   }
+  },
+  {
+   "id": "realcount_answer.013",
+   "input": "",
+   "today": "2026-11-16",
+   "weekly": true,
+   "files": {
+    "2026-11-16.json": {
+     "apps": {
+      "com.instagram.android": {
+       "reels": 8,
+       "reel_ms": 1
+      }
+     }
+    },
+    "usage-2026-11-16.json": {
+     "screen_ms": 5400000,
+     "per_app_ms": {
+      "com.instagram.android": 2400000
+     }
+    },
+    "2026-11-09.json": {
+     "apps": {
+      "com.instagram.android": {
+       "reels": 8,
+       "reel_ms": 1
+      }
+     }
+    }
+   },
+   "expect": {
+    "answer": "This week: 8 reels and shorts, 40 min on social apps, 1h 30m total screen time. Same as last week."
+   }
+  },
+  {
+   "id": "realcount_answer.014",
+   "input": "",
+   "today": "2026-11-16",
+   "weekly": true,
+   "files": {},
+   "expect": {
+    "answer": "This week: 0 reels and shorts."
+   }
+  }
+ ]
+}

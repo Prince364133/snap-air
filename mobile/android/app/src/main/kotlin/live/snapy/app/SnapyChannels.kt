@@ -18,12 +18,15 @@ import org.json.JSONObject
  * Dart <-> Android, used by the main screen and the bottom sheet over other apps:
  *   "snapy/core"   (methods)  send a message, settings, keys, lists, Real Count, permissions
  *   "snapy/events" (stream)   everything the shared brain emits (chat, state, toasts…)
+ *   "snapy/keystore" (methods) Keystore-backed secrets (SecureFiles)
+ * Brain calls are forwarded to the Dart core engine (CoreBridge) — the UI never owns the stores.
  */
 object SnapyChannels {
     fun register(engine: FlutterEngine, activity: Activity) {
         val core = CoreBridge.get(activity.applicationContext)
         val usage = UsageTracker(activity)
         val messenger = engine.dartExecutor.binaryMessenger
+        SecureFiles.register(messenger, activity)          // Keystore-backed secrets (pairing, API keys)
 
         EventChannel(messenger, "snapy/events").setStreamHandler(object : EventChannel.StreamHandler {
             private var listener: ((String) -> Unit)? = null
@@ -288,9 +291,31 @@ object SnapyChannels {
                         }
                     }
                 }
+                // ---- docs/ANDROID_NEXT_PLAN.md §9 methods that live in the core runtime
+                "testApiKey" -> core.call("test_api_key", str("provider"), str("key")) { result.success(jsonToMap(it)) }
+                "meetingStart" -> core.call("meeting_start", call.argument<String>("title") ?: "") { result.success(jsonToMap(it)) }
+                "meetingStop" -> core.call("meeting_stop") { result.success(jsonToMap(it)) }
+                "meetingState" -> core.call("meeting_state") { result.success(jsonToMap(it)) }
+                "profile" -> core.call("profile") { result.success(jsonToMap(it)) }
+                "setProfile" -> {
+                    val p = JSONObject()
+                    for (k in listOf("name", "assistant_name", "ice_notes")) call.argument<String>(k)?.let { p.put(k, it) }
+                    core.call("set_profile", p.toString()) { result.success(jsonToMap(it)) }
+                }
+                "syncNow" -> core.call("sync_kick") { result.success(true) }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /** JSON text from the brain -> a Map for the Flutter codec (empty map on bad JSON). */
+    fun jsonToMap(text: String): Map<String, Any?> = try { toPlain(JSONObject(text)) as Map<String, Any?> } catch (_: Exception) { emptyMap() }
+
+    private fun toPlain(v: Any?): Any? = when (v) {
+        is JSONObject -> HashMap<String, Any?>().also { m -> v.keys().forEach { k -> m[k] = toPlain(v.get(k)) } }
+        is org.json.JSONArray -> ArrayList<Any?>().also { l -> for (i in 0 until v.length()) l.add(toPlain(v.get(i))) }
+        JSONObject.NULL -> null
+        else -> v
     }
 
     /** Some OEM settings screens don't exist or aren't exported: false instead of a crash. */

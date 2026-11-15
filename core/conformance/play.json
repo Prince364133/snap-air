@@ -1,0 +1,279 @@
+{
+ "suite": "play",
+ "schema_version": 1,
+ "doc": "normalize -> plain -> ordinal -> play_request: topic q (null = not a play request) and n",
+ "cases": [
+  {
+   "id": "play.001",
+   "input": "open youtube and play some hindi music",
+   "expect": {
+    "q": "hindi music",
+    "n": null
+   }
+  },
+  {
+   "id": "play.002",
+   "input": "listen to hindi romantic songs",
+   "expect": {
+    "q": "hindi romantic songs",
+    "n": null
+   }
+  },
+  {
+   "id": "play.003",
+   "input": "hindi gaane chalao",
+   "expect": {
+    "q": "hindi gaane",
+    "n": null
+   }
+  },
+  {
+   "id": "play.004",
+   "input": "arijit singh ke gaane bajao",
+   "expect": {
+    "q": "arijit singh ke gaane",
+    "n": null
+   }
+  },
+  {
+   "id": "play.005",
+   "input": "play lofi on youtube",
+   "expect": {
+    "q": "lofi",
+    "n": null
+   }
+  },
+  {
+   "id": "play.006",
+   "input": "play shape of you on youtube",
+   "expect": {
+    "q": "shape of you",
+    "n": null
+   }
+  },
+  {
+   "id": "play.007",
+   "input": "youtube pe kesariya chalao",
+   "expect": {
+    "q": "kesariya",
+    "n": null
+   }
+  },
+  {
+   "id": "play.008",
+   "input": "play some music",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.009",
+   "input": "play music",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.010",
+   "input": "play hindu romantic songs",
+   "expect": {
+    "q": "hindi romantic songs",
+    "n": null
+   }
+  },
+  {
+   "id": "play.011",
+   "input": "play arijit songs, the 4th video",
+   "expect": {
+    "q": "arijit songs",
+    "n": 4
+   }
+  },
+  {
+   "id": "play.012",
+   "input": "play the 4th video",
+   "expect": {
+    "q": null,
+    "n": 4
+   }
+  },
+  {
+   "id": "play.013",
+   "input": "mujhe ek joke sunao",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.014",
+   "input": "kahani sunao",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.015",
+   "input": "play",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.016",
+   "input": "play it",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.017",
+   "input": "watch the trailer of dune",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.018",
+   "input": "watch dune trailer on youtube",
+   "expect": {
+    "q": "dune trailer",
+    "n": null
+   }
+  },
+  {
+   "id": "play.019",
+   "input": "find lofi beats on youtube",
+   "expect": {
+    "q": "lofi beats",
+    "n": null
+   }
+  },
+  {
+   "id": "play.020",
+   "input": "youtube search for cat videos",
+   "expect": {
+    "q": "cat videos",
+    "n": null
+   }
+  },
+  {
+   "id": "play.021",
+   "input": "hear some old bhajan",
+   "expect": {
+    "q": "old bhajan",
+    "n": null
+   }
+  },
+  {
+   "id": "play.022",
+   "input": "listen to a podcast about history",
+   "expect": {
+    "q": "a podcast about history",
+    "n": null
+   }
+  },
+  {
+   "id": "play.023",
+   "input": "play the second result of lofi",
+   "expect": {
+    "q": "lofi",
+    "n": 2
+   }
+  },
+  {
+   "id": "play.024",
+   "input": "can you please play some lofi music",
+   "expect": {
+    "q": "lofi music",
+    "n": null
+   }
+  },
+  {
+   "id": "play.025",
+   "input": "put on some jazz music",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.026",
+   "input": "play cricket",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.027",
+   "input": "play chess",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.028",
+   "input": "kuch achhe gaane lagao",
+   "expect": {
+    "q": "gaane",
+    "n": null
+   }
+  },
+  {
+   "id": "play.029",
+   "input": "music chalao",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.030",
+   "input": "video chalao",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.031",
+   "input": "open youtube",
+   "expect": {
+    "q": null,
+    "n": null
+   }
+  },
+  {
+   "id": "play.032",
+   "input": "sad songs suna do",
+   "expect": {
+    "q": "sad songs",
+    "n": null
+   }
+  },
+  {
+   "id": "play.033",
+   "input": "play the fourth one",
+   "expect": {
+    "q": null,
+    "n": 4
+   }
+  },
+  {
+   "id": "play.034",
+   "input": "play despacito song",
+   "expect": {
+    "q": "despacito song",
+    "n": null
+   }
+  }
+ ]
+}

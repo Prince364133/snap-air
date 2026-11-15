@@ -35,6 +35,7 @@ ENGLISH_VOICES = [("af_heart", "Heart (warm, female)"), ("af_bella", "Bella (bri
                   ("am_fenrir", "Fenrir (deep, male)"), ("bf_emma", "Emma (British, female)"),
                   ("bm_george", "George (British, male)")]
 from src import appdata  # noqa: E402
+from src import diag  # noqa: E402
 
 KOKORO_URL = appdata.get("voice_model.url")
 INDIC_SCRIPTS = [(re.compile(r"[ఀ-౿]"), "te"), (re.compile(r"[ഀ-ൿ]"), "ml"),
@@ -146,19 +147,14 @@ class Speaker:
 
     def _download(self, d, files):
         """First run: fetch the natural voice (~120 MB). The Windows voice is used meanwhile."""
-        import requests
+        from src.setup_assets import download_file
         os.makedirs(d, exist_ok=True)
         for name in files:
             dest = os.path.join(d, name)
             if os.path.exists(dest):
                 continue
             print(f"[TTS] Downloading {name}…")
-            with requests.get(KOKORO_URL + name, stream=True, timeout=(10, 120)) as r:
-                r.raise_for_status()
-                with open(dest + ".part", "wb") as f:
-                    for chunk in r.iter_content(1 << 20):
-                        f.write(chunk)
-            os.replace(dest + ".part", dest)
+            download_file(KOKORO_URL + name, dest)          # size-checked, renamed only when complete
 
     def _load(self):
         d = model_dir()
@@ -206,8 +202,8 @@ class Speaker:
         if self._sapi:
             try:
                 self._sapi.kill()
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("tts.sapi_kill", e, quiet=True)
             self._sapi = None
         self._set_speaking(False)
 

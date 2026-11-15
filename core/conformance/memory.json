@@ -1,0 +1,239 @@
+{
+ "suite": "memory",
+ "schema_version": 1,
+ "doc": "memory rules: is_secret / extract (template outputs) / explicit fact",
+ "cases": [
+  {
+   "id": "memory.001",
+   "input": "my name is Arjun",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "name",
+      "text": "Name is Arjun",
+      "category": "fact",
+      "importance": 5
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.002",
+   "input": "call me AJ",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "call_me",
+      "text": "Prefers to be called AJ",
+      "category": "preference",
+      "importance": 5
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.003",
+   "input": "I work as a data engineer at Infosys",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "role",
+      "text": "Works as data engineer",
+      "category": "fact",
+      "importance": 4
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.004",
+   "input": "I work at Zoho.",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "company",
+      "text": "Works at Zoho",
+      "category": "fact",
+      "importance": 4
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.005",
+   "input": "I start work at 9:30 am",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "start_time",
+      "text": "Usually starts work at 9:30 am",
+      "category": "routine",
+      "importance": 4
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.006",
+   "input": "I usually take a walk after lunch.",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": null,
+      "text": "Usually take a walk after lunch",
+      "category": "routine",
+      "importance": 3
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.007",
+   "input": "I love filter coffee",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": null,
+      "text": "Likes filter coffee",
+      "category": "preference",
+      "importance": 3
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.008",
+   "input": "I hate meetings on Friday",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": null,
+      "text": "Dislikes meetings on Friday",
+      "category": "preference",
+      "importance": 3
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.009",
+   "input": "I use vs code",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": "editor",
+      "text": "Uses vs code for coding",
+      "category": "project",
+      "importance": 3
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.010",
+   "input": "my goal is to run a marathon",
+   "expect": {
+    "secret": false,
+    "extract": [
+     {
+      "key": null,
+      "text": "Goal: run a marathon",
+      "category": "goal",
+      "importance": 4
+     }
+    ],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.011",
+   "input": "my otp is 482913",
+   "expect": {
+    "secret": true,
+    "extract": [],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.012",
+   "input": "my password is hunter2",
+   "expect": {
+    "secret": true,
+    "extract": [],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.013",
+   "input": "card 4111 1111 1111 1111",
+   "expect": {
+    "secret": true,
+    "extract": [],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.014",
+   "input": "key sk-abcdefghijklmnop1234",
+   "expect": {
+    "secret": true,
+    "extract": [],
+    "explicit": null
+   }
+  },
+  {
+   "id": "memory.015",
+   "input": "remember that my manager is Arun",
+   "expect": {
+    "secret": false,
+    "extract": [],
+    "explicit": "my manager is Arun"
+   }
+  },
+  {
+   "id": "memory.016",
+   "input": "please remember Rahul likes chai",
+   "expect": {
+    "secret": false,
+    "extract": [],
+    "explicit": "Rahul likes chai"
+   }
+  },
+  {
+   "id": "memory.017",
+   "input": "yaad rakhna ki kal holiday hai",
+   "expect": {
+    "secret": false,
+    "extract": [],
+    "explicit": "kal holiday hai"
+   }
+  },
+  {
+   "id": "memory.018",
+   "input": "the weather is nice",
+   "expect": {
+    "secret": false,
+    "extract": [],
+    "explicit": null
+   }
+  }
+ ]
+}

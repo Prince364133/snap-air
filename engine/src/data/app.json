@@ -3,7 +3,17 @@
   "server": {
     "host": "localhost",
     "port": 8765,
-    "max_message_mb": 8
+    "max_message_mb": 8,
+    "allowed_origins": ["file://", "null"],
+    "token_file": "ws_token"
+  },
+  "diagnostics": {
+    "keep_recent": 50,
+    "save_every_s": 5,
+    "max_codes": 500
+  },
+  "dev": {
+    "editor_commands": ["code", "antigravity", "cursor", "windsurf"]
   },
   "ollama": {
     "host": "http://127.0.0.1:11434",
@@ -14,7 +24,9 @@
       "/NORESTART",
       "/SUPPRESSMSGBOXES"
     ],
-    "install_timeout_s": 900
+    "install_timeout_s": 900,
+    "require_signature": true,
+    "installer_signer": "Ollama"
   },
   "speech_models": {
     "repo_url": "https://huggingface.co/Systran/faster-whisper-{name}/resolve/main/",

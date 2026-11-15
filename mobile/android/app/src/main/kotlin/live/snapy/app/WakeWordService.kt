@@ -44,20 +44,25 @@ class WakeWordService : Service(), RecognitionListener {
     }
 
     private fun startInForeground() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Listening for “Hey Snapy”", NotificationManager.IMPORTANCE_MIN))
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.getNotificationChannel(CHANNEL) == null) {
+                nm.createNotificationChannel(NotificationChannel(CHANNEL, "Listening for “Hey Snapy”", NotificationManager.IMPORTANCE_MIN))
+            }
+            val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            val n: Notification = NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("Snapy is listening for its name")
+                .setContentText("Audio stays on your phone. Turn off in Snapy → Settings.")
+                .setOngoing(true)
+                .setContentIntent(open)
+                .build()
+            if (Build.VERSION.SDK_INT >= 30) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            else startForeground(7, n)
+        } catch (e: Exception) {
+            android.util.Log.e("WakeWordService", "startForeground failed", e)
+            stopSelf()
         }
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Snapy is listening for its name")
-            .setContentText("Audio stays on your phone. Turn off in Snapy → Settings.")
-            .setOngoing(true)
-            .setContentIntent(open)
-            .build()
-        if (Build.VERSION.SDK_INT >= 30) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        else startForeground(7, n)
     }
 
     @Synchronized
@@ -138,7 +143,20 @@ class WakeWordService : Service(), RecognitionListener {
         fun enable(ctx: Context, on: Boolean) {
             enabled = on
             val i = Intent(ctx, WakeWordService::class.java)
-            if (on) ctx.startForegroundService(i) else ctx.stopService(i)
+            if (on) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    enabled = false
+                    return
+                }
+                try {
+                    ctx.startForegroundService(i)
+                } catch (e: Exception) {
+                    android.util.Log.e("WakeWordService", "Failed to startForegroundService", e)
+                    enabled = false
+                }
+            } else {
+                try { ctx.stopService(i) } catch (_: Exception) {}
+            }
         }
 
         fun pause(ctx: Context) { if (enabled) ctx.startService(Intent(ctx, WakeWordService::class.java).setAction(ACTION_PAUSE)) }

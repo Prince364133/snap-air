@@ -39,6 +39,12 @@ dependencies:
     sdk: flutter
   # SHA-512 for verifying the signed Real Count rules file (Ed25519)
   crypto: ^3.0.6
+  # Laptop <-> phone sync (lib/sync): X25519, ChaCha20-Poly1305, HKDF (pure Dart)
+  cryptography: ^2.7.0
+  # Pair with laptop: scan the QR code shown in the HUD
+  mobile_scanner: ^7.0.0
+  # Find the laptop on the LAN (_snapy._tcp)
+  multicast_dns: ^0.3.2
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +73,14 @@ flutter:
   assets:
     - assets/i18n/
     - assets/rules/
+    # the Dart core runtime's copy of ../core (lib/core_runtime; conformance stays in ../core)
+    - assets/core/
+    - assets/core/rules/
+    - assets/core/intents/
+    - assets/core/prompts/
+    - assets/core/tools/
+    - assets/core/schemas/
+    - assets/core/i18n/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

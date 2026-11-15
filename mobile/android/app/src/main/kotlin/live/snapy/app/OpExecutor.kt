@@ -1,7 +1,11 @@
 package live.snapy.app
 
 import android.Manifest
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +17,9 @@ import android.os.Looper
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.view.KeyEvent
+import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -52,6 +59,10 @@ class OpExecutor(private val ctx: Context) {
                 "panel" -> panel(kwargs.getString("panel"))
                 "type_text" -> later { SnapyAccessibilityService.instance?.typeIntoFocused(kwargs.getString("text")) ?: false }
                 "screen_tap" -> later { tapOnScreen(kwargs.getString("query")); true }
+                // ---- from the paired laptop (lib/core_runtime/sync_runner.dart)
+                "copy_text" -> copyText(kwargs.getString("text"), kwargs.optBoolean("notify", false))
+                "notify" -> notify(kwargs.optString("title", "Snapy"), kwargs.optString("text", ""))
+                "focus" -> focus(kwargs.optInt("minutes", 25), kwargs.optBoolean("dnd", false))
                 else -> false
             }
         } catch (e: Exception) {
@@ -60,6 +71,49 @@ class OpExecutor(private val ctx: Context) {
     }
 
     private fun start(i: Intent) = ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+
+    /** Text sent from the laptop: on the clipboard, plus a notification (Android 10+ hides clipboard reads). */
+    private fun copyText(text: String, notify: Boolean): Boolean {
+        (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Snapy", text))
+        if (notify) notify("Copied from your laptop", text.take(200))
+        else Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+        return true
+    }
+
+    private fun notify(title: String, text: String): Boolean {
+        Reminders.ensureChannel(ctx)
+        val open = PendingIntent.getActivity(ctx, 1, Intent(ctx, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(ctx, Reminders.CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        return try { NotificationManagerCompat.from(ctx).notify((title + text).hashCode(), n); true } catch (_: SecurityException) { false }
+    }
+
+    /** Focus from the laptop: Real Count focus, plus Do Not Disturb when the user granted that access. */
+    private fun focus(minutes: Int, dnd: Boolean): Boolean {
+        val min = minutes.coerceIn(1, 480)
+        val c = RealCountController.active
+        if (c != null) c.startFocus(min) else RcPrefs(ctx).putLong(RcPrefs.FOCUS_UNTIL, System.currentTimeMillis() + min * 60000L)
+        if (dnd) {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.isNotificationPolicyAccessGranted && nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL) {
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                // back to normal when the focus ends (best effort: not restored if the process is killed)
+                main.postDelayed({
+                    if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY) {
+                        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
+                }, min * 60000L)
+            }
+        }
+        return true
+    }
 
     private val main = Handler(Looper.getMainLooper())
 

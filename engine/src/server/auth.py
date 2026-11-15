@@ -50,7 +50,9 @@ def load_or_create_token(env=None):
     """The token the engine accepts this launch: SNAPY_WS_TOKEN if Electron passed one,
     otherwise a fresh random one written to the token file for Electron to read."""
     env = os.environ if env is None else env
-    given = (env.get(ENV_VAR) or "").strip()
+    # pop, not get: everything the engine starts (a terminal for "run my project", the
+    # user's dev server, the editor) inherits os.environ and must not learn the token
+    given = (env.pop(ENV_VAR, None) or "").strip()
     if given:
         return given
     token = secrets.token_urlsafe(32)

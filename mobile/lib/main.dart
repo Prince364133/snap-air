@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/snapy_core.dart';
+import 'core_runtime/host.dart';
 import 'core/theme.dart';
 import 'i18n/i18n.dart';
 import 'realcount/realcount_data.dart';
@@ -12,8 +14,19 @@ import 'ui/main_scaffold.dart';
 import 'ui/reset_page.dart';
 import 'ui/sheet_page.dart';
 
+/// Entrypoint of the headless core engine (CoreBridge.kt starts it; it hosts the one
+/// SnapyRuntime that owns all stores). Must live in this library for DartEntrypoint lookup.
+@pragma('vm:entry-point')
+Future<void> snapyCoreMain() => runSnapyCore();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+  };
+  try {
+    SnapyCore.install(); // Keystore-backed secrets for pairing (lib/sync)
+  } catch (_) {}
   var lang = 'auto';
   var simple = false;
   try {
@@ -21,7 +34,9 @@ Future<void> main() async {
     lang = p.s('ui_lang');
     simple = p.b('simple_mode');
   } catch (_) {}
-  await I18n.use(I18n.resolve(lang, PlatformDispatcher.instance.locale.languageCode));
+  try {
+    await I18n.use(I18n.resolve(lang, PlatformDispatcher.instance.locale.languageCode));
+  } catch (_) {}
   SnapyApp.simple.value = simple;
   // SheetActivity is single-task: a new chip tap / reset / pause arrives here instead of a new window
   const MethodChannel('snapy/sheet').setMethodCallHandler((call) async {

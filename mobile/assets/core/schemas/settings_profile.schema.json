@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/settings_profile.schema.json",
+  "title": "Settings profile",
+  "description": "The user's synced preferences (a subset of settings.json that is the same on every device). Device-only settings (camera, hotkeys, gestures) are not part of it.",
+  "x-schema-version": 1,
+  "x-synced": true,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Record format version (this file's x-schema-version)."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id, unique per record type (10 lowercase hex chars from new records; any string accepted)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last change time (ISO). Sync: the newer 'updated' wins; ties -> the lexically greater 'device'."
+    },
+    "device": {
+      "type": "string",
+      "description": "Device that made the last change, e.g. 'windows-<hash>' or 'android-<hash>'."
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tombstone: true = deleted. Kept (not removed) so the deletion syncs."
+    },
+    "agent_name": {
+      "type": "string",
+      "default": "Snapy"
+    },
+    "wake_words": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "voice_language": {
+      "type": "string",
+      "default": "en",
+      "description": "auto | en | hi | mr | bn | te | ta | ml | gu | kn | pa | ur | ne"
+    },
+    "ui_language": {
+      "type": "string",
+      "default": "en",
+      "description": "core/i18n file: en | hi | ta | te | mr | bn"
+    },
+    "ai_provider": {
+      "type": "string",
+      "enum": [
+        "local",
+        "cloud",
+        "auto"
+      ],
+      "default": "auto"
+    },
+    "cloud_provider": {
+      "type": "string"
+    },
+    "cloud_model": {
+      "type": "string"
+    },
+    "internet_tools": {
+      "type": "boolean",
+      "default": true
+    },
+    "app_limits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Real Count daily limits: package -> minutes."
+    },
+    "break_screen": {
+      "type": "boolean",
+      "default": false
+    },
+    "follow_up_seconds": {
+      "type": "number"
+    },
+    "continuation_wait_s": {
+      "type": "number",
+      "default": 1.5
+    },
+    "speak_typed_replies": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "updated",
+    "device",
+    "deleted"
+  ],
+  "additionalProperties": true
+}

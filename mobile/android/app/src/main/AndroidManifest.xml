@@ -2,6 +2,11 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- web answers, model downloads, YouTube result lookup -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Laptop sync: find the laptop on the Wi-Fi via mDNS (_snapy._tcp) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- "focus" sent from the laptop: Do Not Disturb, only if the user grants notification-policy access -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Floating status bar chip & overlay over other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Real Count: screen time (special access the user grants in Settings) -->

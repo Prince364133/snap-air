@@ -16,6 +16,7 @@ import threading
 import time
 
 from src import storage
+from src import diag  # noqa: E402
 
 IDLE_AWAY_S = 120          # no input for 2 min = away (not counted)
 NEW_SESSION_IDLE_S = 4 * 3600
@@ -105,13 +106,19 @@ def _idle_seconds():
 
 
 def _foreground():
+    _, exe, title = _foreground_full()
+    return exe, title
+
+
+def _foreground_full():
+    """(hwnd, exe, title) of the foreground window; (None, "", "") for none or Snapy's own."""
     if sys.platform != "win32":
-        return "", ""
+        return None, "", ""
     from src.os_control import windows as win
     hwnd = win.user32.GetForegroundWindow()
     if not hwnd or win.is_own(hwnd):
-        return "", ""
-    return win._exe(hwnd), win._title(hwnd)
+        return None, "", ""
+    return hwnd, win._exe(hwnd), win._title(hwnd)
 
 
 def apps_using_microphone(exclude_exes=("python", "pythonw")):
@@ -179,8 +186,8 @@ def detect_call():
         hit = call_from_titles(t for _, t, _ in win.list_windows())
         if hit:
             return hit
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("activity.call_titles", e, quiet=True)
     try:
         users = apps_using_microphone()
     except Exception:
@@ -213,6 +220,10 @@ class ActivityTracker:
         self._dirty_since = None
         self.running = False
         self.lock = threading.RLock()
+        # extra consumers of each foreground poll: fn(hwnd, exe, title, idle_s, t) (e.g. attention)
+        self.observers = []
+        # optional fn() -> seconds or None: poll faster for a while (e.g. a video feed is in front)
+        self.interval_fn = None
 
     # ---------------------------------------------------------- settings
     def _s(self, k, d):
@@ -333,9 +344,21 @@ class ActivityTracker:
     def _loop(self):
         last_call_check = 0
         while self.running:
+            wait = self.interval
             try:
-                exe, title = _foreground()
-                self.sample(exe, title, _idle_seconds())
+                hwnd, exe, title = _foreground_full()
+                idle = _idle_seconds()
+                self.sample(exe, title, idle)
+                now = time.time()
+                for obs in list(self.observers):
+                    try:
+                        obs(hwnd, exe, title, idle, now)
+                    except Exception as e:      # one failing consumer must not stop the others (or spam the log)
+                        diag.record("activity.observer", e, quiet=True, observer=getattr(obs, "__name__", "?"))
+                if self.interval_fn:
+                    fast = self.interval_fn()
+                    if fast:
+                        wait = min(wait, float(fast))
                 if time.time() - last_call_check > 6:
                     last_call_check = time.time()
                     call = detect_call()
@@ -345,7 +368,7 @@ class ActivityTracker:
                             self.on_call_change(call)
             except Exception as e:
                 print("[Activity] sample error:", e)
-            time.sleep(self.interval)
+            time.sleep(wait)
 
     # ---------------------------------------------------------- queries
     def summary(self, day=None):

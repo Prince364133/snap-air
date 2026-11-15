@@ -8,6 +8,7 @@ import threading
 import time
 
 from src import appdata
+from src import diag  # noqa: E402
 
 
 class MediaWatcher:
@@ -40,8 +41,8 @@ class MediaWatcher:
                     try:
                         props = await s.try_get_media_properties_async()
                         title = props.title or ""
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        diag.record("media.properties", e, quiet=True)
                     return True, title, s.source_app_user_model_id or ""
             return False, "", ""
         return asyncio.run(go())
@@ -61,8 +62,8 @@ class MediaWatcher:
                 if self.on_change:
                     try:
                         self.on_change(self.state())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        diag.record("media.on_change", e, quiet=True)
             time.sleep(interval)
 
     def state(self):

@@ -7,8 +7,9 @@ import unittest
 
 import numpy as np
 
-TMP = tempfile.mkdtemp()
-os.environ["SNAP_AIR_DATA"] = TMP
+from tests import _env  # noqa: E402
+
+setUpModule, tearDownModule = _env.module_data_dir()   # own data folder, restored after
 
 from src.brain.memory import MemoryStore  # noqa: E402
 from src.brain.llm import JsonFieldStreamer  # noqa: E402

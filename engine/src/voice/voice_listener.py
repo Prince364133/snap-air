@@ -13,6 +13,7 @@ import re
 import sys
 import threading
 import time
+from src import diag  # noqa: E402
 
 try:
     import numpy as np
@@ -40,13 +41,11 @@ SCRIPTS = {"en": r"A-Za-z", "hi": r"A-Za-z\u0900-\u097F", "mr": r"A-Za-z\u0900-\
            "pa": r"A-Za-z\u0A00-\u0A7F", "ur": r"A-Za-z\u0600-\u06FF"}
 
 
-UNFINISHED = re.compile(r"(?:\b(?:and|or|but|to|the|a|an|of|for|with|by|in|at|from|about|into|after|before|then|so|because|like|that|which|my|your|"
-                        r"aur|ya|ki|ke|ka|ko|mein|se|toh|phir|par|pe|jo|um+|uh+|hmm+)|,|-|\.\.\.|…)\s*$", re.I)
-
-
 def sounds_unfinished(text):
-    """True when a phrase stops mid-sentence ("open youtube and", "remind me to")."""
-    return bool(UNFINISHED.search((text or "").strip()))
+    """True when a phrase stops mid-sentence ("open youtube and", "remind me to").
+    Patterns: core/intents domain "unfinished" (English, Hinglish, Devanagari)."""
+    from src import core_loader as core
+    return core.any_match("unfinished", (text or "").strip())
 
 
 def looks_hallucinated(text):
@@ -222,8 +221,8 @@ class VoiceListener:
                     except TypeError:
                         extra = None
                 cands.append((i, extra))
-        except Exception:
-            pass
+        except Exception as e:
+            diag.record("voice.devices", e, quiet=True)
         return cands
 
     def _listen_loop(self):

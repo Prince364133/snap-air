@@ -10,6 +10,10 @@ import 'package:flutter/services.dart';
 ///
 /// The Kotlin overlay reads the same files from the APK (Strings.kt), so the chip, the cards
 /// and the Flutter screens always say the same thing.
+///
+/// Flutter-only screen strings live in an overlay, `assets/i18n/<lang>.ui.json`, merged on top
+/// (sync_core.dart only rewrites `<lang>.json`, so the overlay survives a core sync). Once a key
+/// is in core/i18n too, the overlay copy is simply redundant.
 class I18n {
   static const supported = ['en', 'hi', 'ta', 'te', 'mr', 'bn'];
 
@@ -63,13 +67,26 @@ class I18n {
 
   static Future<I18n> load(String lang, {AssetBundle? bundle}) async {
     final b = bundle ?? rootBundle;
-    final en = await _read(b, 'en');
-    final mine = lang == 'en' ? en : await _read(b, lang);
-    try {
-      return I18n(lang, flatten(jsonDecode(mine ?? en ?? '{}')), flatten(jsonDecode(en ?? '{}')));
-    } catch (_) {
-      return I18n('en', flatten(jsonDecode(en ?? '{}')), const {});
+    Map<String, String> layer(String? core, String? ui) {
+      final out = <String, String>{};
+      for (final j in [core, ui]) {
+        if (j == null) continue;
+        try {
+          out.addAll(flatten(jsonDecode(j)));
+        } catch (_) {}
+      }
+      return out;
     }
+
+    final en = layer(await _read(b, 'en'), await _read(b, 'en.ui'));
+    final mine = lang == 'en' ? en : layer(await _read(b, lang), await _read(b, '$lang.ui'));
+    return I18n(mine.isEmpty ? 'en' : lang, mine.isEmpty ? en : mine, en);
+  }
+
+  /// Both layers of one language from JSON text (tests and tools).
+  static I18n fromLayers(String lang, String coreJson, [String? uiJson]) {
+    final s = {...flatten(jsonDecode(coreJson)), if (uiJson != null) ...flatten(jsonDecode(uiJson))};
+    return I18n(lang, s, s);
   }
 
   static Future<String?> _read(AssetBundle b, String lang) async {

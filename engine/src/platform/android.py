@@ -20,6 +20,13 @@ import os
 import queue
 import threading
 
+from src import core_loader as _corelib
+
+
+def T(key, **values):
+    """Reply copy from core/i18n (English for now; the UI language follows settings later)."""
+    return _corelib.t(key, "en", **values)
+
 
 def _jsonable(v):
     return isinstance(v, (str, int, float, bool, type(None), list, dict))
@@ -265,7 +272,7 @@ class SnapyCore:
 
     def _lookup(self, name):
         if self.contacts is None:
-            return None, "Contacts aren't available."
+            return None, T("phone.contacts_unavailable")
         from src import appdata
         tries = (appdata.get("android.contact_aliases", {}) or {}).get(name.lower(), [name])
         found = []
@@ -273,13 +280,13 @@ class SnapyCore:
             try:
                 found = json.loads(str(self.contacts.find(n)))
             except Exception as e:
-                return None, f"I couldn't read your contacts ({e})."
+                return None, T("phone.contacts_error", error=e)
             if isinstance(found, dict) and found.get("error") == "permission":
-                return None, "Allow Contacts for Snapy (Settings → Permissions), then try again."
+                return None, T("phone.contacts_permission")
             if found:
                 break
         if not found:
-            return None, f"I couldn't find “{name}” in your contacts."
+            return None, T("phone.contact_not_found", name=name)
         return found[0], None
 
     def _phone(self, text, speak):
@@ -293,7 +300,7 @@ class SnapyCore:
                 self._run(act, speak)
                 return True
             if P.NO.match(clean.strip()):
-                self._say("Okay, cancelled.", speak)
+                self._say(T("phone.cancelled"), speak)
                 return True
             # anything else: forget the pending action and treat this as a new request
 
@@ -308,11 +315,12 @@ class SnapyCore:
                 return True
             intent.update(name=who["name"], number=who["number"])
             if k == "call":
-                q = f"Call {who['name']}?"
+                q = T("phone.confirm_call", name=who["name"])
             else:
-                q = f"Send to {who['name']}{' on WhatsApp' if k == 'whatsapp' else ''}: “{intent['text']}”?"
+                q = T("phone.confirm_send_whatsapp" if k == "whatsapp" else "phone.confirm_send", name=who["name"],
+                      text=intent["text"])
             self.pending = intent
-            self._say(q + " Say yes to send." if k != "call" else q, speak)
+            self._say(q + " " + T("phone.say_yes_to_send") if k != "call" else q, speak)
             return True
         self._run(intent, speak)
         return True
@@ -321,30 +329,32 @@ class SnapyCore:
         k = a["kind"]
         if k == "whatsapp":
             self._op("whatsapp_send", number=a["number"], text=a["text"])
-            self._say(f"Sending to {a['name']} on WhatsApp.", speak)
+            self._say(T("phone.sending_whatsapp", name=a["name"]), speak)
         elif k == "sms":
             self._op("sms", number=a["number"], text=a["text"])
-            self._say(f"Your message to {a['name']} is ready — tap Send.", speak)
+            self._say(T("phone.sms_ready", name=a["name"]), speak)
         elif k == "call":
             self._op("call", number=a["number"], video=bool(a.get("video")))
-            self._say(f"Calling {a['name']}.", speak)
+            self._say(T("phone.calling", name=a["name"]), speak)
         elif k == "alarm":
             self._op("alarm", hour=a["hour"], minute=a["minute"], label=a["label"])
             h = a["hour"] % 12 or 12
-            self._say(f"Alarm set for {h}:{a['minute']:02d} {'am' if a['hour'] < 12 else 'pm'}.", speak)
+            self._say(T("phone.alarm_set", hour=h, minute=f"{a['minute']:02d}",
+                        ampm=T("time.am") if a["hour"] < 12 else T("time.pm")), speak)
         elif k == "timer":
             self._op("timer", seconds=a["seconds"])
             mins = a["seconds"] // 60
-            self._say(f"Timer set for {mins} minute{'s' if mins != 1 else ''}." if mins else f"Timer set for {a['seconds']} seconds.", speak)
+            self._say(T("phone.timer_set_minute" if mins == 1 else "phone.timer_set_minutes", n=mins) if mins
+                      else T("phone.timer_set_seconds", n=a["seconds"]), speak)
         elif k == "navigate":
             self._op("navigate", place=a["place"])
-            self._say(f"Getting directions to {a['place']}.", speak)
+            self._say(T("phone.directions", place=a["place"]), speak)
         elif k == "torch":
             self._op("torch", on=a["on"])
-            self._say("Torch on." if a["on"] else "Torch off.", speak)
+            self._say(T("phone.torch_on") if a["on"] else T("phone.torch_off"), speak)
         elif k == "panel":
             self._op("panel", panel=a["panel"])
-            self._say(f"Here are your {a['panel'].replace('internet', 'internet').title()} settings.", speak)
+            self._say(T("phone.panel", panel=a["panel"].title()), speak)
         elif k == "type":
             self._op("type_text", text=a["text"])
         elif k == "tap":

@@ -60,10 +60,10 @@ DEFAULTS = {
     "end_of_speech_s": 0.8,        # quiet needed before a phrase counts as finished
     "continuation_wait_s": 1.5,    # an unfinished-sounding phrase waits this long for the rest
     "max_utterance_s": 20,
-    "agent_name": "Snapy",
-    "android_wake_word": False,
+    "agent_name": "Snapy",         # users can rename their assistant; it answers to this name
+    "android_wake_word": False,    # Android: listen for "Hey Snapy" in the background (opt-in)
     "app_limits": {},              # Real Count daily limits, {package: minutes} (off unless set)
-    "break_screen": False,         # at a limit, show a 10-second breathing break (opt-in)    # Android: listen for "Hey Snapy" in the background (opt-in)         # users can rename their assistant; it answers to this name
+    "break_screen": False,         # at a limit, show a 10-second breathing break (opt-in)
     "llm_model": "qwen3:1.7b",
     "ai_provider": "auto",         # local | cloud | auto (cloud when an API key is set and online)
     "cloud_provider": "gemini",    # gemini | openai | compatible
@@ -90,6 +90,15 @@ DEFAULTS = {
     "morning_apps": [],            # extra apps for "start my day"
     "barge_in": True,             # interrupt Snap by talking over it (echo-guarded on speakers)
 
+    # --- Attention (Windows Real Count) ---
+    "attention_enabled": True,     # count Shorts/Reels/videos watched in the browser (counts only, on this PC)
+    "attention_nudges": True,      # gentle nudges (max 1 / 20 min, never in calls); nothing is ever blocked
+    "attention_read_urls": True,   # peek at the address bar for /shorts/ /reels/ hints (memory only, never stored)
+    "attention_soft_limit": 0,     # chip turns amber at this many shorts/reels a day (0 = shared default)
+    "attention_limits": {},        # daily soft limits per site, {"YouTube": minutes} (off unless set)
+    "attention_bedtime": "",       # "23:00" wind-down nudge time ("" = shared default, "off" = none)
+    "attention_weekly_report": True,  # Sunday attention report card, once a week
+
     # --- Gestures ---
     "gestures_enabled": False,     # camera stays off until the user turns gestures on
 
@@ -101,6 +110,10 @@ DEFAULTS = {
     # --- Workspace ---
     "project_dir": "",             # folder used by "open project", "run project", "git status"
     "project_run_command": "",     # override (e.g. "npm run dev"); empty = auto-detect
+
+    # --- Phone sync (src/sync) ---
+    "sync_enabled": False,         # opt-in: pair a phone over the LAN, end-to-end encrypted, no server
+    "sync_focus_to_phone": True,   # focus on the laptop also starts focus + DND on paired phones
 }
 
 _lock = threading.Lock()
@@ -113,14 +126,52 @@ def settings_dir():
     return path
 
 
-SETTINGS_PATH = os.environ.get("SNAP_AIR_SETTINGS") or os.path.join(settings_dir(), "settings.json")
+def settings_path():
+    """SNAP_AIR_SETTINGS, else settings.json in settings_dir(). Resolved when a Settings is
+    made (not at import), so a process (or a test) can point it elsewhere first."""
+    return os.environ.get("SNAP_AIR_SETTINGS") or os.path.join(settings_dir(), "settings.json")
+
+
+_FALSE_WORDS = {"", "0", "false", "no", "off", "none", "null"}
+
+
+def coerce(key, v):
+    """v converted to the type of DEFAULTS[key]; raises TypeError/ValueError when it can't be.
+    Floats stay floats (they used to be stored as strings, e.g. "1.5", which other devices
+    reading the synced settings profile reject), and "false"/"off" strings are False."""
+    default = DEFAULTS[key]
+    if isinstance(default, bool):
+        if isinstance(v, str):
+            return v.strip().lower() not in _FALSE_WORDS
+        return bool(v)
+    if isinstance(default, (int, float)):
+        if isinstance(v, bool) or v is None:
+            raise TypeError(f"{key} needs a number")
+        f = float(v)
+        if f != f or f in (float("inf"), float("-inf")):
+            raise ValueError(f"{key} needs a finite number")
+        return int(f) if isinstance(default, int) else f
+    if isinstance(default, dict):
+        if not isinstance(v, dict):
+            raise TypeError(f"{key} needs an object")
+        return dict(v)
+    if isinstance(default, list):
+        if isinstance(v, str):
+            v = [w.strip().lower() for w in v.split(",") if w.strip()]
+        if not isinstance(v, (list, tuple)):
+            raise TypeError(f"{key} needs a list")
+        return list(v)
+    if v is None:
+        raise TypeError(f"{key} needs text")
+    return str(v)
 
 
 class Settings:
-    def __init__(self, path=SETTINGS_PATH):
-        self.path = path
+    def __init__(self, path=None):
+        self.path = path or settings_path()
         self.data = dict(DEFAULTS)
         self._listeners = []
+        self._lock = threading.RLock()
         self.load()
 
     def load(self):
@@ -129,17 +180,20 @@ class Settings:
                 saved = json.load(f)
             for k, v in saved.items():
                 if k in DEFAULTS:
-                    self.data[k] = v
+                    try:
+                        self.data[k] = coerce(k, v)      # also repairs values older builds stored as text
+                    except (TypeError, ValueError):
+                        pass                             # keep the default for a value of the wrong type
         except FileNotFoundError:
             pass
         except Exception as e:
             print("[Settings] Could not read settings, using defaults:", e)
 
     def save(self):
-        with _lock:
+        with self._lock, _lock:
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2)
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
             os.replace(tmp, self.path)
 
     def get(self, key):
@@ -149,36 +203,24 @@ class Settings:
         return self.get(key)
 
     def update(self, changes, persist=True):
-        """Apply a dict of changes (unknown keys and wrong types are ignored)."""
+        """Apply a dict of changes (unknown keys and wrong types are ignored). Thread-safe:
+        the HUD, the voice thread and phone sync all change settings."""
         applied = {}
-        for k, v in (changes or {}).items():
-            if k not in DEFAULTS:
-                continue
-            default = DEFAULTS[k]
-            try:
-                if isinstance(default, bool):
-                    v = bool(v)
-                elif isinstance(default, int):
-                    v = int(v)
-                elif isinstance(default, dict):
-                    if not isinstance(v, dict):
-                        continue
-                    v = dict(v)
-                elif isinstance(default, list):
-                    if isinstance(v, str):
-                        v = [w.strip().lower() for w in v.split(",") if w.strip()]
-                    v = list(v)
-                else:
-                    v = str(v)
-            except (TypeError, ValueError):
-                continue
-            if self.data.get(k) != v:
-                self.data[k] = v
-                applied[k] = v
-        if applied:
-            if persist:
+        with self._lock:
+            for k, v in (changes or {}).items():
+                if k not in DEFAULTS:
+                    continue
+                try:
+                    v = coerce(k, v)
+                except (TypeError, ValueError):
+                    continue
+                if self.data.get(k) != v:
+                    self.data[k] = v
+                    applied[k] = v
+            if applied and persist:
                 self.save()
-            for cb in list(self._listeners):
+        if applied:
+            for cb in list(self._listeners):        # outside the lock: listeners may update settings
                 try:
                     cb(applied)
                 except Exception as e:
@@ -189,4 +231,5 @@ class Settings:
         self._listeners.append(cb)
 
     def as_dict(self):
-        return dict(self.data)
+        with self._lock:
+            return dict(self.data)

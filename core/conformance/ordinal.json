@@ -1,0 +1,151 @@
+{
+ "suite": "ordinal",
+ "schema_version": 1,
+ "doc": "ordinal(normalized command) -> rest + n",
+ "cases": [
+  {
+   "id": "ordinal.001",
+   "input": "play arijit songs, the 4th video",
+   "expect": {
+    "rest": "play arijit songs",
+    "n": 4
+   }
+  },
+  {
+   "id": "ordinal.002",
+   "input": "play the second result of lofi",
+   "expect": {
+    "rest": "play lofi",
+    "n": 2
+   }
+  },
+  {
+   "id": "ordinal.003",
+   "input": "play lofi video number 3",
+   "expect": {
+    "rest": "play lofi",
+    "n": 3
+   }
+  },
+  {
+   "id": "ordinal.004",
+   "input": "play lofi and play the third one",
+   "expect": {
+    "rest": "play lofi",
+    "n": 3
+   }
+  },
+  {
+   "id": "ordinal.005",
+   "input": "play the 2nd video of arijit singh",
+   "expect": {
+    "rest": "play arijit singh",
+    "n": 2
+   }
+  },
+  {
+   "id": "ordinal.006",
+   "input": "play the first lofi mix",
+   "expect": {
+    "rest": "play lofi mix",
+    "n": 1
+   }
+  },
+  {
+   "id": "ordinal.007",
+   "input": "play hindi songs the fifth",
+   "expect": {
+    "rest": "play hindi songs",
+    "n": 5
+   }
+  },
+  {
+   "id": "ordinal.008",
+   "input": "play the 4th video",
+   "expect": {
+    "rest": "play video",
+    "n": 4
+   }
+  },
+  {
+   "id": "ordinal.009",
+   "input": "open the second result",
+   "expect": {
+    "rest": "open the second result",
+    "n": null
+   }
+  },
+  {
+   "id": "ordinal.010",
+   "input": "play pehla wala",
+   "expect": {
+    "rest": "play wala",
+    "n": 1
+   }
+  },
+  {
+   "id": "ordinal.011",
+   "input": "arijit ke gaane doosra wala",
+   "expect": {
+    "rest": "arijit ke gaane",
+    "n": 2
+   }
+  },
+  {
+   "id": "ordinal.012",
+   "input": "play lofi",
+   "expect": {
+    "rest": "play lofi",
+    "n": null
+   }
+  },
+  {
+   "id": "ordinal.013",
+   "input": "play song number 12",
+   "expect": {
+    "rest": "play",
+    "n": 12
+   }
+  },
+  {
+   "id": "ordinal.014",
+   "input": "the 10th",
+   "expect": {
+    "rest": "the 10th",
+    "n": null
+   }
+  },
+  {
+   "id": "ordinal.015",
+   "input": "play second hand news",
+   "expect": {
+    "rest": "play hand news",
+    "n": 2
+   }
+  },
+  {
+   "id": "ordinal.016",
+   "input": "play kesariya the 3rd one",
+   "expect": {
+    "rest": "play kesariya",
+    "n": 3
+   }
+  },
+  {
+   "id": "ordinal.017",
+   "input": "milliseconds",
+   "expect": {
+    "rest": "milliseconds",
+    "n": null
+   }
+  },
+  {
+   "id": "ordinal.018",
+   "input": "play the tenth video of coldplay",
+   "expect": {
+    "rest": "play coldplay",
+    "n": 10
+   }
+  }
+ ]
+}

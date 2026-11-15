@@ -1,0 +1,471 @@
+{
+ "suite": "yes_no",
+ "schema_version": 1,
+ "doc": "each case: domain + text -> match",
+ "cases": [
+  {
+   "id": "yes_no.001",
+   "domain": "phone_yes",
+   "input": "yes",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.002",
+   "domain": "phone_yes",
+   "input": "Yes please",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.003",
+   "domain": "phone_yes",
+   "input": "send it",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.004",
+   "domain": "phone_yes",
+   "input": "go ahead",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.005",
+   "domain": "phone_yes",
+   "input": "haan bhej do",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.006",
+   "domain": "phone_yes",
+   "input": "ji haan",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.007",
+   "domain": "phone_yes",
+   "input": "theek hai",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.008",
+   "domain": "phone_yes",
+   "input": "हाँ",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.009",
+   "domain": "phone_yes",
+   "input": "हाँ भेज दो",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.010",
+   "domain": "phone_yes",
+   "input": "ठीक है",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.011",
+   "domain": "phone_yes",
+   "input": "yesterday",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.012",
+   "domain": "phone_yes",
+   "input": "nope",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.013",
+   "domain": "phone_yes",
+   "input": "hamesha",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.014",
+   "domain": "phone_no",
+   "input": "no",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.015",
+   "domain": "phone_no",
+   "input": "don't send",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.016",
+   "domain": "phone_no",
+   "input": "cancel it",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.017",
+   "domain": "phone_no",
+   "input": "nahi",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.018",
+   "domain": "phone_no",
+   "input": "rehne do",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.019",
+   "domain": "phone_no",
+   "input": "नहीं",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.020",
+   "domain": "phone_no",
+   "input": "मत भेजो",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.021",
+   "domain": "phone_no",
+   "input": "notebook",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.022",
+   "domain": "phone_no",
+   "input": "yes",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.023",
+   "domain": "assistant_yes",
+   "input": "sure",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.024",
+   "domain": "assistant_yes",
+   "input": "let's go",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.025",
+   "domain": "assistant_yes",
+   "input": "of course",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.026",
+   "domain": "assistant_yes",
+   "input": "chalo",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.027",
+   "domain": "assistant_yes",
+   "input": "haan",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.028",
+   "domain": "assistant_yes",
+   "input": "जी",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.029",
+   "domain": "assistant_yes",
+   "input": "okay then",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.030",
+   "domain": "assistant_yes",
+   "input": "nah",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.031",
+   "domain": "assistant_no",
+   "input": "not now",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.032",
+   "domain": "assistant_no",
+   "input": "never mind",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.033",
+   "domain": "assistant_no",
+   "input": "later",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.034",
+   "domain": "assistant_no",
+   "input": "nahin",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.035",
+   "domain": "assistant_no",
+   "input": "अभी नहीं",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.036",
+   "domain": "assistant_no",
+   "input": "now",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.037",
+   "domain": "assistant_stop",
+   "input": "stop",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.038",
+   "domain": "assistant_stop",
+   "input": "Stop!",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.039",
+   "domain": "assistant_stop",
+   "input": "be quiet",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.040",
+   "domain": "assistant_stop",
+   "input": "bas",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.041",
+   "domain": "assistant_stop",
+   "input": "ruko.",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.042",
+   "domain": "assistant_stop",
+   "input": "चुप",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.043",
+   "domain": "assistant_stop",
+   "input": "stop the music",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.044",
+   "domain": "assistant_stop",
+   "input": "stop बात",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.045",
+   "domain": "assistant_risky",
+   "input": "close chrome",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.046",
+   "domain": "assistant_risky",
+   "input": "shut down the pc",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.047",
+   "domain": "assistant_risky",
+   "input": "delete this file",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.048",
+   "domain": "assistant_risky",
+   "input": "open chrome",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.049",
+   "domain": "assistant_risky",
+   "input": "closet",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.050",
+   "domain": "assistant_risky",
+   "input": "run my project",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.051",
+   "domain": "assistant_risky",
+   "input": "git pull",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.052",
+   "domain": "assistant_risky",
+   "input": "open a terminal in the project",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.053",
+   "domain": "assistant_risky",
+   "input": "type rm -rf into the window",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.054",
+   "domain": "assistant_risky",
+   "input": "send the email",
+   "expect": {
+    "match": true
+   }
+  },
+  {
+   "id": "yes_no.055",
+   "domain": "assistant_risky",
+   "input": "open youtube",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.056",
+   "domain": "assistant_risky",
+   "input": "play lofi music",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.057",
+   "domain": "assistant_risky",
+   "input": "scroll down",
+   "expect": {
+    "match": false
+   }
+  },
+  {
+   "id": "yes_no.058",
+   "domain": "assistant_risky",
+   "input": "prototype review notes",
+   "expect": {
+    "match": false
+   }
+  }
+ ]
+}

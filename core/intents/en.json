@@ -48,19 +48,20 @@
       {"id": "en", "pattern": "^(?:stop|stop it|stop talking|quiet|be quiet|shut up|enough|cancel)[\\s.,!?;:'\"…।-]*$"}
     ],
     "assistant_risky": [
-      {"id": "en", "pattern": "\\b(?:close|lock|shut ?down|restart|delete|log ?off|sign out)\\b"}
+      {"id": "en", "pattern": "\\b(?:close|lock|shut ?down|restart|delete|log ?off|sign out)\\b"},
+      {"id": "en_exec", "pattern": "\\b(?:run|start|launch)\\b.{0,20}\\b(?:project|app|server|script)\\b|\\bgit\\b|\\b(?:terminal|power ?shell|command line|console|cmd)\\b|^\\s*type\\b|\\b(?:send|submit|pay|buy|purchase|place order)\\b"}
     ],
     "assistant_polite": [
       {"id": "en", "pattern": "^(?:(?:hey |ok )?snap{{NONWORD_LEAD}})?(?:(?:can|could|would|will) you (?:please )?|please )"}
     ],
     "polite_prefix": [
-      {"id": "en", "pattern": "^(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+"}
+      {"id": "en", "pattern": "^(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i(?: want| wanna| would like|'d like) (?:you )?to |i want |let's |let us )+"}
     ],
     "polite_suffix": [
       {"id": "mixed", "pattern": "\\s+(?:please|for me|now|yaar|na|bhai)$"}
     ],
     "polite_prefix_original": [
-      {"id": "en", "pattern": "^{{NONWORD_LEAD}}(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+"}
+      {"id": "en", "pattern": "^{{NONWORD_LEAD}}(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |i(?: want| wanna| would like|'d like) (?:you )?to |i want |let's |let us )+"}
     ],
     "wake_filler": [
       {"id": "en", "pattern": "(?:(?:uh|um|so|and|oh|yo|hey|hi|ok|okay|alright|right|hello) ){0,2}"}
@@ -100,11 +101,15 @@
       {"id": "mixed", "order": 10, "pattern": "\\b(?<period>today|aaj|this week|is hafte|week|yesterday|kal)\\b"}
     ],
     "realcount_app": [
-      {"id": "how_long_on", "order": 10, "pattern": "\\b(?:how (?:much time|long)|kitna time|kitni der)\\b.*?\\b(?:on|in|pe|par)\\s+(?<app>[a-z][a-z ]+?)\\b(?:\\s+(?:today|aaj|this week|yesterday|kal|pe|par|spent|bitaya))?\\s*[?.!]*$"}
+      {"id": "how_long_on", "order": 10, "pattern": "\\b(?:how (?:much time|long)|kitna time|kitni der)\\b.*?\\b(?:on|in|pe|par)\\s+(?!(?:today|aaj|this week|yesterday|kal|spent|bitaya)\\b)(?<app>[a-z][a-z ]+?)\\b(?:\\s+(?:today|aaj|this week|yesterday|kal|pe|par|spent|bitaya))?\\s*[?.!]*$"}
     ],
     "realcount_reels": [
-      {"id": "count_then_noun", "pattern": "\\b(?:how many|kitni|kitne|count)\\b.*\\b(?:reels?|shorts?|videos?)\\b"},
+      {"id": "count_then_noun", "pattern": "\\b(?:how many|kitni|kitne|count)\\b.*\\b(?:reels?|shorts?)\\b"},
       {"id": "noun_then_count", "pattern": "\\b(?:reels?|shorts?)\\b.*\\b(?:kitni|kitne|count|how many)\\b"}
+    ],
+    "realcount_videos": [
+      {"id": "count_then_videos", "pattern": "\\b(?:how many|kitni|kitne|count)\\b.*\\bvideos?\\b"},
+      {"id": "videos_then_count", "pattern": "\\bvideos?\\b.*\\b(?:kitni|kitne|count|how many)\\b"}
     ],
     "realcount_screen": [
       {"id": "en", "pattern": "\\b(?:screen ?time|phone (?:time|usage)|how (?:long|much) (?:have|did) i (?:use|used|been on) (?:my|the) phone)\\b"}
@@ -112,8 +117,8 @@
     "memory_extract": [
       {"id": "name", "pattern": "\\b(?:my name is|i am called|mera naam)\\s+([A-Za-z][A-Za-z]{1,20})", "template": "Name is {0}", "category": "fact", "importance": 5, "key": "name"},
       {"id": "call_me", "pattern": "\\bcall me\\s+([A-Za-z][A-Za-z]{1,20})", "template": "Prefers to be called {0}", "category": "preference", "importance": 5, "key": "call_me"},
-      {"id": "role", "pattern": "\\bi (?:work as|am working as)\\s+(?:an? )?([a-z][a-z ]{2,40}?)(?:\\s+at\\b|[.,!]|$)", "template": "Works as {0}", "category": "work", "importance": 4, "key": "role"},
-      {"id": "company", "pattern": "\\bi work at\\s+([A-Za-z0-9][\\w &.-]{1,40}?)(?:[.,!]|$)", "template": "Works at {0}", "category": "work", "importance": 4, "key": "company"},
+      {"id": "role", "pattern": "\\bi (?:work as|am working as)\\s+(?:an? )?([a-z][a-z ]{2,40}?)(?:\\s+at\\b|[.,!]|$)", "template": "Works as {0}", "category": "fact", "importance": 4, "key": "role"},
+      {"id": "company", "pattern": "\\bi work at\\s+([A-Za-z0-9][\\w &.-]{1,40}?)(?:[.,!]|$)", "template": "Works at {0}", "category": "fact", "importance": 4, "key": "company"},
       {"id": "start_time", "pattern": "\\bi (?:start|begin) (?:work|working|my day|office)(?: at| around| by)?\\s+(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)", "template": "Usually starts work at {0}", "category": "routine", "importance": 4, "key": "start_time"},
       {"id": "usually", "pattern": "\\bi (?:usually|always|normally|generally)\\s+(.{4,80}?)(?:[.!]|$)", "template": "Usually {0}", "category": "routine", "importance": 3, "key": null},
       {"id": "likes", "pattern": "\\bi (?:love|really like|prefer|enjoy)\\s+(.{3,60}?)(?:[.!]|$)", "template": "Likes {0}", "category": "preference", "importance": 3, "key": null},
@@ -122,7 +127,7 @@
       {"id": "goal", "pattern": "\\bmy (?:goal|plan) is to\\s+(.{4,80}?)(?:[.!]|$)", "template": "Goal: {0}", "category": "goal", "importance": 4, "key": null}
     ],
     "memory_explicit": [
-      {"id": "mixed", "order": 10, "pattern": "^\\s*(?:please\\s+)?(?:remember|don't forget|do not forget|note that|keep in mind|yaad rakhna|yaad rakho)(?:\\s+that)?[\\s,:]+(?<fact>.+)$"}
+      {"id": "mixed", "order": 10, "pattern": "^\\s*(?:please\\s+)?(?:remember|don't forget|do not forget|note that|keep in mind|yaad rakhna|yaad rakho)(?:\\s+(?:that|ki))?[\\s,:]+(?<fact>.+)$"}
     ],
     "memory_secret": [
       {"id": "words", "pattern": "\\b(?:password|passwd|passcode|pin|otp|one[- ]time code|cvv|secret|api[ _-]?key|token|private key|ssh key|card number|account number|ifsc|aadhaar|aadhar|pan number|social security|ssn)\\b"},

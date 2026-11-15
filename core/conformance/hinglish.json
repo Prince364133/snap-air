@@ -1,0 +1,403 @@
+{
+ "suite": "hinglish",
+ "schema_version": 1,
+ "doc": "normalize_command / is_question_or_creative / detect_lang",
+ "cases": [
+  {
+   "id": "hinglish.001",
+   "input": "youtube kholo",
+   "expect": {
+    "command": "open youtube",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.002",
+   "input": "यूट्यूब खोलो",
+   "expect": {
+    "command": "open youtube",
+    "question_or_creative": false,
+    "lang": "hi"
+   }
+  },
+  {
+   "id": "hinglish.003",
+   "input": "chrome khol do",
+   "expect": {
+    "command": "open chrome",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.004",
+   "input": "neeche scroll karo",
+   "expect": {
+    "command": "scroll down",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.005",
+   "input": "thoda upar karo",
+   "expect": {
+    "command": "scroll up",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.006",
+   "input": "scroll neeche karo",
+   "expect": {
+    "command": "scroll down",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.007",
+   "input": "awaaz badhao",
+   "expect": {
+    "command": "volume up",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.008",
+   "input": "आवाज़ बढ़ाओ",
+   "expect": {
+    "command": "volume up",
+    "question_or_creative": false,
+    "lang": "hi"
+   }
+  },
+  {
+   "id": "hinglish.009",
+   "input": "volume kam karo",
+   "expect": {
+    "command": "volume down",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.010",
+   "input": "awaaz band karo",
+   "expect": {
+    "command": "mute",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.011",
+   "input": "mute karo",
+   "expect": {
+    "command": "mute",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.012",
+   "input": "gaana roko",
+   "expect": {
+    "command": "pause",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.013",
+   "input": "ruko",
+   "expect": {
+    "command": "pause",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.014",
+   "input": "agla gaana",
+   "expect": {
+    "command": "next song",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.015",
+   "input": "next song chalao",
+   "expect": {
+    "command": "play next song",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.016",
+   "input": "agla tab",
+   "expect": {
+    "command": "next tab",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.017",
+   "input": "pichla tab pe jao",
+   "expect": {
+    "command": "previous tab",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.018",
+   "input": "naya tab kholo",
+   "expect": {
+    "command": "new tab",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.019",
+   "input": "tab band karo",
+   "expect": {
+    "command": "close tab",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.020",
+   "input": "wapas jao",
+   "expect": {
+    "command": "go back",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.021",
+   "input": "chrome pe jao",
+   "expect": {
+    "command": "switch to chrome",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.022",
+   "input": "spotify band kar do",
+   "expect": {
+    "command": "close spotify",
+    "question_or_creative": false,
+    "lang": "hinglish"
+   }
+  },
+  {
+   "id": "hinglish.023",
+   "input": "weather search karo",
+   "expect": {
+    "command": "search for weather",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.024",
+   "input": "screenshot lo",
+   "expect": {
+    "command": "screenshot",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.025",
+   "input": "desktop dikhao",
+   "expect": {
+    "command": "show desktop",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.026",
+   "input": "youtube pe arijit ke gaane chalao",
+   "expect": {
+    "command": "play arijit ke gaane on youtube",
+    "question_or_creative": false,
+    "lang": "hinglish"
+   }
+  },
+  {
+   "id": "hinglish.027",
+   "input": "kuch hindi gaane chalao",
+   "expect": {
+    "command": "play hindi gaane",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.028",
+   "input": "lofi music bajao",
+   "expect": {
+    "command": "play lofi music",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.029",
+   "input": "yaar youtube kholo na",
+   "expect": {
+    "command": "open youtube",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.030",
+   "input": "please notepad kholo",
+   "expect": {
+    "command": "open notepad",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.031",
+   "input": "zara awaaz badhao",
+   "expect": {
+    "command": "volume up",
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.032",
+   "input": "open youtube",
+   "expect": {
+    "command": null,
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.033",
+   "input": "what is recursion",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.034",
+   "input": "mujhe ek joke sunao",
+   "expect": {
+    "command": null,
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.035",
+   "input": "kya hai yeh?",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "hinglish"
+   }
+  },
+  {
+   "id": "hinglish.036",
+   "input": "ये क्या है?",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "hi"
+   }
+  },
+  {
+   "id": "hinglish.037",
+   "input": "write me a poem",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.038",
+   "input": "explain this code",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.039",
+   "input": "मौसम बताओ",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "hi"
+   }
+  },
+  {
+   "id": "hinglish.040",
+   "input": "how are you?",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.041",
+   "input": "mera kaam kya hai aaj",
+   "expect": {
+    "command": null,
+    "question_or_creative": true,
+    "lang": "hinglish"
+   }
+  },
+  {
+   "id": "hinglish.042",
+   "input": "aaj kya karna hai yaar",
+   "expect": {
+    "command": null,
+    "question_or_creative": false,
+    "lang": "hinglish"
+   }
+  },
+  {
+   "id": "hinglish.043",
+   "input": "hello there",
+   "expect": {
+    "command": null,
+    "question_or_creative": false,
+    "lang": "en"
+   }
+  },
+  {
+   "id": "hinglish.044",
+   "input": "नमस्ते",
+   "expect": {
+    "command": null,
+    "question_or_creative": false,
+    "lang": "hi"
+   }
+  }
+ ]
+}

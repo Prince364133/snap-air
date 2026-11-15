@@ -1,0 +1,84 @@
+{
+ "suite": "task_title",
+ "schema_version": 1,
+ "doc": "clean_title(rest of parse_when)",
+ "cases": [
+  {
+   "id": "task_title.001",
+   "input": "remind me to call mom",
+   "expect": {
+    "title": "call mom"
+   }
+  },
+  {
+   "id": "task_title.002",
+   "input": "reminder to pay rent",
+   "expect": {
+    "title": "pay rent"
+   }
+  },
+  {
+   "id": "task_title.003",
+   "input": "add a task to buy milk",
+   "expect": {
+    "title": "buy milk"
+   }
+  },
+  {
+   "id": "task_title.004",
+   "input": "create task review PR",
+   "expect": {
+    "title": "review PR"
+   }
+  },
+  {
+   "id": "task_title.005",
+   "input": "todo clean desk",
+   "expect": {
+    "title": "clean desk"
+   }
+  },
+  {
+   "id": "task_title.006",
+   "input": "i need to finish the report",
+   "expect": {
+    "title": "finish the report"
+   }
+  },
+  {
+   "id": "task_title.007",
+   "input": "remember to water plants",
+   "expect": {
+    "title": "water plants"
+   }
+  },
+  {
+   "id": "task_title.008",
+   "input": "yaad dilana ki dawai leni hai",
+   "expect": {
+    "title": "dawai leni hai"
+   }
+  },
+  {
+   "id": "task_title.009",
+   "input": "dawai ka reminder lagao",
+   "expect": {
+    "title": "dawai"
+   }
+  },
+  {
+   "id": "task_title.010",
+   "input": "please remind me about the meeting",
+   "expect": {
+    "title": "the meeting"
+   }
+  },
+  {
+   "id": "task_title.011",
+   "input": "buy eggs",
+   "expect": {
+    "title": "buy eggs"
+   }
+  }
+ ]
+}

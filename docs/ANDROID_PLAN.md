@@ -329,3 +329,47 @@ mobile/                                   Flutter app (Dart)
 - **Screen taps:** the accessibility node tree is converted to the same element model as Windows UI Automation (class map in `app.json → android.view_types`; unlabelled cards are named from their children, e.g. video titles). The shared `screen.find()` picks the target, then one click. These are user-invoked, single-step actions, and they never act on Snapy's own window.
 - **Verified:** 9 Android-mode tests, all 146 Windows tests, `flutter analyze` clean, 3 widget tests, and the debug APK builds.
 - **Not verified yet:** everything on a real phone, including the WhatsApp Send selector on the current WhatsApp version, screen-tap accuracy on YouTube/Instagram layouts, and the OEM dialler/clock apps that handle the intents.
+
+### Phase 5 – nudges & chip: built, not yet run on a device
+- **Logic in Dart first and tested; Kotlin mirrors it.** No Gradle could run on the build machine, so every decision is pure Dart under `mobile/lib/realcount/` with `flutter test` coverage. The phone runs line-by-line Kotlin ports that use the same keys and order:
+  - `nudges.dart` → `NudgeEngine.kt`
+  - `chip_logic.dart` + `rules.dart` → `CounterLogic.kt`
+- **Rules:** every threshold sits under the config key `android.realcount`. Values are merged in this order, each overriding the one before:
+  1. safety-net defaults
+  2. `mobile/assets/rules/realcount.json`
+  3. shared config
+  4. the weekly signed rules file, verified with Ed25519 (`signed_rules.dart`, RFC 8032 vectors in the tests) and cached at `snapy/rules/realcount.json`
+- **Chip:** shows `[orb] 5h 16m · ▶ 42`.
+  - It turns amber with a ring at the soft limit and is never red.
+  - It is centred on the camera cut-out, with a gap for the lens. With no cut-out it sits top-centre.
+  - Drag, size and hide choices are remembered.
+  - Tap opens the sheet, long-press opens quick actions, and swiping down shows today's apps.
+  - It hides over full-screen video, games, the lock screen and calls.
+  - `RealCountController.kt` hosts it either way: in the accessibility service, or in `ChipService.kt` (Display over other apps, a specialUse foreground service).
+  - The repo owner's orb pill (commits 7f3d83c..873c532) stays the default (`chip_style = "orb"`). The camera-centred chip is the `chip_style = "island"` option.
+- **Nudges:**
+  - 30 reels in a session
+  - the same app opened 10× in an hour
+  - soft limit reached, with an opt-in 10-second pause
+  - bedtime
+  - focus guard
+  - intention reminder
+- **Global nudge rules:** at most 1 nudge every 20 min, never during calls or navigation, and softer wording after 2 dismissals.
+- **Other screens:**
+  - intention prompt and 2-minute Reset
+  - creator mode
+  - weekly report, daily three and streaks with forgiveness
+  - privacy receipts
+  - big-text mode
+  - per-OEM battery guide
+  - boot restore
+  - "counter paused" health check
+  - opt-in anonymous counter report: prepared locally only, no endpoint yet
+  - permission flow in the plan's order
+  - i18n from `assets/i18n` (`tool/sync_core.dart` copies `core/i18n` and `core/rules`)
+- **Not verified yet:** everything on a device. In particular:
+  - chip placement on punch-hole and notch phones
+  - status-bar inset events reaching an overlay window (full-screen auto-hide)
+  - the creator-mode view IDs
+  - the OEM deep links
+  - the specialUse foreground-service declaration in Play review

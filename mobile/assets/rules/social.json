@@ -1,0 +1,190 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Social / short-video apps, reel detection hints, accessibility selectors and the view-type map. Read by the Real Count counter on Android and by usage answers on every platform."
+  },
+  "android": {
+    "social_apps": [
+      {
+        "package": "com.instagram.android",
+        "label": "Instagram",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.google.android.youtube",
+        "label": "YouTube",
+        "short_video": "Shorts"
+      },
+      {
+        "package": "com.facebook.katana",
+        "label": "Facebook",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.facebook.lite",
+        "label": "Facebook Lite",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.snapchat.android",
+        "label": "Snapchat",
+        "short_video": "Spotlight"
+      },
+      {
+        "package": "in.mohalla.video",
+        "label": "Moj",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.eterno.shortvideos",
+        "label": "Josh",
+        "short_video": "Videos"
+      },
+      {
+        "package": "in.mohalla.sharechat",
+        "label": "ShareChat",
+        "short_video": "Videos"
+      },
+      {
+        "package": "io.chingari.app",
+        "label": "Chingari",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.roposo.android",
+        "label": "Roposo",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.zhiliaoapp.musically",
+        "label": "TikTok",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.ss.android.ugc.trill",
+        "label": "TikTok",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.twitter.android",
+        "label": "X",
+        "short_video": null
+      },
+      {
+        "package": "com.instagram.barcelona",
+        "label": "Threads",
+        "short_video": null
+      },
+      {
+        "package": "com.reddit.frontpage",
+        "label": "Reddit",
+        "short_video": null
+      },
+      {
+        "package": "com.linkedin.android",
+        "label": "LinkedIn",
+        "short_video": null
+      },
+      {
+        "package": "com.pinterest",
+        "label": "Pinterest",
+        "short_video": null
+      },
+      {
+        "package": "com.tumblr",
+        "label": "Tumblr",
+        "short_video": null
+      },
+      {
+        "package": "com.whatsapp",
+        "label": "WhatsApp",
+        "short_video": null
+      },
+      {
+        "package": "org.telegram.messenger",
+        "label": "Telegram",
+        "short_video": null
+      },
+      {
+        "package": "com.discord",
+        "label": "Discord",
+        "short_video": null
+      }
+    ],
+    "reels_selectors_url": "https://snapy.live/config/reels.json",
+    "min_reel_dwell_ms": 700,
+    "screen_time_refresh_s": 60,
+    "view_types": {
+      "Button": "ButtonControl",
+      "ImageButton": "ButtonControl",
+      "MaterialButton": "ButtonControl",
+      "EditText": "EditControl",
+      "AutoCompleteTextView": "EditControl",
+      "SearchView": "EditControl",
+      "CheckBox": "CheckBoxControl",
+      "Switch": "CheckBoxControl",
+      "RadioButton": "RadioButtonControl",
+      "ImageView": "ImageControl",
+      "TextView": "HyperlinkControl",
+      "Tab": "TabItemControl",
+      "TabView": "TabItemControl",
+      "_clickable_group": "ListItemControl"
+    },
+    "selectors": {
+      "_comment": "Fixed scripts' targets (view IDs / descriptions). Updated here when apps change.",
+      "whatsapp_send": [
+        "com.whatsapp:id/send",
+        "com.whatsapp.w4b:id/send",
+        "Send"
+      ]
+    },
+    "realcount": {
+      "reel_detection": {
+        "_comment": "A reel/short is counted when a full-screen vertical feed changes page. feed_min_height_fraction: the scrolled view must be at least this tall (fraction of the screen); page_scroll_fraction: on API 28+ without item indices, a scroll of at least this fraction of the screen height is a page change.",
+        "feed_min_height_fraction": 0.6,
+        "page_scroll_fraction": 0.5
+      },
+      "creator": {
+        "_comment": "Screens that are creating/messaging, not consuming (window class or view id contains a keyword). feed_view_ids, when listed, are the only scroll sources that count. Check on current app versions.",
+        "keywords": [
+          "camera",
+          "capture",
+          "creation",
+          "editor",
+          "composer",
+          "direct",
+          "thread",
+          "inbox",
+          "upload",
+          "share"
+        ],
+        "apps": {
+          "com.instagram.android": {
+            "feed_view_ids": [
+              "com.instagram.android:id/clips_viewer_view_pager"
+            ],
+            "keywords": [
+              "direct",
+              "camera",
+              "creation",
+              "clips_editor"
+            ]
+          },
+          "com.google.android.youtube": {
+            "feed_view_ids": [
+              "com.google.android.youtube:id/reel_recycler"
+            ],
+            "keywords": [
+              "upload",
+              "camera",
+              "editor"
+            ]
+          }
+        }
+      },
+      "health": {
+        "stale_after_s": 180
+      }
+    }
+  }
+}

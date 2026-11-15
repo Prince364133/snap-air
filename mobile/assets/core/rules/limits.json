@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Default limits and thresholds: daily app limits, the Real Count chip, habits and the signed rules update channel."
+  },
+  "android": {
+    "realcount": {
+      "limits": {
+        "_comment": "A daily limit (minutes) is 'near' at near_fraction of it and 'over' at over_fraction. default_daily_min: per-package defaults offered in Settings (off unless the user turns one on).",
+        "near_fraction": 0.8,
+        "over_fraction": 1.0,
+        "default_daily_min": {},
+        "suggested_minutes": [15, 30, 45, 60, 90, 120],
+        "break_screen_s": 10
+      },
+      "chip": {
+        "sizes": {"small": 0.85, "normal": 1.0, "large": 1.25},
+        "simple_mode_size": "large",
+        "height_dp": 26,
+        "camera_gap_dp": 8,
+        "wide_cutout_fraction": 0.25,
+        "amber_at": 1.0,
+        "card_ms": 6000
+      },
+      "habits": {
+        "report_weekday": 7,
+        "three_ask_until": "12:00",
+        "three_recap_after": "20:00",
+        "streak_min_done": 1,
+        "streak_forgive_per_week": 1
+      },
+      "rules_update": {
+        "url": "",
+        "public_key": "",
+        "interval_days": 7
+      }
+    }
+  }
+}

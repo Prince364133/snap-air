@@ -3,7 +3,6 @@ import os
 import tempfile
 import unittest
 
-os.environ.setdefault("SNAP_AIR_DATA", tempfile.mkdtemp())
 
 from src.os_control import screen  # noqa: E402
 from src.ai.agent_controller import AgentController  # noqa: E402

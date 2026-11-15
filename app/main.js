@@ -222,30 +222,50 @@ app.on('will-quit', () => {
 });
 app.on('window-all-closed', () => app.quit());
 
+// Defence in depth for any web contents (the HUD, a devtools window, anything a future
+// change adds): no navigation, no new windows, no <webview>.
+app.on('web-contents-created', (_e, contents) => {
+    contents.on('will-navigate', (e) => e.preventDefault());
+    contents.on('will-attach-webview', (e) => e.preventDefault());
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+});
+
 // ---------------------------------------------------------------- IPC
-ipcMain.on('set-ignore-mouse-events', (event, ignore) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) win.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
+// Every channel answers only our own HUD page loaded from our own index.html.
+function fromHud(event) {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return false;
+    const frame = event.senderFrame;
+    return !frame || (frame === mainWindow.webContents.mainFrame && frame.url.startsWith('file://'));
+}
+
+function onHud(channel, fn) {
+    ipcMain.on(channel, (event, ...args) => { if (fromHud(event)) fn(event, ...args); });
+}
+
+onHud('set-ignore-mouse-events', (_e, ignore) => {
+    mainWindow.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
 });
 
 // After typing a command, hand keyboard focus back to the app underneath
-ipcMain.on('release-focus', () => {
-    if (mainWindow) {
-        mainWindow.setIgnoreMouseEvents(true, { forward: true });
-        mainWindow.blur();
-    }
+onHud('release-focus', () => {
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.blur();
 });
 
-ipcMain.handle('pick-folder', async () => {
+ipcMain.handle('pick-folder', async (event) => {
+    if (!fromHud(event)) return null;
     const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     return r.canceled ? null : r.filePaths[0];
 });
 
-ipcMain.on('quit', () => app.quit());
+onHud('quit', () => app.quit());
 // Only our own HUD page may ask for the engine token
-ipcMain.handle('ws-token', (event) => (mainWindow && event.sender === mainWindow.webContents ? engineToken() : ''));
-ipcMain.on('set-login-item', (_e, enabled) => setLoginItem(enabled));
-ipcMain.on('notify', (_e, msg) => { if (msg && msg.title) notify(String(msg.title), String(msg.body || '')); });
-ipcMain.on('open-external', (_e, url) => {
-    if (typeof url === 'string' && /^https?:\/\//.test(url)) shell.openExternal(url);
+ipcMain.handle('ws-token', (event) => (fromHud(event) ? engineToken() : ''));
+onHud('set-login-item', (_e, enabled) => setLoginItem(enabled));
+onHud('notify', (_e, msg) => { if (msg && msg.title) notify(String(msg.title).slice(0, 120), String(msg.body || '').slice(0, 400)); });
+onHud('open-external', (_e, url) => {
+    // only real web links: never file:, ms-settings:, or a custom protocol handler
+    let u = null;
+    try { u = typeof url === 'string' ? new URL(url) : null; } catch (e) { u = null; }
+    if (u && (u.protocol === 'https:' || u.protocol === 'http:')) shell.openExternal(u.toString());
 });

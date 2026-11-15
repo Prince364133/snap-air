@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/memory_fact.schema.json",
+  "title": "Memory fact",
+  "description": "One long-term memory about the user (memories.json item). Never contains secrets (see intents domain memory_secret).",
+  "x-schema-version": 1,
+  "x-synced": true,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Record format version (this file's x-schema-version)."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id, unique per record type (10 lowercase hex chars from new records; any string accepted)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last change time (ISO). Sync: the newer 'updated' wins; ties -> the lexically greater 'device'."
+    },
+    "device": {
+      "type": "string",
+      "description": "Device that made the last change, e.g. 'windows-<hash>' or 'android-<hash>'."
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tombstone: true = deleted. Kept (not removed) so the deletion syncs."
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Third-person statement, e.g. 'Prefers Slack over email'."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "preference",
+        "fact",
+        "person",
+        "project",
+        "routine",
+        "goal",
+        "instruction",
+        "event"
+      ],
+      "description": "Unknown categories are stored as 'fact'. This enum is the single source of memory categories."
+    },
+    "importance": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 local time, seconds precision, no offset (e.g. 2026-11-15T09:30:00)."
+    },
+    "last_used": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "uses": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source": {
+      "type": "string",
+      "description": "explicit | chat | assistant | observed | onboarding | manual | ..."
+    },
+    "pinned": {
+      "type": "boolean"
+    },
+    "key": {
+      "type": "string",
+      "description": "Stable key for facts that are replaced, not duplicated (e.g. start_time)."
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 local time, seconds precision, no offset (e.g. 2026-11-15T09:30:00)."
+          }
+        }
+      },
+      "description": "Earlier versions of text."
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "updated",
+    "device",
+    "deleted",
+    "text",
+    "category",
+    "importance",
+    "created"
+  ],
+  "additionalProperties": true
+}

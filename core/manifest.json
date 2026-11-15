@@ -10,7 +10,8 @@
     "rules/phone.json",
     "rules/social.json",
     "rules/nudges.json",
-    "rules/limits.json"
+    "rules/limits.json",
+    "rules/attention.json"
   ],
   "intents": "intents/index.json",
   "tools": "tools/tools.json",

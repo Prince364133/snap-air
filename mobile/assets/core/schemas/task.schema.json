@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/task.schema.json",
+  "title": "Task",
+  "description": "A task or reminder (tasks.json item). A reminder is a task with remind_at; it fires once (fired=true), snoozing sets a new remind_at and fired=false.",
+  "x-schema-version": 1,
+  "x-synced": true,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Record format version (this file's x-schema-version)."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id, unique per record type (10 lowercase hex chars from new records; any string accepted)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last change time (ISO). Sync: the newer 'updated' wins; ties -> the lexically greater 'device'."
+    },
+    "device": {
+      "type": "string",
+      "description": "Device that made the last change, e.g. 'windows-<hash>' or 'android-<hash>'."
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tombstone: true = deleted. Kept (not removed) so the deletion syncs."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "remind_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reminder time, ISO minutes precision (2026-11-15T17:00), or null for a plain task."
+    },
+    "fired": {
+      "type": "boolean",
+      "description": "The reminder has been shown."
+    },
+    "done": {
+      "type": "boolean"
+    },
+    "done_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 local time, seconds precision, no offset (e.g. 2026-11-15T09:30:00)."
+    },
+    "source": {
+      "type": "string",
+      "description": "voice | typed | assistant | timer | meeting | ..."
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "updated",
+    "device",
+    "deleted",
+    "title",
+    "remind_at",
+    "done",
+    "fired",
+    "created"
+  ],
+  "additionalProperties": true
+}

@@ -5,6 +5,7 @@ import ctypes
 import sys
 
 from src import storage
+from src import diag  # noqa: E402
 
 try:
     from ctypes import wintypes
@@ -75,7 +76,8 @@ def get_key(name):
         return ""
     try:
         return _unprotect(base64.b64decode(data[name])).decode("utf-8")
-    except Exception:
+    except Exception as e:
+        diag.record("secrets.decrypt", e, quiet=True)
         return ""
 
 

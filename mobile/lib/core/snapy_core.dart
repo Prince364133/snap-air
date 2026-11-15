@@ -3,9 +3,20 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-/// Dart side of Snapy's brain. The brain is the same Python the Windows engine runs
-/// (engine/src via Chaquopy); Kotlin executes the phone actions it decides on.
+import '../core_runtime/platform_channels.dart';
+import '../sync/pair_screen.dart';
+
+/// The UI's door to Snapy's brain. The brain is the Dart core runtime (lib/core_runtime) running
+/// in its own headless engine started by Kotlin — one instance per process, the only owner of
+/// the stores — and implementing core/ exactly like the Windows Python engine. Calls go
+/// "snapy/core" -> Kotlin -> that engine; its events arrive on "snapy/events".
 class SnapyCore {
+  /// Once per UI engine (main): platform services this isolate needs (the Keystore-backed
+  /// SecureKeyStore that lib/sync pairing uses).
+  static void install() {
+    SyncHost.keyStore ??= const KeystoreKeyStore();
+  }
+
   static const _ch = MethodChannel('snapy/core');
   static const _ev = EventChannel('snapy/events');
   static Stream<Map<String, dynamic>>? _events;
@@ -56,7 +67,7 @@ class SnapyCore {
   static Future<Today> today() async =>
       Today.fromJson(jsonDecode((await _ch.invokeMethod<String>('today')) ?? '{}') as Map<String, dynamic>);
 
-  /// Central product data (src/data/app.json), e.g. config('android.social_apps').
+  /// Shared product data (core/rules, merged), e.g. config('android.social_apps').
   static Future<dynamic> config(String path) async =>
       jsonDecode((await _ch.invokeMethod<String>('config', {'path': path})) ?? 'null');
 
@@ -75,7 +86,7 @@ class SnapyCore {
   static Future<void> stopFocus() => _ch.invokeMethod('stopFocus');
   static Future<void> pauseCounting(int minutes) => _ch.invokeMethod('pauseCounting', {'minutes': minutes});
 
-  /// A call into the shared brain that returns JSON text, e.g. coreCall('limits_json').
+  /// A call into the core runtime that returns text (JSON where structured), e.g. coreCall('limits_json').
   static Future<String> coreCall(String method, [List<String> args = const []]) async =>
       (await _ch.invokeMethod<String>('coreCall', {'method': method, 'args': args})) ?? 'null';
 
@@ -113,6 +124,28 @@ class SnapyCore {
       'lock': lock,
     })) ?? false;
   }
+
+  /// Checks any provider's key through the brain: {ok, code, message, help_url}
+  /// (code: ok | invalid_key | quota | permission | model | network | error).
+  static Future<Map<String, dynamic>> testApiKey(String provider, String key) async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('test_api_key', [provider, key])) as Map);
+
+  /// Meeting notes from the phone's recognizer: {recording, elapsed, live, words, ...}.
+  static Future<Map<String, dynamic>> meetingStart([String title = '']) async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('meeting_start', [title])) as Map);
+  static Future<Map<String, dynamic>> meetingStop() async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('meeting_stop')) as Map);
+  static Future<Map<String, dynamic>> meetingState() async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('meeting_state')) as Map);
+
+  /// {name, assistant_name, ice_notes, ...profile}
+  static Future<Map<String, dynamic>> profile() async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('profile')) as Map);
+  static Future<Map<String, dynamic>> setProfile(Map<String, dynamic> p) async =>
+      Map<String, dynamic>.from(jsonDecode(await coreCall('set_profile', [jsonEncode(p)])) as Map);
+
+  /// Sync with the paired laptop now (e.g. right after pairing).
+  static Future<void> syncNow() => coreCall('sync_kick');
 
   /// Tests Google Gemini API key live against Gemini API.
   static Future<Map<String, dynamic>> testGeminiKey(String key) async {

@@ -14,6 +14,7 @@ Supports:
 import difflib
 import re
 import time
+from src import diag  # noqa: E402
 
 try:
     import uiautomation as auto
@@ -70,7 +71,8 @@ def foreground_window():
         return None
     try:
         return auto.ControlFromHandle(hwnd)
-    except Exception:
+    except Exception as e:
+        diag.record("screen.root", e, quiet=True)
         return None
 
 
@@ -130,7 +132,8 @@ def _snapshot(window=None, max_elements=400, max_depth=40, time_budget=2.5):
                 if win_rect and (r.right < win_rect[0] or r.left > win_rect[2] or r.bottom < win_rect[1] or r.top > win_rect[3]):
                     continue
                 out.append(Element(name, ctype, rect, ctrl, depth))
-            except Exception:
+            except Exception as e:
+                diag.record("screen.element", e, quiet=True)
                 continue
     return out, root
 
@@ -255,7 +258,8 @@ def click(element, double=False, right=False):
                     else:
                         pat.DoDefaultAction()
                     return True
-            except Exception:
+            except Exception as e:
+                diag.record("screen.pattern", e, quiet=True)
                 continue
     pt = _visible_point(element)
     if pt is None:
@@ -268,8 +272,8 @@ def type_into(element, text, submit=False):
     import pyautogui
     try:
         element.control.SetFocus()
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("screen.focus", e, quiet=True)
     x, y = element.center
     pyautogui.click(x, y)
     time.sleep(0.15)
@@ -293,8 +297,8 @@ def describe(elements, root=None, limit=25):
     title = ""
     try:
         title = root.Name if root is not None else ""
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("screen.title", e, quiet=True)
     counts = {}
     for e in elements:
         k = e.ctype.replace("Control", "").lower()

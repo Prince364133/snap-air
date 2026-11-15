@@ -1,0 +1,927 @@
+{
+ "suite": "phone_intents",
+ "schema_version": 1,
+ "doc": "phone domain: text (wake word already removed) -> action or null",
+ "cases": [
+  {
+   "id": "phone_intents.001",
+   "input": "WhatsApp Rahul I am running 10 minutes late",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "rahul",
+     "text": "I am running 10 minutes late"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.002",
+   "input": "send whatsapp to mom: I'll be home by 8",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "mom",
+     "text": "I'll be home by 8"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.003",
+   "input": "whatsapp message to Priya saying happy birthday",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "priya",
+     "text": "happy birthday"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.004",
+   "input": "message Amit on WhatsApp, call me back",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "amit",
+     "text": "call me back"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.005",
+   "input": "text Neha on whatsapp that the meeting moved",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "neha",
+     "text": "the meeting moved"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.006",
+   "input": "send a message to dad see you soon on whatsapp",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "dad",
+     "text": "see you soon"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.007",
+   "input": "Rahul ko whatsapp karo ki main aa raha hoon",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "rahul",
+     "text": "main aa raha hoon"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.008",
+   "input": "mummy ko message bhejo khana kha liya",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "mummy",
+     "text": "khana kha liya"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.009",
+   "input": "papa ko whatsapp bhej do ghar aa raha hu",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "papa",
+     "text": "ghar aa raha hu"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.010",
+   "input": "sms rahul I'm outside",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "sms",
+     "contact": "rahul",
+     "text": "I'm outside"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.011",
+   "input": "send an sms to bhai: call me",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "sms",
+     "contact": "bhai",
+     "text": "call me"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.012",
+   "input": "text mom good night",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "sms",
+     "contact": "mom",
+     "text": "good night"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.013",
+   "input": "rahul ko sms karo kal milte hain",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "sms",
+     "contact": "rahul",
+     "text": "kal milte hain"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.014",
+   "input": "call mom",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "mom",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.015",
+   "input": "call Rahul Sharma",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "rahul sharma",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.016",
+   "input": "phone dad",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "dad",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.017",
+   "input": "ring didi on the phone",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "didi",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.018",
+   "input": "dial bhaiya",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "bhaiya",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.019",
+   "input": "video call Priya",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "priya",
+     "video": true
+    }
+   }
+  },
+  {
+   "id": "phone_intents.020",
+   "input": "mummy ko call karo",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "mummy",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.021",
+   "input": "papa ko phone lagao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "papa",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.022",
+   "input": "bhai ko call kar do",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "bhai",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.023",
+   "input": "Rahul ko fone milao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "rahul",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.024",
+   "input": "call me",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.025",
+   "input": "call it",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.026",
+   "input": "wake me up at 6 am",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "alarm",
+     "hour": 6,
+     "minute": 0,
+     "label": "Snapy"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.027",
+   "input": "set an alarm for 7:30",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "alarm",
+     "hour": 19,
+     "minute": 30,
+     "label": "Snapy"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.028",
+   "input": "alarm at 5 pm",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "alarm",
+     "hour": 17,
+     "minute": 0,
+     "label": "Snapy"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.029",
+   "input": "set alarm for tomorrow 6am",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "alarm",
+     "hour": 6,
+     "minute": 0,
+     "label": "Snapy"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.030",
+   "input": "subah 7 baje ka alarm laga do",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "alarm",
+     "hour": 10,
+     "minute": 30,
+     "label": "Snapy"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.031",
+   "input": "set alarm for banana",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.032",
+   "input": "set a timer for 10 minutes",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 600
+    }
+   }
+  },
+  {
+   "id": "phone_intents.033",
+   "input": "timer 30 seconds",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 30
+    }
+   }
+  },
+  {
+   "id": "phone_intents.034",
+   "input": "start a timer for 2 hours",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 7200
+    }
+   }
+  },
+  {
+   "id": "phone_intents.035",
+   "input": "timer for five minutes",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 300
+    }
+   }
+  },
+  {
+   "id": "phone_intents.036",
+   "input": "set timer for 15 mins",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 900
+    }
+   }
+  },
+  {
+   "id": "phone_intents.037",
+   "input": "5 minute ka timer laga do",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 300
+    }
+   }
+  },
+  {
+   "id": "phone_intents.038",
+   "input": "das minute ka timer lagao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 600
+    }
+   }
+  },
+  {
+   "id": "phone_intents.039",
+   "input": "2 ghante ka timer set karo",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 7200
+    }
+   }
+  },
+  {
+   "id": "phone_intents.040",
+   "input": "set a timer for zero minutes",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.041",
+   "input": "navigate to Connaught Place",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "Connaught Place"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.042",
+   "input": "take me to the airport",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "the airport"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.043",
+   "input": "directions to MG Road, Bangalore",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "MG Road, Bangalore"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.044",
+   "input": "get me to India Gate",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "India Gate"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.045",
+   "input": "station ka rasta batao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "station"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.046",
+   "input": "airport ke route dikhao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "airport"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.047",
+   "input": "turn on the torch",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": true
+    }
+   }
+  },
+  {
+   "id": "phone_intents.048",
+   "input": "torch off",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.049",
+   "input": "switch off flashlight",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.050",
+   "input": "flash light on",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": true
+    }
+   }
+  },
+  {
+   "id": "phone_intents.051",
+   "input": "torch jalao",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": true
+    }
+   }
+  },
+  {
+   "id": "phone_intents.052",
+   "input": "torch band karo",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.053",
+   "input": "turn on wifi",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "panel",
+     "panel": "wifi"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.054",
+   "input": "bluetooth",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "panel",
+     "panel": "bluetooth"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.055",
+   "input": "open mobile data",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.056",
+   "input": "turn off the internet",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "panel",
+     "panel": "internet"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.057",
+   "input": "nfc",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "panel",
+     "panel": "nfc"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.058",
+   "input": "volume",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "panel",
+     "panel": "volume"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.059",
+   "input": "volume up",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.060",
+   "input": "type hello world",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "hello world"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.061",
+   "input": "write Meeting at 5",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "Meeting at 5"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.062",
+   "input": "likho kal milte hain",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "kal milte hain"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.063",
+   "input": "tap the subscribe button",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "tap",
+     "target": "subscribe button"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.064",
+   "input": "click on the second video",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "tap",
+     "target": "second video"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.065",
+   "input": "press send",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "tap",
+     "target": "send"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.066",
+   "input": "open the first result",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "tap",
+     "target": "first result"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.067",
+   "input": "open the 3rd video",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "tap",
+     "target": "3rd video"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.068",
+   "input": "open whatsapp",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.069",
+   "input": "open settings",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.070",
+   "input": "go to settings",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.071",
+   "input": "go back",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.072",
+   "input": "scroll down",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.073",
+   "input": "what's the weather",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.074",
+   "input": "",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.075",
+   "input": "राहुल को व्हाट्सएप करो कि मैं आ रहा हूँ",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "राहुल",
+     "text": "मैं आ रहा हूँ"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.076",
+   "input": "मम्मी को कॉल करो",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "मम्मी",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.077",
+   "input": "पापा को फोन लगाओ",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "call",
+     "contact": "पापा",
+     "video": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.078",
+   "input": "दीदी को मैसेज भेजो कि खाना तैयार है",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "whatsapp",
+     "contact": "दीदी",
+     "text": "खाना तैयार है"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.079",
+   "input": "भैया को एसएमएस करो कल मिलते हैं",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "sms",
+     "contact": "भैया",
+     "text": "कल मिलते हैं"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.080",
+   "input": "10 मिनट का टाइमर लगाओ",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "timer",
+     "seconds": 600
+    }
+   }
+  },
+  {
+   "id": "phone_intents.081",
+   "input": "स्टेशन का रास्ता बताओ",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "navigate",
+     "place": "स्टेशन"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.082",
+   "input": "टॉर्च जलाओ",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": true
+    }
+   }
+  },
+  {
+   "id": "phone_intents.083",
+   "input": "टॉर्च बंद करो",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "torch",
+     "on": false
+    }
+   }
+  },
+  {
+   "id": "phone_intents.084",
+   "input": "यूट्यूब खोलो",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  }
+ ]
+}

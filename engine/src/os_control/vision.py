@@ -19,6 +19,7 @@ import requests
 
 from src import appdata
 from src.os_control.screen import Element
+from src import diag  # noqa: E402
 
 OLLAMA = appdata.get("ollama.host")
 # Vision-capable Ollama models, best first (from src/data/app.json)
@@ -54,7 +55,8 @@ def ocr_available():
     try:
         from winrt.windows.media.ocr import OcrEngine
         return OcrEngine.try_create_from_user_profile_languages() is not None
-    except Exception:
+    except Exception as e:
+        diag.record("vision.ocr_probe", e, quiet=True)
         return False
 
 
@@ -133,7 +135,8 @@ def installed_local_model(settings=None):
     want = (settings.get("vision_model") if settings else None) or ""
     try:
         names = [m["name"] for m in requests.get(OLLAMA + "/api/tags", timeout=2).json().get("models", [])]
-    except Exception:
+    except Exception as e:
+        diag.record("vision.local_models", e, quiet=True)
         return None
     for n in ([want] if want else []) + LOCAL_VISION_MODELS:
         if n and n in names:

@@ -6,8 +6,9 @@ import tempfile
 import time
 import unittest
 
-TMP = tempfile.mkdtemp()
-os.environ["SNAP_AIR_DATA"] = TMP
+from tests import _env  # noqa: E402
+
+setUpModule, tearDownModule = _env.module_data_dir()   # own data folder, restored after
 
 from src.brain import hinglish  # noqa: E402
 from src.brain.llm import ThinkFilter, recommend_model  # noqa: E402

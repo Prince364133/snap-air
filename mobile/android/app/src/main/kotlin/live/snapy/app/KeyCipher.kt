@@ -10,8 +10,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Encrypts API keys with an AES-256-GCM key that lives in the Android Keystore
- * (hardware-backed where available, never leaves the device). Used by the shared
- * Python brain's secrets_store instead of Windows DPAPI.
+ * (hardware-backed where available, never leaves the device).
+ * Used by SecureFiles (the Dart brain's API keys and the sync identity) instead of Windows DPAPI.
  */
 class KeyCipher {
     private val alias = "snapy_api_keys"

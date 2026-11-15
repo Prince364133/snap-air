@@ -2,117 +2,229 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../i18n/i18n.dart';
+import '../main.dart';
+import '../realcount/realcount_data.dart';
+import '../sync/pair_screen.dart';
 import 'battery_guide.dart';
 import 'chip_settings.dart';
+import 'common.dart';
 import 'onboarding.dart';
 import 'privacy_page.dart';
 
-/// AI brain (same three modes as Windows: on this phone / auto / cloud) and permissions.
+/// Where "Get a new key" goes for Gemini (the plan's copy table).
+const geminiKeyUrl = 'https://aistudio.google.com/apikey';
+const geminiRegionsUrl = 'https://ai.google.dev/gemini-api/docs/available-regions';
+
+/// The exact message for a key test (docs/ANDROID_NEXT_PLAN.md §1 table).
+String keyMessage(KeyVerdict v) => tr(switch (v) {
+      KeyVerdict.ok => 'key.ok',
+      KeyVerdict.invalid => 'key.invalid',
+      KeyVerdict.permission => 'key.permission',
+      KeyVerdict.quota => 'key.quota',
+      KeyVerdict.region => 'key.region',
+      KeyVerdict.network => 'key.network',
+      KeyVerdict.error => 'key.error',
+    });
+
+/// Profile → Settings: AI brain (mode, provider, key with Test), voice, chip & big text,
+/// permissions, battery, privacy, laptop and your data.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
   Map<String, dynamic> _brain = const {};
   Map<String, bool> _perm = const {};
   String _provider = 'gemini';
   final _key = TextEditingController();
-  bool _saving = false;
+  bool _saving = false, _testing = false;
   String _voiceLang = 'auto';
   String? _wakeProgress;
-  String? _keyStatusMsg;
-  bool _keyValid = false;
+  KeyVerdict? _verdict;
+  String? _keyNote;          // "paste a key first" / "saved"
+  String? _helpUrl;
+  bool _bigText = SnapyApp.simple.value;
   StreamSubscription? _sub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
-    // "Hey Snapy" model download progress (36 MB, once)
+    // "Hey Snapy" model download progress (once)
     _sub = SnapyCore.events.listen((e) {
       if (e['type'] != 'setup' || !mounted) return;
-      final it = ((e['items'] as List?) ?? const []).cast<Map>().firstWhere((i) => i['id'] == 'wake', orElse: () => const {});
+      final it = ((e['items'] as List?) ?? const []).whereType<Map>().firstWhere((i) => i['id'] == 'wake', orElse: () => const {});
       if (it.isEmpty) return;
       final total = (it['total'] as num?)?.toInt() ?? 0, done = (it['done'] as num?)?.toInt() ?? 0;
-      setState(() => _wakeProgress = it['state'] == 'done' ? null : 'Downloading “Hey Snapy” model… ${total > 0 ? (done * 100 ~/ total) : 0}%');
+      setState(() => _wakeProgress = it['state'] == 'done' ? null : tr('settings.wake_downloading', {'pct': '${total > 0 ? (done * 100 ~/ total) : 0}'}));
     }, onError: (_) {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
+    _key.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _load(); // back from Android Settings
   }
 
   Future<void> _load() async {
     try {
       final b = await SnapyCore.brainStatus();
+      if (mounted) {
+        setState(() {
+          _brain = b;
+          _provider = '${b['provider'] ?? 'gemini'}';
+          _voiceLang = '${b['voice_language'] ?? 'auto'}';
+        });
+      }
+    } catch (_) {}
+    try {
       final p = await SnapyCore.status();
-      if (mounted) setState(() { _brain = b; _perm = p; _provider = (b['provider'] ?? 'gemini') as String; _voiceLang = (b['voice_language'] ?? 'auto') as String; });
+      if (mounted) setState(() => _perm = p);
     } catch (_) {}
   }
 
-  Future<void> _saveKey() async {
-    final keyStr = _key.text.trim();
-    if (keyStr.isEmpty) {
-      setState(() {
-        _keyStatusMsg = 'Please paste a valid API key.';
-        _keyValid = false;
-      });
+  Future<void> _test() async {
+    final key = _key.text.trim();
+    if (key.isEmpty) {
+      setState(() { _verdict = null; _keyNote = tr('key.empty'); });
       return;
     }
+    setState(() { _testing = true; _verdict = null; _keyNote = tr('key.testing'); });
+    final r = await NextApi.testApiKey(_provider, key);
+    if (!mounted) return;
     setState(() {
-      _saving = true;
-      _keyStatusMsg = 'Verifying key with Google Gemini API…';
+      _testing = false;
+      _keyNote = null;
+      _verdict = r.verdict;
+      _helpUrl = r.helpUrl;
     });
+  }
+
+  Future<void> _save() async {
+    final key = _key.text.trim();
+    if (key.isEmpty) {
+      setState(() { _verdict = null; _keyNote = tr('key.empty'); });
+      return;
+    }
+    setState(() => _saving = true);
     try {
-      final testRes = await SnapyCore.testGeminiKey(keyStr);
-      if (testRes['ok'] == true) {
-        final b = await SnapyCore.setApiKey(_provider, keyStr);
-        _key.clear();
-        if (mounted) {
-          setState(() {
-            _brain = b;
-            _keyValid = true;
-            _keyStatusMsg = '✓ Key verified and active! Encrypted securely on device.';
-          });
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✓ Gemini API key active and verified.')));
-        }
-      } else {
-        final errorMsg = testRes['error'] ?? 'API key test failed.';
-        if (mounted) {
-          setState(() {
-            _keyValid = false;
-            _keyStatusMsg = '⚠️ $errorMsg\nPlease verify this key or generate a new free key at aistudio.google.com';
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _keyValid = false;
-          _keyStatusMsg = '⚠️ Verification error: $e';
-        });
-      }
+      final b = await SnapyCore.setApiKey(_provider, key);
+      _key.clear();
+      if (mounted) setState(() { _brain = b; _keyNote = tr('settings.key_saved'); });
+    } catch (_) {
+      if (mounted) setState(() => _keyNote = tr('profile.unavailable'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _update(Map<String, dynamic> changes) async {
+    try {
+      await SnapyCore.updateSettings(changes);
+    } catch (_) {}
+    _load();
+  }
+
+  Future<void> _grant(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {}
+    _load();
+  }
+
+  Future<void> _deleteAll() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('settings.delete_title')),
+        content: Text(tr('settings.delete_body')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('common.cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SnapyColors.of(ctx).red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr('settings.delete_all')),
+          ),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    final ok = await NextApi.vaultClear('all');
+    if (mounted) toast(context, ok ? tr('settings.deleted') : tr('vault.clear_failed'));
+  }
+
+  Widget _keyResult(SnapyColors c) {
+    final v = _verdict;
+    if (v == null) {
+      if (_keyNote == null) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Semantics(liveRegion: true, child: Text(_keyNote!, style: Theme.of(context).textTheme.bodySmall)),
+      );
+    }
+    final ok = v == KeyVerdict.ok;
+    final color = ok ? c.green : (v == KeyVerdict.network ? c.orange : c.red);
+    final newKeyUrl = _provider == 'gemini' ? geminiKeyUrl : (_helpUrl ?? geminiKeyUrl);
+    Widget? action;
+    switch (v) {
+      case KeyVerdict.ok:
+        action = null;
+      case KeyVerdict.region:
+        action = TextButton.icon(onPressed: () => openLink(context, geminiRegionsUrl), icon: const Icon(Icons.help_outline), label: Text(tr('key.help')));
+      case KeyVerdict.network:
+        action = TextButton.icon(onPressed: _test, icon: const Icon(Icons.refresh), label: Text(tr('key.retry')));
+      default:
+        action = TextButton.icon(onPressed: () => openLink(context, newKeyUrl), icon: const Icon(Icons.open_in_new), label: Text(tr('key.get_new')));
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(r),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Semantics(
+          liveRegion: true,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(ok ? Icons.check_circle : Icons.error_outline, color: color, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(keyMessage(v), style: const TextStyle(fontWeight: FontWeight.w500)))),
+          ]),
+        ),
+        if (action != null) Align(alignment: Alignment.centerRight, child: action),
+      ]),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
     final providers = Map<String, String>.from((_brain['providers'] as Map?) ?? {'gemini': 'Google Gemini', 'openai': 'OpenAI'});
-    final mode = (_brain['mode'] ?? 'auto') as String;
+    final mode = '${_brain['mode'] ?? 'auto'}';
     Widget group(String title, List<Widget> children) => Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(title, style: Theme.of(context).textTheme.bodySmall)),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              child: Semantics(header: true, child: Text(title, style: Theme.of(context).textTheme.bodySmall)),
+            ),
             Material(
               color: c.card,
               clipBehavior: Clip.antiAlias,
@@ -121,167 +233,167 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ]),
         );
+    Widget nav(String title, IconData icon, Widget page) => ListTile(
+          leading: Icon(icon),
+          title: Text(title),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page)).then((_) => _load()),
+        );
+    Widget perm(String title, String key, Future<void> Function() grant) {
+      final on = _perm[key] ?? false;
+      return ListTile(
+        leading: Icon(on ? Icons.check_circle : Icons.radio_button_unchecked, color: on ? c.green : c.text3),
+        title: Text(title),
+        subtitle: Text(on ? tr('common.on') : tr('common.off')),
+        trailing: on ? null : const Icon(Icons.chevron_right),
+        onTap: on ? null : () => _grant(grant),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings'), backgroundColor: c.bg),
+      appBar: AppBar(title: Text(tr('settings.title')), backgroundColor: c.bg),
       body: ListView(children: [
-        group('AI brain', [
+        group(tr('settings.brain'), [
           RadioGroup<String>(
             groupValue: mode,
-            onChanged: (v) async {
-              if (v == null) return;
-              await SnapyCore.updateSettings({'ai_provider': v});
-              _load();
+            onChanged: (v) {
+              if (v != null) _update({'ai_provider': v});
             },
-            child: const Column(children: [
-              RadioListTile(value: 'local', title: Text('On this phone'), subtitle: Text('Private and offline (on-device model arrives in the next update)')),
-              RadioListTile(value: 'auto', title: Text('Auto'), subtitle: Text('On this phone when possible, cloud when faster')),
-              RadioListTile(value: 'cloud', title: Text('Cloud'), subtitle: Text('Your own Gemini or OpenAI key')),
+            child: Column(children: [
+              RadioListTile(value: 'local', title: Text(tr('settings.brain.local')), subtitle: Text(tr('settings.brain.local_sub'))),
+              RadioListTile(value: 'auto', title: Text(tr('settings.brain.auto')), subtitle: Text(tr('settings.brain.auto_sub'))),
+              RadioListTile(value: 'cloud', title: Text(tr('settings.brain.cloud')), subtitle: Text(tr('settings.brain.cloud_sub'))),
             ]),
           ),
           ListTile(
-            title: const Text('Status'),
-            subtitle: Text((_brain['cloud_configured'] == true)
-                ? 'Cloud key saved (${providers[_brain['provider']] ?? _brain['provider']})'
-                : 'No AI key yet — commands, reminders and memory still work'),
+            title: Text(tr('settings.status')),
+            subtitle: Text(_brain['cloud_configured'] == true
+                ? tr('settings.key_saved_for', {'provider': '${providers[_brain['provider']] ?? _brain['provider']}'})
+                : tr('settings.key_none')),
           ),
-          if (_brain['error'] != null) ListTile(title: Text('${_brain['error']}', style: TextStyle(color: c.red))),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: Column(children: [
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               DropdownButtonFormField<String>(
                 initialValue: providers.containsKey(_provider) ? _provider : providers.keys.first,
                 items: providers.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
-                onChanged: (v) => setState(() => _provider = v ?? _provider),
-                decoration: const InputDecoration(labelText: 'Provider'),
+                onChanged: (v) => setState(() { _provider = v ?? _provider; _verdict = null; }),
+                decoration: InputDecoration(labelText: tr('settings.provider')),
               ),
               const SizedBox(height: 8),
               TextField(
+                key: const ValueKey('api-key'),
                 controller: _key,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'API key', hintText: 'Paste your key — stored encrypted on this phone'),
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(labelText: tr('settings.api_key'), hintText: tr('settings.api_key_hint')),
               ),
-              if (_keyStatusMsg != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _keyValid ? c.green.withValues(alpha: 0.15) : c.red.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _keyValid ? c.green.withValues(alpha: 0.4) : c.red.withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    _keyStatusMsg!,
-                    style: TextStyle(color: _keyValid ? c.green : c.red, fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
+              _keyResult(c),
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _saveKey,
-                  icon: _saving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline, size: 18),
-                  label: Text(_saving ? 'Verifying…' : 'Save key'),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                OutlinedButton.icon(
+                  onPressed: _testing ? null : _test,
+                  icon: _testing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.network_check, size: 18),
+                  label: Text(tr('key.test')),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
                 ),
-              ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: const Icon(Icons.lock_outline, size: 18),
+                  label: Text(tr('settings.save_key')),
+                  style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                ),
+              ]),
             ]),
           ),
-        ]),
-        group('Voice', [
           SwitchListTile(
-            title: const Text('“Hey Snapy”'),
-            subtitle: Text(_wakeProgress ??
-                'Say its name any time, even in other apps. Listens on your phone only; shows a small notification while on.'),
+            title: Text(tr('settings.offline')),
+            subtitle: Text(tr('settings.offline_sub')),
+            value: _brain['offline_actions'] != false,
+            onChanged: (v) => _update({'offline_actions': v}),
+          ),
+        ]),
+        group(tr('settings.voice'), [
+          SwitchListTile(
+            title: Text(tr('settings.wake')),
+            subtitle: Text(_wakeProgress ?? tr('permission.mic.body')),
             value: _perm['wake'] ?? false,
             onChanged: (on) async {
-              final ok = await SnapyCore.setWakeWord(on);
-              if (!ok && on && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Allow the microphone, then turn this on again.')));
-              }
+              var ok = false;
+              try {
+                ok = await SnapyCore.setWakeWord(on);
+              } catch (_) {}
+              if (!ok && on && context.mounted) toast(context, tr('settings.wake_mic_denied'));
               _load();
             },
           ),
           ListTile(
-            title: const Text('Language I speak'),
+            title: Text(tr('settings.language')),
             trailing: DropdownButton<String>(
               value: _voiceLang,
               underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 'auto', child: Text('English / Hinglish')),
-                DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)')),
-                DropdownMenuItem(value: 'mr', child: Text('मराठी (Marathi)')),
-                DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)')),
-                DropdownMenuItem(value: 'te', child: Text('తెలుగు (Telugu)')),
-                DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
+              items: [
+                DropdownMenuItem(value: 'auto', child: Text(tr('settings.language_auto'))),
+                const DropdownMenuItem(value: 'hi', child: Text('हिन्दी')),
+                const DropdownMenuItem(value: 'mr', child: Text('मराठी')),
+                const DropdownMenuItem(value: 'bn', child: Text('বাংলা')),
+                const DropdownMenuItem(value: 'te', child: Text('తెలుగు')),
+                const DropdownMenuItem(value: 'ta', child: Text('தமிழ்')),
               ],
-              onChanged: (v) async {
+              onChanged: (v) {
                 if (v == null) return;
                 setState(() => _voiceLang = v);
-                await SnapyCore.updateSettings({'voice_language': v});
+                _update({'voice_language': v});
               },
             ),
           ),
         ]),
-        group('Permissions', [
+        group(tr('settings.chip'), [
+          nav(tr('rcset.title'), Icons.tune, const ChipSettingsPage()),
           SwitchListTile(
-            title: const Text('Contacts'),
-            subtitle: const Text('For “call Mom” and “WhatsApp Rahul …”. Read on your phone only.'),
-            value: _perm['contacts'] ?? false,
-            onChanged: (_) async { await SnapyCore.requestPermission('contacts'); _load(); },
-          ),
-          SwitchListTile(
-            title: const Text('Place calls directly'),
-            subtitle: const Text('Otherwise Snapy opens the dialler with the number ready.'),
-            value: _perm['calls'] ?? false,
-            onChanged: (_) async { await SnapyCore.requestPermission('calls'); _load(); },
-          ),
-          SwitchListTile(
-            title: const Text('Reminder notifications'),
-            value: _perm['notifications'] ?? false,
-            onChanged: (_) async { await SnapyCore.requestNotifications(); _load(); },
-          ),
-          ListTile(
-            title: const Text('Real Count'),
-            subtitle: Text((_perm['realcount'] ?? false) ? 'On' : 'Off'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: SnapyCore.openRealCountSettings,
-          ),
-          ListTile(
-            title: const Text('Usage access'),
-            subtitle: Text((_perm['usage'] ?? false) ? 'On' : 'Off'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: SnapyCore.openUsageAccess,
-          ),
-          ListTile(
-            title: Text(tr('perm.overlay.title')),
-            subtitle: Text((_perm['overlay'] ?? false) ? tr('common.on') : tr('common.off')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: SnapyCore.openOverlaySettings,
-          ),
-          ListTile(
-            title: Text(tr('rcset.permissions')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionFlow())).then((_) => _load()),
+            secondary: const Icon(Icons.format_size),
+            title: Text(tr('settings.big_text')),
+            subtitle: Text(tr('settings.big_text_sub')),
+            value: _bigText,
+            onChanged: (v) {
+              setState(() => _bigText = v);
+              SnapyApp.simple.value = v;
+              RealCountRepo.setPrefs({'simple_mode': v});
+            },
           ),
         ]),
-        group(tr('home.real_count'), [
+        group(tr('settings.permissions'), [
+          perm(tr('settings.counter'), 'realcount', SnapyCore.openRealCountSettings),
+          perm(tr('settings.overlay'), 'overlay', SnapyCore.openOverlaySettings),
+          perm(tr('settings.usage_access'), 'usage', SnapyCore.openUsageAccess),
+          perm(tr('settings.mic'), 'microphone', () => SnapyCore.requestPermission('microphone')),
+          perm(tr('settings.notifications'), 'notifications', SnapyCore.requestNotifications),
+          perm(tr('settings.contacts'), 'contacts', () => SnapyCore.requestPermission('contacts')),
+          perm(tr('settings.calls'), 'calls', () => SnapyCore.requestPermission('calls')),
+          nav(tr('settings.perm_guide'), Icons.verified_user_outlined, const PermissionFlow()),
+          nav(tr('rcset.battery'), Icons.battery_charging_full_outlined, const BatteryGuidePage()),
+        ]),
+        group(tr('settings.laptop'), [
+          nav(tr('tools.pair_title'), Icons.laptop, const PairLaptopPage()),
+        ]),
+        group(tr('settings.data'), [
+          nav(tr('rcset.privacy'), Icons.receipt_long_outlined, const PrivacyReceiptsPage()),
           ListTile(
-            title: Text(tr('rcset.title')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChipSettingsPage())),
+            leading: const Icon(Icons.ios_share),
+            title: Text(tr('settings.export')),
+            onTap: () async {
+              final path = await NextApi.vaultExport('all');
+              if (context.mounted) toast(context, path == null ? tr('settings.export_failed') : tr('settings.export_done', {'path': path}));
+            },
           ),
           ListTile(
-            title: Text(tr('rcset.battery')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BatteryGuidePage())),
-          ),
-          ListTile(
-            title: Text(tr('rcset.privacy')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyReceiptsPage())),
+            leading: Icon(Icons.delete_outline, color: c.red),
+            title: Text(tr('settings.delete_all'), style: TextStyle(color: c.red)),
+            onTap: _deleteAll,
           ),
         ]),
         const SizedBox(height: 24),

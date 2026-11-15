@@ -6,7 +6,6 @@ import threading
 import unittest
 from unittest import mock
 
-os.environ.setdefault("SNAP_AIR_DATA", tempfile.mkdtemp())
 
 from src.brain import cloud as cloud_mod  # noqa: E402
 from src.brain.cloud import Brain, CloudLLM  # noqa: E402
@@ -288,7 +287,6 @@ class CancelScopeTests(unittest.TestCase):
     def setUpClass(cls):
         import importlib
         import sys
-        os.environ.setdefault("SNAP_AIR_SETTINGS", os.path.join(tempfile.mkdtemp(), "settings_cancel.json"))
         cls.main = sys.modules.get("main") or importlib.import_module("main")
 
     def run_cancel(self, kind, pulling=True, install="running"):

@@ -338,16 +338,18 @@ def _handle_transcript(text, armed, lang="en"):
         if agent.normalize(clean) in ("", "you", "thank you", "bye"):
             state["voice_status"] = "Ready"
             return
-        llm_prewarm()
-        assistant.handle(clean, "voice", lang)
+        if not _attention_answer(clean, "voice"):
+            llm_prewarm()
+            assistant.handle(clean, "voice", lang)
     elif heard_wake:
         if not rest:
             voice.arm(6)                       # "Snap" ... (pause) ... "what's on today?"
             llm_prewarm()
             state["voice_status"] = "Listening…"
             return
-        llm_prewarm()
-        assistant.handle(clean, "voice", lang)
+        if not _attention_answer(clean, "voice"):
+            llm_prewarm()
+            assistant.handle(clean, "voice", lang)
     elif mode == "always":
         r = agent.execute_intent(text)        # commands only; never chats back at overheard speech
         if r.action not in ("ignored", "unknown"):
@@ -371,6 +373,70 @@ def _on_media(st):
 
 media = MediaWatcher(on_change=_on_media)
 voice.system_level_fn = lambda: system_audio.level
+
+
+# ---------------------------------------------- attention (Real Count on Windows)
+# Counts Shorts/Reels (and long videos) watched in the browser from the activity tracker's
+# foreground polling, and offers gentle nudges (src/life/attention.py). Only counts and
+# durations per site id are stored; titles and URLs stay in memory.
+from src.life.attention import AttentionTracker, BrowserUrlReader, NudgeEngine, reset_payload  # noqa: E402
+from src.life.activity import extract_site  # noqa: E402
+
+attention = AttentionTracker(settings=settings, url_fn=BrowserUrlReader() if sys.platform == "win32" else None,
+                             media_fn=lambda: bool(media.playing) if media.available else None,
+                             extra_site_fn=extract_site)
+nudges = NudgeEngine(settings=settings)
+_attention_sent = {"key": None, "t": 0.0}
+
+
+def attention_payload():
+    return {**attention.snapshot(), "reset": reset_payload()}
+
+
+def _send_attention(force=False):
+    p = attention_payload()
+    key = (p["enabled"], p["today"], p["videos"], p["level"], p["session"], p["paused"], p["day"])
+    if force or key != _attention_sent["key"] or time.time() - _attention_sent["t"] > 30:
+        _attention_sent.update(key=key, t=time.time())
+        send_all(p)
+
+
+def _on_attention_observe(hwnd, exe, title, idle_s, t):
+    if not settings["attention_enabled"]:
+        return
+    events = attention.observe(exe, title, t, idle_s, hwnd)
+    if not clients:
+        return                                   # nothing is shown (or marked as shown) without the HUD
+    _send_attention()
+    focus_state = assistant.focus.state()
+    quiet = {"in_call": state["in_call"], "meeting": bool(meeting.recording)}
+    n = nudges.check(attention, t, focus=focus_state, events=events, active=idle_s < 120, **quiet)
+    if n:
+        send_all(n)
+    w = nudges.weekly(attention, t, focus_active=bool(focus_state.get("active")), **quiet)
+    if w:
+        send_all(w)
+
+
+def _attention_answer(text, source):
+    """'how many shorts did I watch today?' answered from the shared Real Count files."""
+    if not settings["attention_enabled"]:
+        return False
+    try:
+        ans = attention.answer(text)
+    except Exception as e:
+        diag.record("attention.answer", e)
+        return False
+    if not ans:
+        return False
+    assistant._msg("user", text, source=source)
+    assistant.reply(ans, speak=source == "voice")
+    return True
+
+
+activity.observers.append(_on_attention_observe)
+activity.interval_fn = lambda: attention.poll_interval if settings["attention_enabled"] else None
+settings.on_change(lambda ch: _send_attention(True) if any(k.startswith("attention_") for k in ch) else None)
 
 
 def apply_listening_timing():
@@ -532,6 +598,7 @@ def save_api_key(prov, key):
 
 _ollama_install = {"status": None, "pct": 0}
 _cancel_ollama = threading.Event()
+_ollama_install_lock = threading.Lock()
 from src.setup_assets import (Setup, SetupCancelled, whisper_ready, kokoro_ready,  # noqa: E402
                               WHISPER_REPO, WHISPER_FILES, KOKORO_URL, KOKORO_FILES)
 setup = Setup(on_change=lambda st: send_all(st))
@@ -609,13 +676,17 @@ def install_ollama(progress_item=None):
     recommended model for this PC. With progress_item, reports bytes to first-run setup."""
     import tempfile
     import requests as rq
-    if _ollama_install["status"] in ("running", "installing"):
-        return
-    _cancel_ollama.clear()
-    _ollama_install.update(status="running", pct=0)
+    from src.setup_assets import verify_installer
+    with _ollama_install_lock:            # setup and the "Install" button can race: one install at a time
+        if _ollama_install["status"] in ("running", "installing"):
+            return
+        _cancel_ollama.clear()
+        _ollama_install.update(status="running", pct=0, error=None)
     send_all(models_payload())
+    # a fresh private folder (not a fixed %TEMP%\OllamaSetup.exe another program could pre-plant or swap)
+    work = tempfile.mkdtemp(prefix="snapy-ollama-")
     try:
-        dest = os.path.join(tempfile.gettempdir(), appdata.get("ollama.installer_file"))
+        dest = os.path.join(work, appdata.get("ollama.installer_file"))
         with rq.get(appdata.get("ollama.installer_url"), stream=True, timeout=(10, 120)) as r:
             r.raise_for_status()
             total = int(r.headers.get("content-length") or 0)
@@ -645,13 +716,17 @@ def install_ollama(progress_item=None):
             _ollama_install.update(status="cancelled", pct=0)
             send_all(models_payload())
             return
+        # complete and signed by the expected publisher, or it never runs
+        verify_installer(dest, total)
         # From here the Windows installer runs; it can't be stopped safely, so Cancel is ignored
         _ollama_install.update(status="installing", pct=92)
         if progress_item:
             setup.update(progress_item, state="installing", speed=0)
         send_all(models_payload())
-        import subprocess as sp
-        sp.run([dest, *appdata.get("ollama.installer_args", [])], timeout=appdata.get("ollama.install_timeout_s"))
+        rc = subprocess.run([dest, *appdata.get("ollama.installer_args", [])],
+                            timeout=appdata.get("ollama.install_timeout_s")).returncode
+        if rc != 0:
+            raise RuntimeError(f"the installer exited with code {rc}")
         _ollama_install.update(status="done", pct=100)
         if progress_item:
             setup.update(progress_item, state="done", done=setup.get(progress_item)["total"])
@@ -660,6 +735,8 @@ def install_ollama(progress_item=None):
     except Exception as e:
         _ollama_install.update(status="error", pct=0, error=str(e))
         toast(f"Couldn't install the local AI engine: {e}", False, "model")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     send_all(models_payload())
 
 
@@ -699,6 +776,7 @@ def full_hello():
         "autostarted": "--autostart" in sys.argv or os.environ.get("SNAP_AIR_AUTOSTART") == "1",
         "data_dir": storage.data_dir(), "setup": setup.state(),
         "cloud_preview": cloud.preview_sample if cloud.consent_pending() else None,
+        "attention": attention_payload(),
         **{k: v for k, v in models_payload().items() if k != "type"},
     }
 
@@ -714,6 +792,12 @@ def delete_all_data():
         shutil.rmtree(p, ignore_errors=True)
         os.makedirs(p, exist_ok=True)
     activity.day, activity.data = None, None
+    with attention.lock:                     # attention counts (this PC's and synced phone files)
+        for sub in ("attention", "realcount"):
+            p = os.path.join(storage.data_dir(), sub)
+            shutil.rmtree(p, ignore_errors=True)
+            os.makedirs(p, exist_ok=True)
+        attention.day, attention._dirty = None, False
     toast("All personal data deleted", True, "privacy")
 
 
@@ -839,6 +923,8 @@ class _Ctx:
 def _h_chat(d, ctx):
     text = (d.get("text") or d.get("command") or "").strip()
     if text:
+        if _attention_answer(text, "typed"):
+            return
         llm_prewarm()
         assistant.handle(text, "typed")
 
@@ -1035,6 +1121,27 @@ def _h_voice_onboarding(d, ctx):
     voice.arm(10)
 
 
+@on("nudge_action")
+def _h_nudge_action(d, ctx):
+    """A nudge button: reset (the HUD shows the 2-min reset itself) | focus | dismiss |
+    open_anyway | back_to_focus | ignored (timed out)."""
+    out = nudges.action(str(d.get("id") or ""), str(d.get("action") or ""))
+    if out.get("focus") and not assistant.focus.active:
+        assistant.focus.start(out["focus"])
+        send_all({"type": "focus", **assistant.focus.state()})
+
+
+@on("attention_request")
+def _h_attention_request(d, ctx):
+    return attention_payload()
+
+
+@on("attention_pause")
+def _h_attention_pause(d, ctx):
+    attention.pause(d.get("minutes"))
+    _send_attention(True)
+
+
 @on("focus_stop")
 def _h_focus_stop(d, ctx):
     assistant.focus.stop()
@@ -1151,6 +1258,142 @@ def _h_model_select(d, ctx):
         settings.update({"llm_model": d["name"]})
     else:
         toast(f"Your system isn't compatible with {d['name']}. {reason}", False, "model")
+
+
+# ---------------------------------------------------------------- phone sync (src/sync)
+# Opt-in (settings "sync_enabled"): pair a phone with the QR in Settings -> Phone, then
+# memory, tasks, notes and the settings profile sync over the LAN, end-to-end encrypted.
+sync_service = None
+_sync_lock = threading.Lock()
+_focus_start_local = assistant.focus.start
+
+
+def _sync_activity_days():
+    if not settings["activity_tracking"]:
+        return []
+    out = []
+    for off in (0, -1):
+        s = activity.summary(storage.day_key(off))
+        out.append({"date": s["day"], "total_active": s["total_active"], "focus_seconds": s["focus_seconds"],
+                    "top_apps": [{"name": a["name"], "seconds": a["seconds"]} for a in s["top_apps"][:5]],
+                    "sites": s["sites"][:5], "switches": s["switches"]})
+    return out
+
+
+def _on_sync_command(peer, cmd):
+    """A command from the phone (already validated by src/sync/session.validate_command)."""
+    t = cmd["type"]
+    if t == "link":
+        os.startfile(cmd["url"])
+        toast("Opened a link from your phone", True, "sync")
+    elif t == "note":
+        notes.add(cmd["text"], kind="note", source="phone")
+        send_all({"type": "notes", "notes": notes.items})
+        toast("Note from your phone saved", True, "sync")
+    elif t == "text":
+        import pyperclip
+        pyperclip.copy(cmd["text"])
+        toast("Text from your phone is on the clipboard", True, "sync")
+    elif t == "start_my_day":
+        threading.Thread(target=assistant.handle, args=("start my day", "typed"), daemon=True).start()
+    elif t == "focus":
+        _focus_start_local(cmd["minutes"])          # not the synced wrapper: no echo back to the phone
+        send_all({"type": "focus", **assistant.focus.state()})
+    elif t == "resume_context":
+        threading.Thread(target=assistant.handle, args=(f"resume {cmd['name']}", "typed"), daemon=True).start()
+
+
+def _on_sync_event(kind, **data):
+    if kind == "changed":
+        if data.get("kind") == "task":
+            send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+        elif data.get("kind") == "note":
+            send_all({"type": "notes", "notes": notes.items})
+    if kind in ("paired", "connected", "disconnected", "synced"):
+        send_all(_sync_devices_payload())
+
+
+def _sync_devices_payload():
+    svc = sync_service
+    return {"type": "sync_devices", "enabled": bool(settings["sync_enabled"]),
+            "running": bool(svc and svc.running), "devices": svc.paired_devices() if svc else [],
+            "status": svc.status() if svc else None}
+
+
+def _sync_apply():
+    """Start or stop the sync service to match the sync_enabled setting."""
+    global sync_service
+    with _sync_lock:
+        want = bool(settings["sync_enabled"])
+        if want and not (sync_service and sync_service.running):
+            try:
+                from src.sync import build_engine_service
+                sync_service = sync_service or build_engine_service(
+                    memory, tasks, notes, settings, activity_days=_sync_activity_days,
+                    on_command=_on_sync_command, on_event=_on_sync_event)
+                sync_service.start()
+            except Exception as e:                  # noqa: BLE001 - e.g. port in use: keep Snapy running
+                diag.record("sync.start", e)
+                toast(f"Phone sync couldn't start: {e}", False, "sync")
+        elif not want and sync_service and sync_service.running:
+            sync_service.stop()
+    send_all(_sync_devices_payload())
+
+
+def _focus_start_synced(minutes, *a, **k):
+    out = _focus_start_local(minutes, *a, **k)
+    if settings["sync_focus_to_phone"] and sync_service and sync_service.running:
+        try:
+            sync_service.send_command(None, {"type": "focus", "minutes": int(minutes)})
+        except Exception as e:                      # noqa: BLE001
+            diag.record("sync.focus", e, quiet=True)
+    return out
+
+
+assistant.focus.start = _focus_start_synced
+settings.on_change(lambda ch: threading.Thread(target=_sync_apply, daemon=True).start() if "sync_enabled" in ch else None)
+
+
+@on("sync_pair_start")
+def _h_sync_pair_start(d, ctx):
+    if not (sync_service and sync_service.running):
+        return {"type": "sync_pair", "error": "Turn on phone sync first"}
+    return {"type": "sync_pair", **sync_service.pairing_qr_payload()}
+
+
+@on("sync_pair_cancel")
+def _h_sync_pair_cancel(d, ctx):
+    if sync_service:
+        sync_service.cancel_pairing()
+
+
+@on("sync_devices")
+def _h_sync_devices(d, ctx):
+    return _sync_devices_payload()
+
+
+@on("sync_unpair")
+def _h_sync_unpair(d, ctx):
+    if sync_service and d.get("id"):
+        sync_service.unpair(str(d["id"]))
+    return _sync_devices_payload()
+
+
+@on("sync_send")
+def _h_sync_send(d, ctx):
+    if not (sync_service and sync_service.running):
+        return {"type": "sync_sent", "ok": False, "error": "Phone sync is off"}
+    try:
+        res = sync_service.send_command(d.get("peer") or None, d.get("cmd") or {})
+    except ValueError as e:
+        return {"type": "sync_sent", "ok": False, "error": str(e)}
+    return {"type": "sync_sent", "ok": bool(res), "result": res}
+
+
+@on("sync_now")
+def _h_sync_now(d, ctx):
+    if sync_service and sync_service.running:
+        ctx.bg(sync_service.sync_now)
 
 
 async def ws_handler(ws):
@@ -1356,6 +1599,7 @@ if __name__ == "__main__":
     threading.Thread(target=lambda: asyncio.run(run_server()), daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=startup, daemon=True).start()
+    threading.Thread(target=_sync_apply, daemon=True).start()     # phone sync, only if sync_enabled
     try:
         while True:
             try:
@@ -1376,4 +1620,5 @@ if __name__ == "__main__":
         if gestures:
             gestures.release_all()
         activity.stop()
+        attention.flush()
         voice.stop()

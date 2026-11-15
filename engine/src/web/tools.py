@@ -5,6 +5,7 @@ import re
 import urllib.parse
 
 import requests
+from src import diag  # noqa: E402
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SnapAir/2.0",
       "Accept-Language": "en-US,en;q=0.9"}
@@ -77,8 +78,8 @@ def current_tab(max_chars=8000):
                 for page in ctx.pages:
                     if page.url == tab["url"]:
                         return {"title": page.title(), "url": page.url, "text": page.inner_text("body")[:max_chars]}
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("web.cdp_read", e, quiet=True)
     try:
         page = read_page(tab["url"], max_chars)
         page["title"] = tab.get("title") or page["title"]

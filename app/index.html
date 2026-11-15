@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Only our own files run; the only network the page uses is the engine's local WebSocket.
+         Inline style attributes are used by the UI builder (renderer.js h()), inline scripts are not. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>Snapy HUD</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -16,6 +19,7 @@
         <span id="island-status" class="island-status">Starting…</span>
         <span id="island-rec" class="pill-ind rec hidden" title="Recording meeting notes"><i></i>REC <b id="rec-time">0:00</b></span>
         <span id="island-focus" class="pill-ind focus hidden" title="Focus mode — click to end">Focus <b id="focus-time">25:00</b></span>
+        <span id="island-att" class="pill-ind att hidden" title="Shorts &amp; reels watched today on this PC"><span aria-hidden="true">&#9654;</span> <b id="att-count">0</b></span>
         <span id="island-gesture" class="pill-ind cam hidden" title="Hand gestures active"></span>
         <span id="island-ai-dot" class="ai-status-dot dot-orange" title="AI Status"></span>
     </div>
@@ -38,6 +42,24 @@
 
     <!-- ============ Banners (under the island) ============ -->
     <div id="banners" class="banners"></div>
+
+    <!-- ============ 2-minute reset (from an attention nudge) ============ -->
+    <div id="reset" class="reset-backdrop interactive hidden" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+        <div class="reset-card card-surface">
+            <div class="reset-ring">
+                <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+                    <circle class="reset-track" cx="60" cy="60" r="52"></circle>
+                    <circle id="reset-arc" class="reset-arc" cx="60" cy="60" r="52"></circle>
+                </svg>
+                <div class="reset-breath"></div>
+                <div id="reset-time" class="reset-time">2:00</div>
+            </div>
+            <h2 id="reset-title">2-minute reset</h2>
+            <p id="reset-step" class="reset-step" aria-live="polite"></p>
+            <div id="reset-dots" class="reset-dots"></div>
+            <button id="reset-done" class="btn primary">Done</button>
+        </div>
+    </div>
 
 
     <!-- ============ Drawer ============ -->

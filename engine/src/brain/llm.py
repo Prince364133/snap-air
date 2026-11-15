@@ -10,6 +10,7 @@ import threading
 import time
 
 import requests
+from src import diag  # noqa: E402
 
 # Measured on a Ryzen 7 7730U laptop (docs/RESEARCH.md §3): qwen3 reuses the
 # prompt cache between turns (~0.7 s prompt), qwen3.5 does not (~18-27 s/turn).
@@ -238,8 +239,8 @@ class LLM:
         if r:
             try:
                 r.close()
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("llm.cancel_pull_close", e, quiet=True)
         self.pulling = None
 
     # -------------------------------------------------------------- chat

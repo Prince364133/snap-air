@@ -35,8 +35,9 @@ def _span(t, m, group):
     return t[m.start(group):m.end(group)]
 
 
-def parse(text):
-    """-> {"kind": ..., ...} or None. `text` is the user's words (wake word already removed)."""
+def parse(text, now=None):
+    """-> {"kind": ..., ...} or None. `text` is the user's words (wake word already removed);
+    `now` (datetime) anchors alarm times (default: the clock)."""
     t = _clean(text)
     low = t.lower()
     slots = core.slot_values("phone")
@@ -57,7 +58,7 @@ def parse(text):
             return {"kind": "call", "contact": name, "video": low.startswith(slots["video_call_prefix"])}
         if kind == "alarm":
             from src.life.tasks import parse_when
-            when, _ = parse_when(g["when"])
+            when, _ = parse_when(g["when"], now)
             if when is None:
                 continue
             return {"kind": "alarm", "hour": when.hour, "minute": when.minute, "label": slots["alarm_label"]}

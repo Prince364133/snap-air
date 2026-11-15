@@ -1,0 +1,260 @@
+{
+ "suite": "wake",
+ "schema_version": 1,
+ "doc": "strip_wake(text, settings.agent_name, settings.wake_words) -> heard + rest",
+ "cases": [
+  {
+   "id": "wake.001",
+   "input": "Snapy, open YouTube",
+   "expect": {
+    "heard": true,
+    "rest": "open youtube"
+   }
+  },
+  {
+   "id": "wake.002",
+   "input": "hey snap scroll down",
+   "expect": {
+    "heard": true,
+    "rest": "scroll down"
+   }
+  },
+  {
+   "id": "wake.003",
+   "input": "uh snappy what's the time",
+   "expect": {
+    "heard": true,
+    "rest": "what's the time"
+   }
+  },
+  {
+   "id": "wake.004",
+   "input": "ok snap",
+   "expect": {
+    "heard": true,
+    "rest": ""
+   }
+  },
+  {
+   "id": "wake.005",
+   "input": "Snap Air, next tab",
+   "expect": {
+    "heard": true,
+    "rest": "next tab"
+   }
+  },
+  {
+   "id": "wake.006",
+   "input": "so hey snapy pause",
+   "expect": {
+    "heard": true,
+    "rest": "pause"
+   }
+  },
+  {
+   "id": "wake.007",
+   "input": "open youtube",
+   "expect": {
+    "heard": false,
+    "rest": "open youtube"
+   }
+  },
+  {
+   "id": "wake.008",
+   "input": "snapchat open karo",
+   "expect": {
+    "heard": false,
+    "rest": "snapchat open karo"
+   }
+  },
+  {
+   "id": "wake.009",
+   "input": "hey snapey play lofi",
+   "expect": {
+    "heard": true,
+    "rest": "play lofi"
+   }
+  },
+  {
+   "id": "wake.010",
+   "input": "Snappie.",
+   "expect": {
+    "heard": true,
+    "rest": ""
+   }
+  },
+  {
+   "id": "wake.011",
+   "input": "Meera, open YouTube",
+   "settings": {
+    "agent_name": "Meera"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "open youtube"
+   }
+  },
+  {
+   "id": "wake.012",
+   "input": "Mira open youtube",
+   "settings": {
+    "agent_name": "Meera"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "open youtube"
+   }
+  },
+  {
+   "id": "wake.013",
+   "input": "hey Mira scroll down",
+   "settings": {
+    "agent_name": "Meera"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "scroll down"
+   }
+  },
+  {
+   "id": "wake.014",
+   "input": "Maria open youtube",
+   "settings": {
+    "agent_name": "Meera"
+   },
+   "expect": {
+    "heard": false,
+    "rest": "maria open youtube"
+   }
+  },
+  {
+   "id": "wake.015",
+   "input": "Jarvis, lights",
+   "settings": {
+    "agent_name": "Jarvis"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "lights"
+   }
+  },
+  {
+   "id": "wake.016",
+   "input": "Jarviss next tab",
+   "settings": {
+    "agent_name": "Jarvis"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "next tab"
+   }
+  },
+  {
+   "id": "wake.017",
+   "input": "Tony stark mode",
+   "settings": {
+    "agent_name": "Tony Stark"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "mode"
+   }
+  },
+  {
+   "id": "wake.018",
+   "input": "tony stark open chrome",
+   "settings": {
+    "agent_name": "Tony Stark"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "open chrome"
+   }
+  },
+  {
+   "id": "wake.019",
+   "input": "Bob go",
+   "settings": {
+    "agent_name": "Bob"
+   },
+   "expect": {
+    "heard": true,
+    "rest": "go"
+   }
+  },
+  {
+   "id": "wake.020",
+   "input": "computer open notepad",
+   "settings": {
+    "wake_words": [
+     "computer"
+    ]
+   },
+   "expect": {
+    "heard": true,
+    "rest": "open notepad"
+   }
+  },
+  {
+   "id": "wake.021",
+   "input": "hey computer open notepad",
+   "settings": {
+    "wake_words": [
+     "computer"
+    ]
+   },
+   "expect": {
+    "heard": true,
+    "rest": "open notepad"
+   }
+  },
+  {
+   "id": "wake.022",
+   "input": "snap",
+   "expect": {
+    "heard": true,
+    "rest": ""
+   }
+  },
+  {
+   "id": "wake.023",
+   "input": "hello snapy",
+   "expect": {
+    "heard": true,
+    "rest": ""
+   }
+  },
+  {
+   "id": "wake.024",
+   "input": "hi hi snapy go back",
+   "expect": {
+    "heard": true,
+    "rest": "go back"
+   }
+  },
+  {
+   "id": "wake.025",
+   "input": "um uh snap open chrome",
+   "expect": {
+    "heard": true,
+    "rest": "open chrome"
+   }
+  },
+  {
+   "id": "wake.026",
+   "input": "um uh um snap open chrome",
+   "expect": {
+    "heard": false,
+    "rest": "um uh um snap open chrome"
+   }
+  },
+  {
+   "id": "wake.027",
+   "input": "snapyy open chrome",
+   "expect": {
+    "heard": false,
+    "rest": "snapyy open chrome"
+   }
+  }
+ ]
+}

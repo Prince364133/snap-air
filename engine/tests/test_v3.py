@@ -4,8 +4,9 @@ import os
 import tempfile
 import unittest
 
-TMP = tempfile.mkdtemp()
-os.environ["SNAP_AIR_DATA"] = TMP
+from tests import _env  # noqa: E402
+
+setUpModule, tearDownModule = _env.module_data_dir()   # own data folder, restored after
 
 from src.os_control import keys as K  # noqa: E402
 from src.brain import cloud as C  # noqa: E402
@@ -89,7 +90,9 @@ class CloudTests(unittest.TestCase):
         C.requests.post = self.orig
 
     def test_key_is_encrypted_at_rest(self):
-        raw = open(os.path.join(TMP, "secrets.json")).read()
+        from src import storage
+        with open(os.path.join(storage.data_dir(), "secrets.json"), encoding="utf-8") as f:
+            raw = f.read()
         self.assertNotIn("AIzaTESTKEY", raw)
         self.assertEqual(secrets_store.get_key("cloud_gemini"), "AIzaTESTKEY1234567")
         self.assertEqual(secrets_store.masked("cloud_gemini"), "•••• 4567")
@@ -182,7 +185,6 @@ class EngineImportTest(unittest.TestCase):
         """Catches startup NameErrors (the unit tests never import main.py otherwise)."""
         import importlib
         import sys
-        os.environ["SNAP_AIR_SETTINGS"] = os.path.join(TMP, "settings_import.json")
         mod = sys.modules.get("main") or importlib.import_module("main")
         # "none" is valid too: a machine with no Ollama and no cloud key has no brain yet
         self.assertIn(mod.state["brain"], ("local", "cloud", "none"))

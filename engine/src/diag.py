@@ -19,6 +19,8 @@ _recent = collections.deque(maxlen=50)
 _loaded = False
 _last_save = 0.0
 SAVE_EVERY_S = 5.0                             # throttle disk writes (app.json: diagnostics.save_every_s)
+MAX_CODES = 500                                # distinct codes kept (app.json: diagnostics.max_codes)
+OVERFLOW = "diag.other"
 
 
 def _file():
@@ -27,7 +29,7 @@ def _file():
 
 
 def _load():
-    global _loaded, _recent, SAVE_EVERY_S
+    global _loaded, _recent, SAVE_EVERY_S, MAX_CODES
     if _loaded:
         return
     _loaded = True
@@ -36,6 +38,7 @@ def _load():
         from src import appdata
         _recent = collections.deque(_recent, maxlen=int(appdata.get("diagnostics.keep_recent", 50) or 50))
         SAVE_EVERY_S = float(appdata.get("diagnostics.save_every_s", 5) or 5)
+        MAX_CODES = int(appdata.get("diagnostics.max_codes", 500) or 500)
     except Exception:                          # noqa: BLE001 - defaults are fine
         pass
     try:
@@ -69,6 +72,8 @@ def record(code, exc=None, quiet=False, **ctx):
         msg = f"{type(exc).__name__}: {exc}"[:200] if exc is not None else ""
         with _lock:
             _load()
+            if code not in _counts and len(_counts) >= MAX_CODES:
+                code = OVERFLOW                # bounded file, even if a caller builds codes dynamically
             _counts[code] = _counts.get(code, 0) + 1
             _recent.append({"code": code, "error": msg, "t": int(time.time()),
                             **{k: str(v)[:80] for k, v in ctx.items()}})

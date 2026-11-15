@@ -44,8 +44,12 @@ object VoiceController {
     }
 
     private fun listen(app: Context, continuation: Boolean = false) {
+        // voice_config comes from the Dart brain asynchronously (never block the main thread)
+        CoreBridge.get(app).voiceConfig { cfg -> listen(app, cfg, continuation) }
+    }
+
+    private fun listen(app: Context, cfg: JSONObject, continuation: Boolean) {
         val core = CoreBridge.get(app)
-        val cfg = JSONObject(core.configNowCall("voice_config"))
         recognizer?.destroy()
         val onDevice = Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isOnDeviceRecognitionAvailable(app)
         val r = if (onDevice) SpeechRecognizer.createOnDeviceSpeechRecognizer(app) else SpeechRecognizer.createSpeechRecognizer(app)
@@ -76,13 +80,14 @@ object VoiceController {
             override fun onResults(p: Bundle?) {
                 val said = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 val text = join(sofar, said)
-                if (text.isNotBlank() && core.isUnfinished(text) && !continuation) {
-                    sofar = text                                    // "open YouTube and…" — keep listening
-                    emit(core, "partial", "$text …")
-                    main.postDelayed({ listen(app, continuation = true) }, 120)
-                    return
+                if (text.isBlank() || continuation) { finish(app, text); return }
+                core.isUnfinished(text) { unfinished ->
+                    if (unfinished) {
+                        sofar = text                                // "open YouTube and…" — keep listening
+                        emit(core, "partial", "$text …")
+                        main.postDelayed({ listen(app, cfg, continuation = true) }, 120)
+                    } else finish(app, text)
                 }
-                finish(app, text)
             }
 
             override fun onError(code: Int) {

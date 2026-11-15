@@ -4,6 +4,7 @@ import re
 import os
 import sys
 import time
+from src import diag  # noqa: E402
 
 try:                                     # not available on Android/Linux
     from ctypes import wintypes
@@ -77,8 +78,8 @@ def _is_app_window(hwnd):
     cloaked = ctypes.c_int(0)
     try:
         ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), ctypes.sizeof(cloaked))
-    except Exception:
-        pass
+    except Exception as e:
+        diag.record("windows.cloaked", e, quiet=True)
     if cloaked.value:
         return False
     t = _title(hwnd)

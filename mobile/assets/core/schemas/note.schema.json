@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapy.live/core/schemas/note.schema.json",
+  "title": "Note",
+  "description": "A note (notes.json item). kind=meeting notes carry the meeting fields; other kinds may add fields (additionalProperties allowed).",
+  "x-schema-version": 1,
+  "x-synced": true,
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Record format version (this file's x-schema-version)."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id, unique per record type (10 lowercase hex chars from new records; any string accepted)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last change time (ISO). Sync: the newer 'updated' wins; ties -> the lexically greater 'device'."
+    },
+    "device": {
+      "type": "string",
+      "description": "Device that made the last change, e.g. 'windows-<hash>' or 'android-<hash>'."
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tombstone: true = deleted. Kept (not removed) so the deletion syncs."
+    },
+    "text": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "number",
+      "description": "Creation time, Unix epoch seconds."
+    },
+    "kind": {
+      "type": "string",
+      "description": "note | meeting | recap | video | clipboard | ..."
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "key_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "due": {
+            "type": "string"
+          },
+          "mine": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "bookmarks": {
+      "type": "array"
+    },
+    "transcript": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "who": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "duration": {
+      "type": "number",
+      "description": "Seconds."
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "updated",
+    "device",
+    "deleted",
+    "text",
+    "ts",
+    "kind"
+  ],
+  "additionalProperties": true
+}

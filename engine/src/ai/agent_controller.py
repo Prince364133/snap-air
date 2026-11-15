@@ -10,6 +10,7 @@ conversation near the microphone can't trigger random actions.
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -21,12 +22,10 @@ import requests
 from src.os_control import windows as win
 from src.os_control.apps import AppIndex
 from src.os_control import keys as K
+from src import core_loader as core
+from src import diag  # noqa: E402
 
-NUMBER_WORDS = {
-    "one": 1, "two": 2, "to": 2, "too": 2, "three": 3, "four": 4, "for": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "once": 1, "twice": 2,
-    "a couple": 2, "a few": 3, "fifteen": 15, "twenty": 20,
-}
+NUMBER_WORDS = core.config("vocab.numbers.count", {}) or {}        # core/rules/vocab.json
 
 WEBSITES = {
     "youtube": "https://www.youtube.com", "gmail": "https://mail.google.com",
@@ -51,9 +50,103 @@ KEY_NAMES = {
     **{f"f{i}": f"f{i}" for i in range(1, 13)},
 }
 
-# Whisper hallucinates these on noise/silence
-HALLUCINATIONS = {"", "you", "thank you", "thanks for watching", "thank you for watching",
-                  "bye", "okay", "ok", "so", "uh", "um", "hmm", "the end", "subscribe"}
+# Whisper hallucinates these on noise/silence (core/rules/vocab.json)
+HALLUCINATIONS = set(core.config("vocab.hallucinations", []) or [])
+
+
+# ---------------------------------------------------------------- shared parsing (core/README.md)
+def normalize_text(text):
+    t = text.lower().strip()
+    t = t.replace("’", "'").replace("-", " ")
+    t = re.sub(r"[\"“”.,!?;:()]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def sound_key(word):
+    """Rough phonetic key so Whisper's spellings of a name match ("Meera" ~ "Mira")."""
+    w = word.lower()
+    for x, y in core.config("vocab.wake.phonetic", []) or []:
+        w = w.replace(x, y)
+    w = re.sub(r"(.)\1+", r"\1", w)
+    return re.sub(r"h$", "", w)
+
+
+def wake_variants(agent_name="Snapy", wake_words=None):
+    words = set(wake_words or [])
+    name = normalize_text(agent_name or "")
+    names = {name, name.replace(" ", "")} if name else set()
+    builtin = set(core.config("vocab.wake.builtin", []) or [])
+    # longest first; equal lengths alphabetically (deterministic on every runtime)
+    return sorted({normalize_text(w) for w in words} | builtin | names, key=lambda v: (-len(v), v))
+
+
+def strip_wake(text, agent_name="Snapy", wake_words=None):
+    """-> (heard_wake_word, remaining normalised text). The wake word may follow up to two
+    filler words; custom names are fuzzy-matched by sound."""
+    norm = normalize_text(text)
+    filler = "^" + core.fragment("wake_filler")
+    suffix = re.escape(core.config("vocab.wake.optional_suffix", " air"))
+    for v in wake_variants(agent_name, wake_words):
+        m = re.match(filler + re.escape(v) + "(?:" + suffix + r")?\b\s*(.*)$", norm, re.ASCII)
+        if m:
+            return True, m.group(1).strip()
+    name = normalize_text(agent_name or "")
+    builtin = set(core.config("vocab.wake.builtin", []) or [])
+    if name and name not in builtin and len(name) >= int(core.config("vocab.wake.fuzzy_min_name_len", 4)):
+        import difflib
+        m = re.match(filler + r"(\S+(?: \S+)?)\s*(.*)$", norm, re.ASCII)
+        if m:
+            cand_words = m.group(1).split()
+            ratio = float(core.config("vocab.wake.fuzzy_min_ratio", 0.8))
+            for k in (len(name.split()), 1):
+                cand = " ".join(cand_words[:k])
+                if difflib.SequenceMatcher(None, sound_key(cand), sound_key(name)).ratio() >= ratio:
+                    return True, (" ".join(cand_words[k:]) + " " + m.group(2)).strip()
+    return False, norm
+
+
+def plain(cmd):
+    """'can you please open youtube' -> 'open youtube' (the rules expect plain commands)."""
+    out = core.strip("polite_prefix", cmd).strip()
+    out = core.strip("polite_suffix", out).strip()
+    return out or cmd
+
+
+def plain_original(original):
+    out = core.strip("polite_prefix_original", original)
+    return out.strip() or original
+
+
+def ordinal(cmd):
+    """Which result the user wants: 'play arijit songs, the 4th video' -> ('play arijit songs', 4),
+    'play the second result of lofi' -> ('play lofi', 2), 'video number 3' -> 3."""
+    words = core.config("ordinals", {}) or {}
+    for _, m in core.matches("ordinal", cmd):
+        tok = m.group("n")
+        n = int(tok) if tok.isdigit() else words.get(tok)
+        keep = m.groupdict().get("keep") or ""
+        rest = re.sub(r"\s+", " ", cmd[:m.start()] + keep + " " + cmd[m.end():]).strip(" ,")
+        if n and rest:
+            return rest, n
+    return cmd, None
+
+
+def play_request(cmd):
+    """Music/video requests, always using the user's own words as the search:
+    'open youtube and play some hindi music', 'listen to hindi romantic songs',
+    'hindi gaane chalao', 'arijit singh ke gaane bajao', 'play X on youtube'."""
+    topicless = set(core.domain("play_topicless_words")) | set((core.config("ordinals", {}) or {}).keys())
+    reject = set(core.domain("play_reject"))
+    for _, m in core.matches("play", cmd):
+        q = core.strip("play_filler_prefix", m.group("q").strip())
+        q = core.strip("play_suffix", q).strip()
+        q = core.rewrite("play_fixes", q)         # speech recognition hears "Hindi" as "Hindu"
+        # "play the 4th video" with no topic = click it on the current screen, not a new search
+        if all(w in topicless or w.isdigit() for w in q.split()):
+            return None
+        if q and q not in reject:
+            return q
+    return None
 
 
 class Result:
@@ -157,14 +250,26 @@ class OSActions:
             except FileNotFoundError:
                 subprocess.Popen(["powershell.exe", "-NoExit"], cwd=cwd, creationflags=flags)
 
+    # characters cmd.exe acts on inside a .cmd/.bat launcher's arguments (VS Code's "code" is code.cmd)
+    _CMD_META = set('"%^&|<>!\r\n')
+
     def open_editor(self, path):
-        for exe in ("code", "antigravity"):
-            try:
-                subprocess.Popen(f'{exe} "{path}"', shell=True,
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                return exe
-            except Exception:
+        """Open a folder in the first installed editor (app.json "dev.editor_commands"), else
+        Explorer. No shell: the folder is one argument and never parsed as a command line."""
+        from src import appdata
+        path = os.path.abspath(path)
+        for exe in appdata.get("dev.editor_commands", []) or []:
+            full = shutil.which(exe)
+            if not full:
+                continue                     # not installed: try the next one (shell=True never failed here)
+            if full.lower().endswith((".cmd", ".bat")) and self._CMD_META & set(path):
+                diag.record("agent.open_editor_unsafe_path", None, quiet=True, editor=exe)
                 continue
+            try:
+                subprocess.Popen([full, path], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return exe
+            except OSError as e:
+                diag.record("agent.open_editor", e, quiet=True, editor=exe)
         os.startfile(path)
         return "explorer"
 
@@ -206,57 +311,26 @@ class AgentController:
     # ------------------------------------------------------------ text utils
     @staticmethod
     def normalize(text):
-        t = text.lower().strip()
-        t = t.replace("’", "'").replace("-", " ")
-        t = re.sub(r"[\"“”.,!?;:()]+", " ", t)
-        t = re.sub(r"\s+", " ", t).strip()
-        return t
+        return normalize_text(text)
 
-    FILLER = r"^(?:(?:uh|um|so|and|oh|yo|hey|hi|ok|okay|alright|right|hello) ){0,2}"
-    BUILTIN_WAKE = {"hey snap", "hi snap", "ok snap", "okay snap", "snap air", "snapair", "snap",
-                    "snapy", "snappy", "snappie", "snapey"}
+    BUILTIN_WAKE = set(core.config("vocab.wake.builtin", []) or [])
 
     @property
     def agent_name(self):
         return (self._s("agent_name", "Snapy") or "Snapy").strip()
 
     def wake_variants(self):
-        words = set(self._s("wake_words", ["snapy", "snap"]) or [])
-        name = self.normalize(self.agent_name)
-        names = {name, name.replace(" ", "")} if name else set()
-        return sorted({self.normalize(w) for w in words} | self.BUILTIN_WAKE | names, key=len, reverse=True)
+        return wake_variants(self.agent_name, self._s("wake_words", ["snapy", "snap"]))
 
     def strip_wake_word(self, text):
         """Returns (heard_wake_word, remaining_text). Accepts it in the first
         few words ("uh, snapy, ..."), and fuzzy-matches custom names because
         Whisper spells uncommon names in different ways ("Meera" -> "Mira")."""
-        norm = self.normalize(text)
-        for v in self.wake_variants():
-            m = re.match(self.FILLER + re.escape(v) + r"(?: air)?\b\s*(.*)$", norm)
-            if m:
-                return True, m.group(1).strip()
-        name = self.normalize(self.agent_name)
-        if name and name not in self.BUILTIN_WAKE and len(name) >= 4:
-            import difflib
-            m = re.match(self.FILLER + r"(\S+(?: \S+)?)\s*(.*)$", norm)
-            if m:
-                cand_words = m.group(1).split()
-                for k in (len(name.split()), 1):
-                    cand = " ".join(cand_words[:k])
-                    if difflib.SequenceMatcher(None, self._sound(cand), self._sound(name)).ratio() >= 0.8:
-                        rest = (" ".join(cand_words[k:]) + " " + m.group(2)).strip()
-                        return True, rest
-        return False, norm
+        return strip_wake(text, self.agent_name, self._s("wake_words", ["snapy", "snap"]))
 
     @staticmethod
     def _sound(word):
-        """Rough phonetic key so Whisper's spellings of a name match ("Meera" ~ "Mira")."""
-        w = word.lower()
-        for x, y in (("ee", "i"), ("ii", "i"), ("oo", "u"), ("aa", "a"), ("ph", "f"), ("w", "v"), ("ck", "k"),
-                     ("q", "k"), ("y", "i"), ("z", "s"), ("th", "t"), ("sh", "s")):
-            w = w.replace(x, y)
-        w = re.sub(r"(.)\1+", r"\1", w)
-        return re.sub(r"h$", "", w)
+        return sound_key(word)
 
     def strip_wake_original(self, raw):
         """Remove the wake word from the original text (keeps casing for notes/typing)."""
@@ -335,19 +409,12 @@ class AgentController:
             self.last_command = (cmd, original)
         return result
 
-    POLITE = re.compile(r"^(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |"
-                        r"i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+")
-
     def _plain(self, cmd):
         """'can you please open youtube' -> 'open youtube' (the rules expect plain commands)."""
-        out = self.POLITE.sub("", cmd).strip()
-        out = re.sub(r"\s+(?:please|for me|now|yaar|na|bhai)$", "", out).strip()
-        return out or cmd
+        return plain(cmd)
 
     def _plain_original(self, original):
-        out = re.sub(r"^\W*(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |"
-                     r"i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+", "", original, flags=re.I)
-        return out.strip() or original
+        return plain_original(original)
 
     QUIT = re.compile(r"(?:close|quit|exit|shut ?down|turn off|stop|band karo|band ho ja(?:o)?|band kar do)"
                       r"(?: (?:yourself|snapy|snappy|snap|the assistant|the app|assistant))?(?: now| please)?")
@@ -373,59 +440,11 @@ class AgentController:
 
     @staticmethod
     def _ordinal(cmd):
-        """Which result the user wants: 'play arijit songs, the 4th video' -> ('play arijit songs', 4),
-        'play the second result of lofi' -> ('play lofi', 2), 'video number 3' -> 3."""
-        from src import appdata
-        words = appdata.get("ordinals", {}) or {}
-        alt = "|".join(sorted(map(re.escape, words), key=len, reverse=True))
-        noun = r"(?:one|video|result|link|song|wala|wali)"
-        pats = [
-            rf"[, ]*(?:and )?(?:play |open |click )?(?:the )?({alt})(?: {noun})?$",               # ... the 4th video
-            rf"[, ]*(?:the )?(?:video|result|song) (?:number |no )?(\d+)$",                         # ... video number 4
-            rf"(?<=\bplay )(?:the )?({alt}) {noun} (?:of|for|from|on) ",                            # play the 2nd video of X
-            rf"(?<=\bplay )(?:the )?({alt}) ",                                                      # play the second X
-        ]
-        for p in pats:
-            m = re.search(p, cmd)
-            if m:
-                tok = m.group(1)
-                n = int(tok) if tok.isdigit() else words.get(tok)
-                rest = re.sub(r"\s+", " ", cmd[:m.start()] + " " + cmd[m.end():]).strip(" ,")
-                if n and rest:
-                    return rest, n
-        return cmd, None
+        return ordinal(cmd)
 
     @staticmethod
     def _play_request(cmd):
-        """Music/video requests, always using the user's own words as the search:
-        'open youtube and play some hindi music', 'listen to hindi romantic songs',
-        'hindi gaane chalao', 'arijit singh ke gaane bajao', 'play X on youtube'."""
-        music = r"\b(?:gaane|gaana|gana|songs?|music|bhajan|lofi|playlist|podcast|album|mix|video|movie|trailer)\b"
-        pats = [
-            r"(?:open |go to |on )?youtube (?:and |then )?(?:play|search(?: for)?|find|put on|search and play) (.+)",
-            r"(?:play|put on|search for|find|watch) (.+?) (?:on|in) youtube",
-            r"youtube (?:pe|par) (.+?) (?:chalao|chala do|chalado|lagao|laga do|play karo|play kar do|dikhao)",
-            r"(?:listen to|listen|hear) (.*" + music + r".*)",
-            r"(?:play) (.*" + music + r".*)",
-            r"(.+?) (?:bajao|baja do|bajado)",
-            r"(.*" + music + r".*?) (?:chalao|chala do|chalado|sunao|suna do|lagao|laga do|play karo|play kar do)",
-        ]
-        for p in pats:
-            m = re.fullmatch(p, cmd)
-            if m:
-                q = re.sub(r"^(?:(?:some|a few|me|kuch|koi|mujhe|mere liye|hume|humein|thode|achhe)\s+)+", "", m.group(1).strip())
-                q = re.sub(r"\s+(?:on youtube|youtube (?:pe|par))$", "", q).strip()
-                # speech recognition often hears "Hindi" as "Hindu" before music words
-                q = re.sub(r"\bhindu\b(?=\s+(?:romantic|sad|old|new|love|party|devotional|songs?|music|gaane|gana))", "hindi", q)
-                # "play the 4th video" with no topic = click it on the current screen, not a new search
-                from src import appdata
-                filler = {"the", "one", "video", "videos", "result", "link", "wala", "wali", "number", "no"} | \
-                    set((appdata.get("ordinals", {}) or {}).keys())
-                if all(w in filler or w.isdigit() for w in q.split()):
-                    return None
-                if q and q not in ("it", "that", "this", "music", "something", "kuch", "video", "youtube"):
-                    return q
-        return None
+        return play_request(cmd)
 
     def _run(self, cmd, original):
         for pattern, fn in self.commands:
@@ -914,8 +933,8 @@ class AgentController:
             try:
                 subprocess.run(["taskkill", "/f", "/im", "osk.exe"], capture_output=True,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("agent.close_osk", e, quiet=True)
             return Result(True, "Closed On-Screen Keyboard", "close")
 
         @cmd(r"close (.+)")
@@ -980,8 +999,8 @@ class AgentController:
                 list(dict.fromkeys(re.findall(r'"videoId":"([\w-]{11})"', html)))
             if ids:
                 url = "https://www.youtube.com/watch?v=" + ids[min(max(1, int(nth)), len(ids)) - 1]
-        except Exception:
-            pass
+        except Exception as e:
+            diag.record("agent.youtube_search", e, quiet=True)
         self.os.open_url(url)
         return url
 
@@ -1045,13 +1064,7 @@ class AgentController:
 
     # ---------------------------------------------------------------- ollama
     def _ask_ollama(self, phrase):
-        examples = ["scroll down", "scroll up 3 times", "switch to chrome", "next tab", "open spotify",
-                    "play lofi music on youtube", "volume up", "pause", "go back", "take note buy milk",
-                    "minimize window", "open settings", "search for weather", "click", "type hello",
-                    "run project", "show desktop", "zoom in", "copy", "paste", "close tab"]
-        prompt = ("Rewrite the user's request as ONE short command in the same style as these examples. "
-                  "If it is not a request to control the computer, answer NONE.\nExamples: "
-                  + "; ".join(examples) + f"\nUser: {phrase}\nCommand:")
+        prompt = core.prompt("command_rewrite", phrase=phrase)
         try:
             from src import appdata
             r = requests.post(appdata.get("ollama.host") + "/api/generate", timeout=6, json={
@@ -1059,7 +1072,8 @@ class AgentController:
                 "options": {"temperature": 0, "num_predict": 20}})
             text = r.json().get("response", "").strip().splitlines()[0].strip().strip('"')
             return None if not text or "none" in text.lower() else text
-        except Exception:
+        except Exception as e:
+            diag.record("agent.ollama_rewrite", e, quiet=True)
             return None
 
     # ----------------------------------------------------------- catalogue

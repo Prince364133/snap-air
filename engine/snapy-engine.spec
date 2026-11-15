@@ -18,6 +18,15 @@ for pkg in ("mediapipe", "faster_whisper", "ctranslate2", "onnxruntime", "kokoro
 hiddenimports += collect_submodules("src") + ["pyautogui", "pyperclip", "pygetwindow", "pymsgbox", "pytweening",
                                               "pyscreeze", "mouseinfo", "websockets.legacy", "winreg"]
 datas += [("src/vision/hand_landmarker.task", "src/vision"), ("src/data/app.json", "src/data")]
+# Shared core (prompts, intents, rules, i18n...) -> <bundle>/core, found by src/core_loader.py via sys._MEIPASS.
+# Conformance goldens are test data, not needed at runtime.
+_CORE = os.path.join("..", "core")
+for _dir, _subdirs, _files in os.walk(_CORE):
+    _rel = os.path.relpath(_dir, _CORE)
+    if _rel.split(os.sep)[0] == "conformance":
+        continue
+    for _f in _files:
+        datas.append((os.path.join(_dir, _f), os.path.normpath(os.path.join("core", _rel))))
 
 a = Analysis(
     ["main.py"],

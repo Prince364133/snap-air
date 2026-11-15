@@ -1,0 +1,65 @@
+{
+  "_comment": "Encrypted frames with the session keys of handshake case 'session'.",
+  "keys": {
+    "c2s": "5470f7cfe8c8496e8ed0f3ea206f3c434252e57f7f1d878ee8a9f53cdb59370c",
+    "s2c": "99dcfd7be0964dc432bbd31bb0d9152bcdb923318b06db833523dc26db3cbc05",
+    "mk_c": "47b6a01573eb19ade5df9c83c8689177c64be92e02961ed09c1c3c32be2672ee",
+    "mk_s": "8297aacfb75fdd0102c798bda1d62b6ab8196ebb10a856caf58a5e9542c50f0e"
+  },
+  "c2s": [
+    {
+      "plaintext": "{\"kinds\":{\"task\":{\"a1\":[\"2026-11-15T09:30:00.000Z\",\"android-3f9c2a71be\"]}},\"type\":\"manifest\"}",
+      "frame": "00000000000000005c1d2a80cba2a81f38d1a332e2f9068b5373479f5926083a1c12627c194ecbc6a4d0c87cbc6c8c2201cb4546404a46aa245a96bf8f7a305d514506c44b3a946170b20f9f52b8f5eb6e97947c598bce1d3c313dfd7ccf4d0a59697ce1bc9c1c28de327242db6075906f32c2ed3e"
+    },
+    {
+      "plaintext": "{\"cmd\":{\"text\":\"Buy milk ☕ दूध\",\"type\":\"note\"},\"id\":\"c1\",\"type\":\"cmd\"}",
+      "frame": "0000000000000001242789ac0143a6695170596556e2209927cd34f3f0efc43e5344b60969c8c5d37bea8591566dcdfe4ff0a22ac49e21a32d3e414498abcca1fd89a6e81db923e08fa9a2176545c5b6ce67d7f574a2537ae86d5e18bc4c2e7b8740a44b769b"
+    },
+    {
+      "plaintext": "{\"type\":\"ping\"}",
+      "frame": "0000000000000002e512da38d13a8d8da02555ff1425aa6a09e59ae750191c5f4a25d998d02ca0"
+    }
+  ],
+  "s2c": [
+    {
+      "plaintext": "{\"sent\":0,\"type\":\"sync_end\"}",
+      "frame": "00000000000000005a4f17421155720fa59ade8f01761f50d45df405145e626bc478778601c9a4ca8eb8cd97fce5a924db0a700b"
+    },
+    {
+      "plaintext": "{\"id\":\"c1\",\"ok\":true,\"type\":\"ack\"}",
+      "frame": "00000000000000017114e93bfa6473ca3d41c57e410670c568dff4e87483da428c0aa9aa4446edd3988c88f7d8ea8a74b76364426c4b4b0f4476"
+    }
+  ],
+  "negative": [
+    {
+      "name": "tampered ciphertext",
+      "direction": "c2s",
+      "expect_ctr": 0,
+      "frame": "00000000000000005c1d2a80cba2a81f38d1a332e3f9068b5373479f5926083a1c12627c194ecbc6a4d0c87cbc6c8c2201cb4546404a46aa245a96bf8f7a305d514506c44b3a946170b20f9f52b8f5eb6e97947c598bce1d3c313dfd7ccf4d0a59697ce1bc9c1c28de327242db6075906f32c2ed3e"
+    },
+    {
+      "name": "counter skips ahead (replay/reorder)",
+      "direction": "c2s",
+      "expect_ctr": 0,
+      "frame": "00000000000000055c1d2a80cba2a81f38d1a332e2f9068b5373479f5926083a1c12627c194ecbc6a4d0c87cbc6c8c2201cb4546404a46aa245a96bf8f7a305d514506c44b3a946170b20f9f52b8f5eb6e97947c598bce1d3c313dfd7ccf4d0a59697ce1bc9c1c28de327242db6075906f32c2ed3e"
+    },
+    {
+      "name": "replay of frame 0 after it was accepted",
+      "direction": "c2s",
+      "expect_ctr": 1,
+      "frame": "00000000000000005c1d2a80cba2a81f38d1a332e2f9068b5373479f5926083a1c12627c194ecbc6a4d0c87cbc6c8c2201cb4546404a46aa245a96bf8f7a305d514506c44b3a946170b20f9f52b8f5eb6e97947c598bce1d3c313dfd7ccf4d0a59697ce1bc9c1c28de327242db6075906f32c2ed3e"
+    },
+    {
+      "name": "frame for the other direction",
+      "direction": "s2c",
+      "expect_ctr": 0,
+      "frame": "00000000000000005c1d2a80cba2a81f38d1a332e2f9068b5373479f5926083a1c12627c194ecbc6a4d0c87cbc6c8c2201cb4546404a46aa245a96bf8f7a305d514506c44b3a946170b20f9f52b8f5eb6e97947c598bce1d3c313dfd7ccf4d0a59697ce1bc9c1c28de327242db6075906f32c2ed3e"
+    },
+    {
+      "name": "too short",
+      "direction": "c2s",
+      "expect_ctr": 0,
+      "frame": "0000000000000000"
+    }
+  ]
+}

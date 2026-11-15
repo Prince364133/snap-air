@@ -1,0 +1,934 @@
+{
+  "_comment": "LWW merge outcomes (engine/src/sync/merge.py).",
+  "merge": [
+    {
+      "name": "remote newer wins",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "old"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "new"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "new"
+          }
+        }
+      }
+    },
+    {
+      "name": "local newer kept",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T11:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "mine"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "theirs"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T11:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "mine"
+          }
+        }
+      }
+    },
+    {
+      "name": "new record added",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [],
+      "incoming": [
+        {
+          "id": "n1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "text": "hi"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "n1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "n1": {
+            "id": "n1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "text": "hi"
+          }
+        }
+      }
+    },
+    {
+      "name": "tie broken by greater device id",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "android"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "windows"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "windows"
+          }
+        }
+      }
+    },
+    {
+      "name": "tie, local device greater keeps local",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "windows"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "android"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "windows"
+          }
+        }
+      }
+    },
+    {
+      "name": "full tie keeps local",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "L"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "R"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "L"
+          }
+        }
+      }
+    },
+    {
+      "name": "newer tombstone deletes",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "x"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:30:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": true,
+          "schema_version": 1
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:30:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": true,
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "older tombstone loses to edit",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "edited"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:30:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": true,
+          "schema_version": 1
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T10:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "edited"
+          }
+        }
+      }
+    },
+    {
+      "name": "newer edit resurrects over tombstone",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": true,
+          "schema_version": 1
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:30:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "back"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:30:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "back"
+          }
+        }
+      }
+    },
+    {
+      "name": "tombstone vs tombstone tie by device",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": true,
+          "schema_version": 1
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": true,
+          "schema_version": 1
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": true,
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "offsets compare by instant",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T15:00:00+05:30",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "ist 09:30Z"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:31:00Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "09:31Z"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:31:00Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "09:31Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "no-offset time is UTC",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:31:00",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "naive 09:31Z"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T15:00:00+05:30",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "09:30Z"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:31:00",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "naive 09:31Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "millisecond precision",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.001Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "L"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.002Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "R"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "t1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:00:00.002Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "R"
+          }
+        }
+      }
+    },
+    {
+      "name": "sub-millisecond digits ignored (tie -> device)",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.0019Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "L"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.001Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "R"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 0,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:00:00.0019Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "L"
+          }
+        }
+      }
+    },
+    {
+      "name": "far-future record rejected",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [
+        {
+          "id": "t1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "L"
+        }
+      ],
+      "incoming": [
+        {
+          "id": "t1",
+          "updated": "2026-11-20T09:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "future"
+        }
+      ],
+      "expect": {
+        "applied": [],
+        "rejected": 1,
+        "merged": {
+          "t1": {
+            "id": "t1",
+            "updated": "2026-11-15T09:00:00.000Z",
+            "device": "windows-a1b2c3d4e5",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "L"
+          }
+        }
+      }
+    },
+    {
+      "name": "malformed records rejected",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [],
+      "incoming": [
+        {
+          "id": "",
+          "updated": "2026-11-15T09:00:00Z",
+          "device": "android-3f9c2a71be"
+        },
+        {
+          "id": "x1",
+          "updated": "yesterday",
+          "device": "android-3f9c2a71be"
+        },
+        {
+          "id": "x2",
+          "updated": "2026-11-15T09:00:00Z",
+          "device": ""
+        },
+        {
+          "id": "x3",
+          "updated": "2026-11-15T09:00:00Z",
+          "device": "android-3f9c2a71be",
+          "deleted": "yes"
+        },
+        {
+          "id": "ok",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "valid"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "ok"
+        ],
+        "rejected": 4,
+        "merged": {
+          "ok": {
+            "id": "ok",
+            "updated": "2026-11-15T09:00:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "batch with duplicate ids keeps the newest",
+      "now": "2026-11-15T12:00:00.000Z",
+      "max_skew_s": 86400,
+      "local": [],
+      "incoming": [
+        {
+          "id": "d1",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "first"
+        },
+        {
+          "id": "d1",
+          "updated": "2026-11-15T09:05:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "second"
+        },
+        {
+          "id": "d1",
+          "updated": "2026-11-15T09:01:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "third"
+        }
+      ],
+      "expect": {
+        "applied": [
+          "d1"
+        ],
+        "rejected": 0,
+        "merged": {
+          "d1": {
+            "id": "d1",
+            "updated": "2026-11-15T09:05:00.000Z",
+            "device": "android-3f9c2a71be",
+            "deleted": false,
+            "schema_version": 1,
+            "title": "second"
+          }
+        }
+      }
+    }
+  ],
+  "to_send": [
+    {
+      "name": "send what the peer lacks or has older",
+      "local": [
+        {
+          "id": "a",
+          "updated": "2026-11-15T10:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "a"
+        },
+        {
+          "id": "b",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "b"
+        },
+        {
+          "id": "c",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": true,
+          "schema_version": 1
+        },
+        {
+          "id": "d",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "d"
+        },
+        {
+          "id": "e",
+          "updated": "2026-11-15T09:00:00.000Z",
+          "device": "android-3f9c2a71be",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "e"
+        }
+      ],
+      "peer_manifest": {
+        "a": [
+          "2026-11-15T09:00:00.000Z",
+          "android-3f9c2a71be"
+        ],
+        "b": [
+          "2026-11-15T10:00:00.000Z",
+          "android-3f9c2a71be"
+        ],
+        "d": [
+          "2026-11-15T09:00:00.000Z",
+          "android-3f9c2a71be"
+        ],
+        "e": [
+          "2026-11-15T09:00:00.000Z",
+          "android-3f9c2a71be"
+        ],
+        "z": [
+          "2026-11-15T09:00:00.000Z",
+          "android-3f9c2a71be"
+        ]
+      },
+      "expect_ids": [
+        "a",
+        "c",
+        "d"
+      ]
+    }
+  ],
+  "purge": [
+    {
+      "name": "drop tombstones older than 30 days",
+      "now": "2026-11-15T12:00:00.000Z",
+      "retention_days": 30,
+      "local": [
+        {
+          "id": "old",
+          "updated": "2026-10-01T00:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": true,
+          "schema_version": 1
+        },
+        {
+          "id": "new",
+          "updated": "2026-11-10T00:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": true,
+          "schema_version": 1
+        },
+        {
+          "id": "live",
+          "updated": "2026-01-01T00:00:00.000Z",
+          "device": "windows-a1b2c3d4e5",
+          "deleted": false,
+          "schema_version": 1,
+          "title": "kept: not a tombstone"
+        }
+      ],
+      "expect_ids": [
+        "old"
+      ]
+    }
+  ],
+  "timestamps": {
+    "valid": [
+      {
+        "input": "2026-11-15T09:30:00Z",
+        "ms": 1794735000000
+      },
+      {
+        "input": "2026-11-15T09:30:00.123Z",
+        "ms": 1794735000123
+      },
+      {
+        "input": "2026-11-15T09:30:00.123456Z",
+        "ms": 1794735000123
+      },
+      {
+        "input": "2026-11-15T15:00:00+05:30",
+        "ms": 1794735000000
+      },
+      {
+        "input": "2026-11-15T15:00:00.5+05:30",
+        "ms": 1794735000500
+      },
+      {
+        "input": "2026-11-15T04:00:00-05:30",
+        "ms": 1794735000000
+      },
+      {
+        "input": "2026-11-15T09:30:00",
+        "ms": 1794735000000
+      },
+      {
+        "input": "2026-11-15T09:30",
+        "ms": 1794735000000
+      },
+      {
+        "input": "1970-01-01T00:00:00Z",
+        "ms": 0
+      },
+      {
+        "input": "2026-11-15 09:30:00+0530",
+        "ms": 1794715200000
+      },
+      {
+        "input": "2028-02-29T23:59:59.999Z",
+        "ms": 1835481599999
+      },
+      {
+        "input": " 2026-11-15T09:30:00Z ",
+        "ms": 1794735000000
+      }
+    ],
+    "invalid": [
+      "",
+      "yesterday",
+      "2026-13-01T00:00:00Z",
+      "15/11/2026",
+      "2026-11-15",
+      "2026-02-30T00:00:00Z",
+      "2026-11-15T24:00:00Z",
+      "2026-11-15T09:60:00Z",
+      "2026-11-15T09:30:60Z",
+      "20261115T093000Z",
+      "2026-11-15T09:30:00+25:00",
+      "2026-11-15T09:30:00 Z"
+    ],
+    "format": [
+      {
+        "ms": 1794735000123,
+        "text": "2026-11-15T09:30:00.123Z"
+      },
+      {
+        "ms": 0,
+        "text": "1970-01-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "commands": {
+    "valid": [
+      {
+        "type": "link",
+        "url": "https://example.com/a?b=1"
+      },
+      {
+        "type": "note",
+        "text": "Call mom"
+      },
+      {
+        "type": "text",
+        "text": "OTP-free text"
+      },
+      {
+        "type": "start_my_day"
+      },
+      {
+        "type": "focus",
+        "minutes": 25
+      },
+      {
+        "type": "resume_context",
+        "name": "Snapy sync"
+      }
+    ],
+    "invalid": [
+      {
+        "type": "link",
+        "url": "javascript:alert(1)"
+      },
+      {
+        "type": "link",
+        "url": "file:///C:/x"
+      },
+      {
+        "type": "note",
+        "text": "   "
+      },
+      {
+        "type": "focus",
+        "minutes": 0
+      },
+      {
+        "type": "focus",
+        "minutes": 100000
+      },
+      {
+        "type": "focus",
+        "minutes": true
+      },
+      {
+        "type": "shell",
+        "cmd": "rm -rf"
+      },
+      {
+        "type": "resume_context"
+      }
+    ]
+  }
+}

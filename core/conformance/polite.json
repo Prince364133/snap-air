@@ -1,0 +1,191 @@
+{
+ "suite": "polite",
+ "schema_version": 1,
+ "doc": "plain(normalize(text)) and plain_original(text)",
+ "cases": [
+  {
+   "id": "polite.001",
+   "input": "can you please open youtube",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube"
+   }
+  },
+  {
+   "id": "polite.002",
+   "input": "Could you open Chrome?",
+   "expect": {
+    "plain": "open chrome",
+    "plain_original": "open Chrome?"
+   }
+  },
+  {
+   "id": "polite.003",
+   "input": "would you please scroll down",
+   "expect": {
+    "plain": "scroll down",
+    "plain_original": "scroll down"
+   }
+  },
+  {
+   "id": "polite.004",
+   "input": "please open spotify",
+   "expect": {
+    "plain": "open spotify",
+    "plain_original": "open spotify"
+   }
+  },
+  {
+   "id": "polite.005",
+   "input": "kindly close the tab",
+   "expect": {
+    "plain": "close the tab",
+    "plain_original": "close the tab"
+   }
+  },
+  {
+   "id": "polite.006",
+   "input": "just pause",
+   "expect": {
+    "plain": "pause",
+    "plain_original": "pause"
+   }
+  },
+  {
+   "id": "polite.007",
+   "input": "i want you to open notepad",
+   "expect": {
+    "plain": "open notepad",
+    "plain_original": "open notepad"
+   }
+  },
+  {
+   "id": "polite.008",
+   "input": "i want to play music",
+   "expect": {
+    "plain": "play music",
+    "plain_original": "play music"
+   }
+  },
+  {
+   "id": "polite.009",
+   "input": "i would like to open settings",
+   "expect": {
+    "plain": "open settings",
+    "plain_original": "open settings"
+   }
+  },
+  {
+   "id": "polite.010",
+   "input": "i'd like to search for pizza",
+   "expect": {
+    "plain": "search for pizza",
+    "plain_original": "search for pizza"
+   }
+  },
+  {
+   "id": "polite.011",
+   "input": "let's open github",
+   "expect": {
+    "plain": "open github",
+    "plain_original": "open github"
+   }
+  },
+  {
+   "id": "polite.012",
+   "input": "let us go back",
+   "expect": {
+    "plain": "go back",
+    "plain_original": "go back"
+   }
+  },
+  {
+   "id": "polite.013",
+   "input": "open youtube please",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube please"
+   }
+  },
+  {
+   "id": "polite.014",
+   "input": "open youtube for me",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube for me"
+   }
+  },
+  {
+   "id": "polite.015",
+   "input": "scroll down now",
+   "expect": {
+    "plain": "scroll down",
+    "plain_original": "scroll down now"
+   }
+  },
+  {
+   "id": "polite.016",
+   "input": "open chrome yaar",
+   "expect": {
+    "plain": "open chrome",
+    "plain_original": "open chrome yaar"
+   }
+  },
+  {
+   "id": "polite.017",
+   "input": "pause na",
+   "expect": {
+    "plain": "pause",
+    "plain_original": "pause na"
+   }
+  },
+  {
+   "id": "polite.018",
+   "input": "next tab bhai",
+   "expect": {
+    "plain": "next tab",
+    "plain_original": "next tab bhai"
+   }
+  },
+  {
+   "id": "polite.019",
+   "input": "can u open youtube",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube"
+   }
+  },
+  {
+   "id": "polite.020",
+   "input": "please",
+   "expect": {
+    "plain": "please",
+    "plain_original": "please"
+   }
+  },
+  {
+   "id": "polite.021",
+   "input": "please please open youtube",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube"
+   }
+  },
+  {
+   "id": "polite.022",
+   "input": "\"please open youtube\"",
+   "expect": {
+    "plain": "open youtube",
+    "plain_original": "open youtube\""
+   }
+  },
+  {
+   "id": "polite.023",
+   "input": "open youtube now yaar",
+   "expect": {
+    "plain": "open youtube now",
+    "plain_original": "open youtube now yaar"
+   }
+  }
+ ]
+}

@@ -17,6 +17,7 @@ import time
 import requests
 
 from src import storage, appdata
+from src import diag  # noqa: E402
 
 # download sources come from src/data/app.json
 WHISPER_REPO = appdata.get("speech_models.repo_url")
@@ -57,6 +58,77 @@ def kokoro_ready():
 
 class SetupCancelled(Exception):
     """The user pressed Cancel; the current download stops and the rest are skipped."""
+
+
+class IncompleteDownload(Exception):
+    """The server closed the connection before the whole file arrived (retried, resumed)."""
+
+
+def _expected_length(r):
+    """Bytes the body should have, or 0 when unknown (no header, or a compressed transfer
+    whose header counts compressed bytes while iter_content yields decoded ones)."""
+    if r.headers.get("Content-Encoding"):
+        return 0
+    try:
+        return int(r.headers.get("Content-Length") or 0)
+    except ValueError:
+        return 0
+
+
+def download_file(url, dest, timeout=(10, 120), chunk=1 << 20):
+    """Download one file to dest via dest.part, renamed only once it is complete: a dropped
+    connection never leaves a truncated model that later looks "installed"."""
+    part = dest + ".part"
+    with requests.get(url, stream=True, timeout=timeout) as r:
+        r.raise_for_status()
+        expected, got = _expected_length(r), 0
+        with open(part, "wb") as f:
+            for c in r.iter_content(chunk):
+                f.write(c)
+                got += len(c)
+    if expected and got != expected:
+        try:
+            os.remove(part)
+        except OSError as e:
+            diag.record("setup.remove_partial", e, quiet=True)
+        raise IncompleteDownload(f"{os.path.basename(dest)}: got {got} of {expected} bytes")
+    os.replace(part, dest)
+    return dest
+
+
+# ------------------------------------------------------------ installer checks
+def authenticode(path):
+    """(status, signer subject) of a file's Authenticode signature, via PowerShell.
+    The path goes through an environment variable, never into the command text."""
+    import subprocess
+    script = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SNAPY_VERIFY_FILE; "
+              "Write-Output ($s.Status.ToString() + '|' + [string]$s.SignerCertificate.Subject)")
+    out = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                         env={**os.environ, "SNAPY_VERIFY_FILE": path}, capture_output=True, text=True,
+                         timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    status, _, subject = (out.stdout or "").strip().partition("|")
+    return status or "UnknownError", subject
+
+
+def verify_installer(path, expected_size=0, signature_fn=None):
+    """Raise RuntimeError unless a downloaded installer is complete and, on Windows, validly
+    signed by the publisher in app.json ("ollama.installer_signer"). Runs before the file
+    is ever executed: a truncated, corrupted or swapped installer is refused."""
+    got = os.path.getsize(path)
+    if expected_size and got != expected_size:
+        raise RuntimeError(f"the download is incomplete ({got} of {expected_size} bytes)")
+    if not appdata.get("ollama.require_signature", True):
+        return
+    if signature_fn is None:
+        if sys.platform != "win32":
+            return
+        signature_fn = authenticode
+    status, subject = signature_fn(path)
+    if status != "Valid":
+        raise RuntimeError(f"the installer's digital signature is not valid ({status})")
+    want = (appdata.get("ollama.installer_signer") or "").lower()
+    if want and want not in (subject or "").lower():
+        raise RuntimeError("the installer is signed by an unexpected publisher")
 
 
 class Setup:
@@ -136,8 +208,8 @@ class Setup:
         if self.on_change:
             try:
                 self.on_change(self.state())
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("setup.emit", e, quiet=True)
 
     def get(self, id_):
         return next((i for i in self.items if i["id"] == id_), None)
@@ -175,12 +247,19 @@ class Setup:
             part = dest + ".part"
             for attempt in range(4):
                 have = os.path.getsize(part) if os.path.exists(part) else 0
+                if size and have > size:                           # a stale/corrupt partial: start over
+                    os.remove(part)
+                    have = 0
+                if size and have == size:                          # finished before (e.g. crash before rename)
+                    os.replace(part, dest)
+                    break
                 headers = {"Range": f"bytes={have}-"} if have else {}
                 try:
                     with requests.get(url, stream=True, timeout=(10, 60), headers=headers) as r:
                         if have and r.status_code != 206:          # server ignored Range: start over
                             have = 0
                         r.raise_for_status()
+                        compressed = bool(r.headers.get("Content-Encoding"))   # decoded bytes != Content-Length
                         with open(part, "ab" if have else "wb") as f:
                             for chunk in r.iter_content(1 << 18):
                                 self.check_cancel()
@@ -193,9 +272,13 @@ class Setup:
                                     if el > 4:
                                         t0, b0 = time.time(), it["done"]
                                 self._emit()
+                    # a connection that closes cleanly mid-file ends iter_content without an
+                    # error: never install a truncated model, resume it instead
+                    if size and not compressed and have != size:
+                        raise IncompleteDownload(f"got {have} of {size} bytes")
                     os.replace(part, dest)
                     break
-                except requests.RequestException as e:
+                except (requests.RequestException, IncompleteDownload) as e:
                     if attempt == 3:
                         raise RuntimeError(f"network error: {e}") from e
                     self.update(id_, error="Connection dropped — retrying…")

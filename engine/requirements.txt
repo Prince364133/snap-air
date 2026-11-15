@@ -10,3 +10,5 @@ faster-whisper>=1.0
 kokoro-onnx>=0.6.1      # natural offline voice (model auto-downloads, ~120 MB)
 requests
 # AI brain: install Ollama (https://ollama.com) — Snap downloads the model from Settings/onboarding
+cryptography>=42        # sync: X25519, ChaCha20-Poly1305, HKDF (laptop <-> phone, src/sync)
+zeroconf>=0.130        # sync: mDNS advertisement of _snapy._tcp on the LAN (UDP beacon fallback)

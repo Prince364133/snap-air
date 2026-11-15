@@ -80,7 +80,7 @@
       {"id": "hinglish", "pattern": "\\b(?:aur|ya|ki|ke|ka|ko|mein|se|toh|phir|par|pe|jo)\\s*$"}
     ],
     "realcount_app": [
-      {"id": "kitna_time_pe", "order": 20, "pattern": "(?:kitna time|kitni der)\\s+(?<app>[a-z][a-z ]*?)\\s+(?:pe|par)\\b|\\b(?<app2>[a-z][a-z ]*?)\\s+(?:pe|par)\\s+(?:kitna time|kitni der)"}
+      {"id": "kitna_time_pe", "order": 20, "last_word": true, "pattern": "(?:kitna time|kitni der)\\s+(?<app>[a-z][a-z ]*?)\\s+(?:pe|par)\\b|\\b(?<app2>[a-z][a-z ]*?)\\s+(?:pe|par)\\s+(?:kitna time|kitni der)"}
     ],
     "realcount_screen": [
       {"id": "hinglish", "pattern": "\\b(?:phone kitna (?:chalaya|use kiya)|kitna phone)\\b"}

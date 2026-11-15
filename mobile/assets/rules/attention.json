@@ -1,0 +1,169 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Windows attention counter (browser shorts/reels, long videos, distracting-site switches). engine/src/life/attention.py reads windows.attention.<key>, then android.realcount.<key> (shared nudge timings, limits, chip.amber_at, habits.report_weekday live there once), then its code default. Site regexes (segment_re/home_re/url_re/title_re) are matched case-insensitively against browser window titles / URLs by the Windows runtime only."
+  },
+  "windows": {
+    "attention": {
+      "sites": [
+        {
+          "site": "youtube",
+          "label": "YouTube",
+          "segment_re": "^YouTube$",
+          "home_re": "^YouTube$",
+          "short": {
+            "id": "web.youtube.shorts",
+            "label": "YouTube Shorts",
+            "kind": "Shorts",
+            "url_re": "youtube\\.com/shorts/",
+            "title_re": "#shorts?\\b"
+          },
+          "long": {
+            "id": "web.youtube.videos",
+            "label": "YouTube videos",
+            "url_re": "youtube\\.com/watch"
+          }
+        },
+        {
+          "site": "instagram",
+          "label": "Instagram",
+          "segment_re": "\\bInstagram\\b",
+          "short": {
+            "id": "web.instagram.reels",
+            "label": "Instagram Reels",
+            "kind": "Reels",
+            "url_re": "instagram\\.com/reels?/",
+            "title_re": "\\breels?\\b"
+          }
+        },
+        {
+          "site": "facebook",
+          "label": "Facebook",
+          "segment_re": "\\bFacebook\\b",
+          "short": {
+            "id": "web.facebook.reels",
+            "label": "Facebook Reels",
+            "kind": "Reels",
+            "url_re": "facebook\\.com/(?:reels?/|watch/reels)",
+            "title_re": "\\breels?\\b"
+          }
+        },
+        {
+          "site": "tiktok",
+          "label": "TikTok",
+          "segment_re": "\\bTikTok\\b",
+          "short": {
+            "id": "web.tiktok",
+            "label": "TikTok",
+            "kind": "videos",
+            "url_re": "tiktok\\.com",
+            "all": true
+          }
+        }
+      ],
+      "distracting_sites": [
+        "YouTube",
+        "Instagram",
+        "Facebook",
+        "TikTok",
+        "Reddit",
+        "X",
+        "Netflix",
+        "Prime Video",
+        "Hotstar"
+      ],
+      "count": {
+        "min_dwell_s": 2.5,
+        "video_start_s": 10,
+        "video_guess_s": 60,
+        "feed_run_min": 3,
+        "gap_cap_s": 10,
+        "short_idle_cap_s": 300,
+        "fast_poll_s": 1.0
+      },
+      "chip": {
+        "soft_limit_items": 40
+      },
+      "weekly": {
+        "after": "10:00",
+        "check_every_s": 600
+      },
+      "reset": {
+        "steps": [
+          "reset.step.breathe",
+          "reset.step.stand",
+          "reset.step.water"
+        ]
+      },
+      "address_bar_names": [
+        "Address and search bar",
+        "Search or enter web address",
+        "Search with Google or enter address",
+        "Search or enter address",
+        "Address field"
+      ],
+      "nudge_copy": {
+        "_comment": "i18n keys per trigger; 'soft' after nudges.soften_after_dismissals dismissals today.",
+        "session_reels": {
+          "normal": [
+            "nudge.win.session_reels.1",
+            "nudge.win.session_reels.2"
+          ],
+          "soft": [
+            "nudge.win.session_reels.soft.1"
+          ]
+        },
+        "switches": {
+          "normal": [
+            "nudge.win.switches.1"
+          ],
+          "soft": [
+            "nudge.win.switches.soft.1"
+          ]
+        },
+        "limit_near": {
+          "normal": [
+            "nudge.limit_near.1"
+          ],
+          "soft": [
+            "nudge.limit_near.soft.1"
+          ]
+        },
+        "limit_over": {
+          "normal": [
+            "nudge.limit_over.1"
+          ],
+          "soft": [
+            "nudge.limit_over.soft.1"
+          ]
+        },
+        "bedtime": {
+          "normal": [
+            "nudge.bedtime.1"
+          ],
+          "soft": [
+            "nudge.bedtime.soft.1"
+          ]
+        },
+        "focus_guard": {
+          "normal": [
+            "nudge.win.focus_guard.1"
+          ],
+          "soft": [
+            "nudge.win.focus_guard.soft.1"
+          ]
+        }
+      }
+    }
+  },
+  "realcount": {
+    "web_labels": {
+      "_comment": "Labels for browser-counted ids (Windows attention counter) in Real Count answers on every platform.",
+      "web.youtube.shorts": "YouTube Shorts",
+      "web.instagram.reels": "Instagram Reels",
+      "web.facebook.reels": "Facebook Reels",
+      "web.tiktok": "TikTok",
+      "web.youtube.videos": "YouTube videos"
+    }
+  }
+}

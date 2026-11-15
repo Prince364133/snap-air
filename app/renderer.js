@@ -23,6 +23,7 @@ const ICONS = {
     voice: '<path d="M2 10v4M6 6v12M10 3v18M14 8v8M18 5v14M22 10v4"/>',
     hand: '<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+    leaf: '<path d="M11 20A7 7 0 0 1 4 13c0-6 6-9 16-9 0 10-3 16-9 16z"/><path d="M4 20c4-4 7-6 11-8"/>',
 };
 const svg = (name, size = 16) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
 function applyIcons(root = document) {
@@ -75,6 +76,7 @@ let S = {}, profile = {}, memories = [], notes = [], tasks = [], catalogue = [],
 let models = {}, meeting = {}, eng = {}, briefing = null, scan = null, dataDir = '';
 let lastTranscript = { text: '', t: 0 };
 let focus = {}, contexts = [], noteFilter = 'all', openNoteId = null;
+let attention = null;      // today's Shorts/Reels count on this PC (engine: src/life/attention.py)
 let flashUntil = 0;
 
 function send(obj) {
@@ -113,7 +115,9 @@ const HANDLERS = {
         renderAll();
         if (d.onboarding_needed) openOnboarding();
         if (d.cloud_preview) showCloudPreview(d.cloud_preview);
+        if (d.attention) { attention = d.attention; renderAttention(); }
     },
+    attention(d) { attention = d; renderAttention(); },
     cloud_preview(d) { showCloudPreview(d.sample); },
     state_update(d) { eng = d; renderIsland(); renderCursor(); updateMeters(); },
     settings(d) { S = d.settings; renderName(); bindSettings(); if (activeTab === 'settings') renderSettings(); renderSuggestions(); },
@@ -735,6 +739,14 @@ const SETTINGS = [
         { key: 'break_reminder_minutes', type: 'select', label: 'Wellbeing break nudges', num: true, options: [[0, 'Off'], [30, 'Every 30 min'], [50, 'Every 50 min'], [90, 'Every 90 min']] },
         { key: 'internet_tools', type: 'switch', label: 'Use the internet when I ask', sub: 'Web search and weather only — your data never leaves' },
     ]],
+    ['Attention', [
+        { key: 'attention_enabled', type: 'switch', label: 'Count shorts & reels in my browser', sub: 'YouTube Shorts, Instagram & Facebook Reels, TikTok — counts only, on this PC' },
+        { key: 'attention_nudges', type: 'switch', label: 'Gentle nudges', sub: 'At most one every 20 minutes, never during calls. Nothing is blocked.', when: () => S.attention_enabled },
+        { key: 'attention_soft_limit', type: 'select', label: 'Chip turns amber at', num: true, options: [[0, 'Default'], [20, '20 a day'], [40, '40 a day'], [60, '60 a day'], [100, '100 a day']], when: () => S.attention_enabled },
+        { key: 'attention_bedtime', type: 'select', label: 'Bedtime wind-down', options: [['', 'Default'], ['22:00', '10:00 PM'], ['23:00', '11:00 PM'], ['00:00', 'Midnight'], ['off', 'Off']], when: () => S.attention_enabled },
+        { key: 'attention_weekly_report', type: 'switch', label: 'Sunday attention report', when: () => S.attention_enabled },
+        { key: 'attention_read_urls', type: 'switch', label: 'Read the address bar for Shorts/Reels hints', sub: 'More accurate counting. The address is never stored.', when: () => S.attention_enabled },
+    ]],
     ['Listening', [
         { key: 'voice_mode', type: 'select', label: 'How I listen', options: [['wake', 'Wake word — say my name first'], ['push', 'Only when I press Ctrl+Alt+Space'], ['always', 'Always (commands only)']] },
         { key: 'wake_words', type: 'text', label: 'Wake words' },
@@ -781,6 +793,7 @@ const SETTINGS = [
         { key: 'project_run_command', type: 'text', label: 'Run command', placeholder: 'auto-detect' },
         { key: 'morning_apps', type: 'text', label: 'Also open in “Start my day”', placeholder: 'e.g. Slack, Spotify' },
     ]],
+    ['Phone', 'phone'],
     ['Privacy & data', 'privacy'],
 ];
 
@@ -842,6 +855,221 @@ function updateSetting(key, value, debounce) {
     pendingT = setTimeout(() => { send({ type: 'update_settings', settings: pending }); pending = {}; }, debounce ? 250 : 0);
 }
 
+// ------------------------------------------------------------------ QR code (pairing)
+// Minimal QR encoder (byte mode, EC level M, versions 1-40, ISO/IEC 18004), after Nayuki's
+// public-domain algorithm. Inline so the HUD needs no CDN or extra dependency.
+const QR = (() => {
+    const ECC = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+    const BLOCKS = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+    const FORMAT_M = 0;
+    const bit = (x, i) => ((x >>> i) & 1) !== 0;
+    function rawModules(v) {
+        let r = (16 * v + 128) * v + 64;
+        if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; }
+        return r;
+    }
+    const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC[v] * BLOCKS[v];
+    function mul(x, y) { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z; }
+    function divisor(deg) {
+        const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1;
+        for (let i = 0; i < deg; i++) { for (let j = 0; j < deg; j++) { r[j] = mul(r[j], root); if (j + 1 < deg) r[j] ^= r[j + 1]; } root = mul(root, 2); }
+        return r;
+    }
+    function remainder(data, div) {
+        const r = div.map(() => 0);
+        for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= mul(c, f); }); }
+        return r;
+    }
+    function alignPositions(v, size) {
+        if (v === 1) return [];
+        const n = Math.floor(v / 7) + 2, step = Math.floor((v * 8 + n * 3 + 5) / (n * 4 - 4)) * 2, out = [6];
+        for (let p = size - 7; out.length < n; p -= step) out.splice(1, 0, p);
+        return out;
+    }
+    function encode(text, forceMask) {
+        const bytes = Array.from(new TextEncoder().encode(text));
+        let v = 1;
+        for (; v <= 40; v++) if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= dataCodewords(v) * 8) break;
+        if (v > 40) throw new Error('QR: text too long');
+        const bits = [];
+        const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+        put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach((b) => put(b, 8));
+        const cap = dataCodewords(v) * 8;
+        put(0, Math.min(4, cap - bits.length));
+        put(0, (8 - bits.length % 8) % 8);
+        for (let pad = 0xEC; bits.length < cap; pad ^= 0xEC ^ 0x11) put(pad, 8);
+        const data = [];
+        for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+        // error correction + interleave
+        const nb = BLOCKS[v], el = ECC[v], raw = Math.floor(rawModules(v) / 8), nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+        const div = divisor(el), blocks = [];
+        for (let i = 0, k = 0; i < nb; i++) {
+            const d = data.slice(k, k + shortLen - el + (i < nShort ? 0 : 1)); k += d.length;
+            const e = remainder(d, div); if (i < nShort) d.push(0); blocks.push(d.concat(e));
+        }
+        const cw = [];
+        for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - el || j >= nShort) cw.push(b[i]); });
+        // matrix
+        const size = v * 4 + 17;
+        const m = Array.from({ length: size }, () => new Array(size).fill(false));
+        const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+        const set = (x, y, d) => { m[y][x] = d; fn[y][x] = true; };
+        for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+        for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) {
+            for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+                const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy;
+                if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+            }
+        }
+        const al = alignPositions(v, size);
+        al.forEach((ax, i) => al.forEach((ay, j) => {
+            if ((i === 0 && j === 0) || (i === 0 && j === al.length - 1) || (i === al.length - 1 && j === 0)) return;
+            for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+        }));
+        const format = (mask) => {
+            const d = (FORMAT_M << 3) | mask; let r = d;
+            for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+            const b = ((d << 10) | r) ^ 0x5412;
+            for (let i = 0; i <= 5; i++) set(8, i, bit(b, i));
+            set(8, 7, bit(b, 6)); set(8, 8, bit(b, 7)); set(7, 8, bit(b, 8));
+            for (let i = 9; i < 15; i++) set(14 - i, 8, bit(b, i));
+            for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(b, i));
+            for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(b, i));
+            set(8, size - 8, true);
+        };
+        format(0);
+        if (v >= 7) {
+            let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25);
+            const b = (v << 12) | r;
+            for (let i = 0; i < 18; i++) { const a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, bit(b, i)); set(c, a, bit(b, i)); }
+        }
+        let i = 0;
+        for (let right = size - 1; right >= 1; right -= 2) {
+            if (right === 6) right = 5;
+            for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+                const x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - vert : vert;
+                if (!fn[y][x] && i < cw.length * 8) { m[y][x] = bit(cw[i >>> 3], 7 - (i & 7)); i++; }
+            }
+        }
+        const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+            (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => (x * y) % 2 + (x * y) % 3 === 0,
+            (x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0, (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0];
+        const applyMask = (k) => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && MASKS[k](x, y)) m[y][x] = !m[y][x]; };
+        // penalty (runs, 2x2 blocks, dark balance) picks the mask; any mask decodes
+        const penalty = () => {
+            let p = 0, dark = 0;
+            for (let a = 0; a < size; a++) {
+                for (const horiz of [true, false]) {
+                    let run = 1;
+                    for (let b = 1; b < size; b++) {
+                        const cur = horiz ? m[a][b] : m[b][a], prev = horiz ? m[a][b - 1] : m[b - 1][a];
+                        if (cur === prev) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1;
+                    }
+                }
+            }
+            for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) {
+                const c = m[y][x]; if (c === m[y][x + 1] && c === m[y + 1][x] && c === m[y + 1][x + 1]) p += 3;
+            }
+            m.forEach((row) => row.forEach((c) => { if (c) dark++; }));
+            const total = size * size;
+            return p + (Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1) * 10;
+        };
+        let best = forceMask;
+        if (best === undefined) {
+            let min = Infinity;
+            for (let k = 0; k < 8; k++) { applyMask(k); format(k); const s = penalty(); if (s < min) { min = s; best = k; } applyMask(k); }
+        }
+        applyMask(best); format(best);
+        return { size, modules: m, version: v, mask: best };
+    }
+    function svg(text, scale = 4, border = 4) {
+        const q = encode(text), n = q.size + border * 2;
+        let d = '';
+        for (let y = 0; y < q.size; y++) for (let x = 0; x < q.size; x++) if (q.modules[y][x]) d += `M${x + border},${y + border}h1v1h-1z`;
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" width="${n * scale}" height="${n * scale}" shape-rendering="crispEdges" role="img" aria-label="Pairing QR code"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+    }
+    return { encode, svg };
+})();
+// ------------------------------------------------------------------ QR end
+
+// ------------------------------------------------------------------ Phone (sync, engine: src/sync)
+// Pair a phone by QR over the LAN; the QR holds a one-time secret (5 min, single use), so it is
+// only drawn on screen and dropped as soon as the window closes or the phone pairs.
+let syncInfo = { enabled: false, running: false, devices: [] }, syncPair = null, syncPairTimer = null, syncAsked = 0;
+
+Object.assign(HANDLERS, {
+    sync_devices(d) {
+        const before = (syncInfo.devices || []).length;
+        syncInfo = d;
+        if (syncPair && (d.devices || []).length > before) { clearSyncPair(); showToast('Phone paired'); }
+        renderPhoneSection();
+    },
+    sync_pair(d) {
+        if (d.error) { showToast(d.error, false); return; }
+        syncPair = d;
+        clearInterval(syncPairTimer);
+        syncPairTimer = setInterval(() => {
+            if (!syncPair || Date.now() / 1000 >= syncPair.expires_at) clearSyncPair();
+            renderPhoneSection();
+        }, 1000);
+        renderPhoneSection();
+    },
+    sync_sent(d) { showToast(d.ok ? 'Sent to your phone' : (d.error || 'Not sent'), !!d.ok); },
+});
+
+function clearSyncPair() {
+    if (syncPair) send({ type: 'sync_pair_cancel' });
+    syncPair = null;
+    clearInterval(syncPairTimer);
+    syncPairTimer = null;
+}
+
+function phoneSection() {
+    if (Date.now() - syncAsked > 5000) { syncAsked = Date.now(); send({ type: 'sync_devices' }); }
+    const box = h('div', { class: 'grouped phone-section', id: 'phone-section' });
+    fillPhoneSection(box);
+    return box;
+}
+
+function renderPhoneSection() {
+    const box = $('phone-section');
+    if (box) fillPhoneSection(box);
+}
+
+function fillPhoneSection(box) {
+    const sw = (key, label, sub) => {
+        const c = h('input', { type: 'checkbox', class: 'switch' });
+        c.checked = !!S[key];
+        c.onchange = () => { updateSetting(key, c.checked); if (key === 'sync_enabled' && !c.checked) clearSyncPair(); };
+        return h('div', { class: 'g-row' }, h('span', {}, label, h('span', { class: 'sub' }, sub)), c);
+    };
+    const rows = [sw('sync_enabled', 'Sync with my phone',
+        'Memory, tasks, notes and settings over your Wi-Fi, end-to-end encrypted. No Snapy server, nothing leaves your network.')];
+    if (S.sync_enabled) {
+        rows.push(sw('sync_focus_to_phone', 'Focus here silences my phone', 'Starting focus on this PC starts focus and Do Not Disturb on the phone'));
+        if (syncPair) {
+            const left = Math.max(0, Math.round(syncPair.expires_at - Date.now() / 1000));
+            let qr = null;
+            try { qr = h('div', { class: 'phone-qr', html: QR.svg(syncPair.qr, 4) }); } catch (e) { qr = h('span', { class: 'caption danger-text' }, 'Couldn\'t draw the code'); }
+            rows.push(h('div', { class: 'g-row col phone-pair' }, qr,
+                h('span', { class: 'caption' }, `On your phone: Snapy → Settings → Pair with laptop, then scan this code. It works once and expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.`),
+                h('button', { class: 'btn small', onclick: () => { clearSyncPair(); renderPhoneSection(); } }, 'Cancel')));
+        } else {
+            rows.push(h('div', { class: 'g-row' }, h('span', {}, 'Pair a phone', h('span', { class: 'sub' }, syncInfo.running ? 'Shows a one-time code to scan' : 'Starting sync…')),
+                h('button', { class: 'btn small primary', disabled: !syncInfo.running, onclick: () => send({ type: 'sync_pair_start' }) }, 'Show code')));
+        }
+        for (const dev of syncInfo.devices || []) {
+            const seen = dev.connected ? 'Connected' : dev.last_seen ? 'Last seen ' + new Date(dev.last_seen * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Not connected yet';
+            rows.push(h('div', { class: 'g-row' },
+                h('span', {}, h('i', { class: 'phone-dot' + (dev.connected ? ' on' : '') }), dev.name || dev.id, h('span', { class: 'sub' }, seen)),
+                h('div', { class: 'row', style: 'gap:6px' },
+                    h('button', { class: 'btn small', disabled: !dev.connected, onclick: () => send({ type: 'sync_now' }) }, 'Sync now'),
+                    h('button', { class: 'btn small', onclick: () => confirmDo('Unpair this phone?', 'It stops syncing. Pair again any time with a new code.', () => send({ type: 'sync_unpair', id: dev.id })) }, 'Unpair'))));
+        }
+    }
+    box.replaceChildren(...rows);
+}
+
 function renderSettings() {
     const root = $('settings-root');
     if (root.contains(document.activeElement) && document.activeElement.type === 'text') return;
@@ -850,6 +1078,7 @@ function renderSettings() {
         out.push(h('div', { class: 'group-title' }, title));
         if (items === 'models') { out.push(h('div', { id: 'model-section' })); continue; }
         if (items === 'privacy') { out.push(privacySection()); continue; }
+        if (items === 'phone') { out.push(phoneSection()); continue; }
         if (items === 'help') { out.push(helpSection()); continue; }
         out.push(h('div', { class: 'grouped' }, ...items.filter((it) => !it.when || it.when()).map((it) => {
             const row = h('div', { class: 'g-row', 'data-key': it.key }, h('span', {}, it.label, it.sub ? h('span', { class: 'sub' }, it.sub) : null), settingControl(it));
@@ -1052,12 +1281,21 @@ function updateMeters() {
 }
 
 // ---------------------------------------------------------------- banners
-const BANNER_STYLE = { problem: ['mic', '#ff3b30'], reminder: ['bell', '#ff9f0a'], call: ['phone', '#30d158'], break: ['coffee', '#64d2ff'], wrapup: ['moon', '#5e5ce6'], info: ['info', '#0a84ff'] };
+const BANNER_STYLE = { problem: ['mic', '#ff3b30'], reminder: ['bell', '#ff9f0a'], call: ['phone', '#30d158'], break: ['coffee', '#64d2ff'], wrapup: ['moon', '#5e5ce6'], info: ['info', '#0a84ff'], nudge: ['leaf', '#64d2ff'], weekly: ['chart', '#5e5ce6'] };
 function showBanner(b) {
     const [icon, color] = BANNER_STYLE[b.kind] || BANNER_STYLE.info;
-    const close = () => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); };
+    // a nudge reports how it ended once: a button, the close (dismiss) or the timeout (ignored)
+    let answered = false;
+    const answer = (action) => { if (b.kind === 'nudge' && !answered) { answered = true; send({ type: 'nudge_action', id: b.id, action }); } };
+    const close = (why) => { answer(why === 'timeout' ? 'ignored' : 'dismiss'); el.style.opacity = '0'; setTimeout(() => el.remove(), 200); };
     const actions = [];
-    if (b.kind === 'reminder' && b.task) {
+    if (b.kind === 'nudge') {
+        (b.actions || []).forEach((a, i) => actions.push(h('button', { class: 'btn small' + (i === 0 ? ' primary' : ''), onclick: () => {
+            answer(a.id);
+            if (a.id === 'reset') showReset(b.reset);
+            close();
+        } }, a.label)));
+    } else if (b.kind === 'reminder' && b.task) {
         actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'task_update', id: b.task.id, done: true }); close(); } }, 'Done'),
             h('button', { class: 'btn small', onclick: () => { send({ type: 'task_snooze', id: b.task.id, minutes: 10 }); close(); } }, 'Snooze 10m'));
         ipcRenderer.send('notify', { title: b.title === 'Timer done' ? 'Timer done' : `${NAME()} reminder`, body: b.text });
@@ -1073,12 +1311,56 @@ function showBanner(b) {
     } else {
         actions.push(h('button', { class: 'btn small', onclick: close }, 'OK'));
     }
-    const el = h('div', { class: 'banner interactive' },
-        h('div', { class: 'banner-head' }, h('div', { class: 'banner-icon', style: `background:${color}`, html: svg(icon, 13) }), h('div', { class: 'banner-title' }, b.title), h('button', { class: 'icon-btn', style: 'width:22px;height:22px', onclick: close }, '✕')),
+    const el = h('div', { class: 'banner interactive' + (b.kind === 'nudge' ? ' nudge' : '') },
+        h('div', { class: 'banner-head' }, h('div', { class: 'banner-icon', style: `background:${color}`, html: svg(icon, 13) }), h('div', { class: 'banner-title' }, b.title), h('button', { class: 'icon-btn', style: 'width:22px;height:22px', 'aria-label': 'Dismiss', onclick: () => close('dismiss') }, '✕')),
         h('div', { class: 'banner-text' }, b.text), h('div', { class: 'banner-actions' }, ...actions));
     $('banners').prepend(el);
-    if (!['reminder', 'call', 'problem'].includes(b.kind)) setTimeout(close, 20000);
+    if (!['reminder', 'call', 'problem'].includes(b.kind)) setTimeout(() => { if (el.isConnected) close('timeout'); }, b.kind === 'weekly' ? 60000 : 20000);
 }
+
+// ------------------------------------------------------- attention chip
+// "▶ 42" in the island: Shorts/Reels counted today on this PC. Amber at the soft limit, never red.
+function renderAttention() {
+    const a = attention;
+    const show = !!(a && a.enabled && (a.today > 0 || a.videos > 0));
+    $('island-att').classList.toggle('hidden', !show);
+    if (!show) return;
+    $('att-count').textContent = String(a.today);
+    $('island-att').classList.toggle('amber', a.level === 'amber');
+    const by = (a.by || []).map((x) => `${x.label} ${x.count}`).join(' · ');
+    const vids = a.videos ? ` · ${a.videos} video${a.videos === 1 ? '' : 's'} (${Math.round((a.video_ms || 0) / 60000)} min)` : '';
+    $('island-att').title = `Today on this PC: ${a.today} shorts & reels${by ? ' — ' + by : ''}${vids}` + (a.paused ? ' · counting paused' : '');
+}
+
+// ------------------------------------------------------- 2-minute reset
+// Breathe / stand / water, then it closes itself. Steps and timings come from the engine.
+let resetTimer = null;
+const RESET_CIRC = 2 * Math.PI * 52;
+function showReset(r) {
+    r = r || (attention && attention.reset) || { seconds: 120, steps: [], title: '2-minute reset', done: 'Done' };
+    const total = Math.max(10, r.seconds || 120), steps = r.steps || [], start = Date.now();
+    $('reset-title').textContent = r.title || '2-minute reset';
+    $('reset-done').textContent = r.done || 'Done';
+    $('reset-dots').replaceChildren(...steps.map(() => h('i')));
+    $('reset-arc').style.strokeDasharray = String(RESET_CIRC);
+    $('reset').classList.remove('hidden');
+    const tick = () => {
+        const el = (Date.now() - start) / 1000, left = Math.max(0, Math.ceil(total - el));
+        $('reset-time').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+        let acc = 0, idx = steps.length - 1;
+        for (let i = 0; i < steps.length; i++) { acc += steps[i].seconds || 0; if (el < acc) { idx = i; break; } }
+        if (steps[idx]) $('reset-step').textContent = steps[idx].text;
+        [...$('reset-dots').children].forEach((d, i) => d.classList.toggle('on', i <= idx));
+        $('reset-arc').style.strokeDashoffset = String(RESET_CIRC * (1 - Math.min(1, el / total)));
+        if (left <= 0) hideReset();
+    };
+    clearInterval(resetTimer);
+    tick();
+    resetTimer = setInterval(tick, 250);
+}
+function hideReset() { clearInterval(resetTimer); resetTimer = null; $('reset').classList.add('hidden'); }
+$('reset-done').onclick = hideReset;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && resetTimer) hideReset(); });
 
 // --------------------------------------------------------------- greeting
 let greetTimer = null;

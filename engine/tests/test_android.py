@@ -5,7 +5,6 @@ import tempfile
 import time
 import unittest
 
-os.environ.setdefault("SNAP_AIR_DATA", tempfile.mkdtemp())
 
 from src.platform import android as A  # noqa: E402
 
@@ -13,6 +12,9 @@ from src.platform import android as A  # noqa: E402
 class AndroidCoreTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # android.init() points SNAP_AIR_DATA at the phone's folder for the whole process:
+        # save and restore both variables so later modules keep their own folders
+        cls._env = {k: os.environ.get(k) for k in ("SNAP_AIR_DATA", "SNAP_AIR_SETTINGS")}
         d = tempfile.mkdtemp()
         os.environ["SNAP_AIR_SETTINGS"] = os.path.join(d, "settings.json")
         A._core = None
@@ -23,6 +25,15 @@ class AndroidCoreTests(unittest.TestCase):
                                    {"label": "Instagram", "package": "com.instagram.android"},
                                    {"label": "Spotify", "package": "com.spotify.music"}]))
         cls.c.agent.play_youtube = lambda q, n=1: cls.c.os.open_url(f"https://www.youtube.com/results?search_query={q}&n={n}")
+
+    @classmethod
+    def tearDownClass(cls):
+        A._core = None
+        for k, v in cls._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     def say(self, text, wait=4.0):
         json.loads(self.c.next_events(0.01))                    # drain
@@ -78,7 +89,8 @@ class AndroidCoreTests(unittest.TestCase):
         try:
             json.loads(self.c.set_api_key("gemini", "test-key-123"))
             self.assertEqual(secrets_store.get_key("cloud_gemini"), "test-key-123")
-            raw = open(os.path.join(os.environ["SNAP_AIR_DATA"], "secrets.json"), encoding="utf-8").read()
+            with open(os.path.join(os.environ["SNAP_AIR_DATA"], "secrets.json"), encoding="utf-8") as f:
+                raw = f.read()
             self.assertNotIn("test-key-123", raw)
         finally:
             secrets_store.set_key("cloud_gemini", "")

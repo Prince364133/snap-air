@@ -1,0 +1,326 @@
+{
+ "suite": "realcount",
+ "schema_version": 1,
+ "doc": "classify(question) -> period / app / reels / screen",
+ "cases": [
+  {
+   "id": "realcount.001",
+   "input": "how many reels did I watch today",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.002",
+   "input": "how many reels did I watch this week",
+   "expect": {
+    "period": "this_week",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.003",
+   "input": "how many shorts yesterday",
+   "expect": {
+    "period": "yesterday",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.004",
+   "input": "reels kitni dekhi aaj",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.005",
+   "input": "aaj kitne reels dekhe",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.006",
+   "input": "kitni reels dekhi is hafte",
+   "expect": {
+    "period": "this_week",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.007",
+   "input": "count my videos",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.008",
+   "input": "what's my screen time",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.009",
+   "input": "screen time this week",
+   "expect": {
+    "period": "this_week",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.010",
+   "input": "screentime yesterday",
+   "expect": {
+    "period": "yesterday",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.011",
+   "input": "phone kitna chalaya aaj",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.012",
+   "input": "kitna phone use kiya",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.013",
+   "input": "how long have i used my phone",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": true
+   }
+  },
+  {
+   "id": "realcount.014",
+   "input": "how much time on instagram today",
+   "expect": {
+    "period": "today",
+    "app": "instagram",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.015",
+   "input": "how long was I on youtube this week",
+   "expect": {
+    "period": "this_week",
+    "app": "youtube",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.016",
+   "input": "how much time did i spend on youtube music",
+   "expect": {
+    "period": "today",
+    "app": "youtube music",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.017",
+   "input": "kitna time instagram pe",
+   "expect": {
+    "period": "today",
+    "app": "instagram",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.018",
+   "input": "instagram pe kitna time",
+   "expect": {
+    "period": "today",
+    "app": "instagram",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.019",
+   "input": "kitni der youtube par bitaya",
+   "expect": {
+    "period": "today",
+    "app": "youtube",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.020",
+   "input": "how long on snapchat yesterday?",
+   "expect": {
+    "period": "yesterday",
+    "app": "snapchat",
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.021",
+   "input": "what's the weather",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.022",
+   "input": "open instagram",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.023",
+   "input": "how long is the movie",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": false,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.024",
+   "input": "how many videos did I watch today",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.025",
+   "input": "how many videos this week",
+   "expect": {
+    "period": "this_week",
+    "app": null,
+    "reels": false,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.026",
+   "input": "aaj kitne videos dekhe",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": false,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.027",
+   "input": "videos kitni dekhi kal",
+   "expect": {
+    "period": "yesterday",
+    "app": null,
+    "reels": false,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.028",
+   "input": "how many shorts and videos today",
+   "expect": {
+    "period": "today",
+    "app": null,
+    "reels": true,
+    "videos": true,
+    "screen": false
+   }
+  },
+  {
+   "id": "realcount.029",
+   "input": "how many youtube shorts this week",
+   "expect": {
+    "period": "this_week",
+    "app": null,
+    "reels": true,
+    "videos": false,
+    "screen": false
+   }
+  }
+ ]
+}

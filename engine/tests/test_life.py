@@ -4,8 +4,9 @@ import tempfile
 import time
 import unittest
 
-TMP = tempfile.mkdtemp()
-os.environ["SNAP_AIR_DATA"] = TMP
+from tests import _env  # noqa: E402
+
+setUpModule, tearDownModule = _env.module_data_dir()   # own data folder, restored after
 
 from src.life.tasks import TaskStore, parse_when, clean_title, human_time  # noqa: E402
 from src.life.notes import NoteStore  # noqa: E402

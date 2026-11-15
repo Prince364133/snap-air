@@ -1,0 +1,133 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "description": "Phone device data: deep links, desktop-shortcut -> Android action map, speech locales, the offline wake-word model and phrases, contact nicknames."
+  },
+  "android": {
+    "_comment": "Phone-specific data for the Android app (core/rules/phone.json, social.json, nudges.json, limits.json; both runtimes read the same files).",
+    "app_links": {
+      "web.whatsapp.com": "com.whatsapp",
+      "whatsapp.com": "com.whatsapp",
+      "wa.me": "com.whatsapp",
+      "instagram.com": "com.instagram.android",
+      "facebook.com": "com.facebook.katana",
+      "youtube.com": "com.google.android.youtube",
+      "music.youtube.com": "com.google.android.apps.youtube.music",
+      "open.spotify.com": "com.spotify.music",
+      "x.com": "com.twitter.android",
+      "twitter.com": "com.twitter.android",
+      "linkedin.com": "com.linkedin.android",
+      "reddit.com": "com.reddit.frontpage",
+      "snapchat.com": "com.snapchat.android",
+      "mail.google.com": "com.google.android.gm",
+      "maps.google.com": "com.google.android.apps.maps",
+      "telegram.org": "org.telegram.messenger",
+      "t.me": "org.telegram.messenger"
+    },
+    "key_actions": {
+      "alt+left": "back",
+      "browserback": "back",
+      "escape": "back",
+      "backspace+alt": "back",
+      "win+d": "home",
+      "win": "home",
+      "win+m": "home",
+      "win+tab": "recents",
+      "alt+tab": "recents",
+      "win+n": "notifications",
+      "win+a": "quick_settings",
+      "win+v": "clipboard",
+      "printscreen": "screenshot",
+      "win+shift+s": "screenshot",
+      "win+printscreen": "screenshot",
+      "win+l": "lock",
+      "win+h": "voice_typing"
+    },
+    "speech_locales": {
+      "auto": "en-IN",
+      "en": "en-IN",
+      "hi": "hi-IN",
+      "hinglish": "en-IN",
+      "mr": "mr-IN",
+      "bn": "bn-IN",
+      "te": "te-IN",
+      "ta": "ta-IN",
+      "ml": "ml-IN",
+      "gu": "gu-IN",
+      "kn": "kn-IN",
+      "pa": "pa-IN",
+      "ur": "ur-IN",
+      "ne": "ne-NP"
+    },
+    "wake_model": {
+      "_comment": "Offline wake word: Vosk small Indian-English model (Apache-2.0), limited to the assistant's name.",
+      "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip",
+      "folder": "vosk-model-small-en-in-0.4",
+      "size_mb": 36
+    },
+    "wake_phrases": [
+      "hey snappy",
+      "snappy",
+      "hi snappy",
+      "okay snappy"
+    ],
+    "contact_aliases": {
+      "mom": [
+        "mom",
+        "mummy",
+        "mumma",
+        "maa",
+        "mother",
+        "amma",
+        "ammi",
+        "mama"
+      ],
+      "dad": [
+        "dad",
+        "papa",
+        "pappa",
+        "daddy",
+        "father",
+        "pitaji",
+        "abbu",
+        "appa"
+      ],
+      "papa": [
+        "papa",
+        "dad",
+        "daddy",
+        "pappa",
+        "father"
+      ],
+      "mummy": [
+        "mummy",
+        "mom",
+        "mumma",
+        "maa",
+        "mother"
+      ],
+      "bro": [
+        "bro",
+        "bhai",
+        "bhaiya",
+        "brother"
+      ],
+      "sis": [
+        "sis",
+        "didi",
+        "behen",
+        "sister"
+      ],
+      "wife": [
+        "wife",
+        "wifey",
+        "biwi"
+      ],
+      "husband": [
+        "husband",
+        "hubby",
+        "pati"
+      ]
+    }
+  }
+}

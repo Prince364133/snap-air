@@ -1,0 +1,203 @@
+{
+ "suite": "unfinished",
+ "schema_version": 1,
+ "doc": "sounds_unfinished(text)",
+ "cases": [
+  {
+   "id": "unfinished.001",
+   "input": "open youtube and",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.002",
+   "input": "remind me to",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.003",
+   "input": "play the",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.004",
+   "input": "search for",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.005",
+   "input": "open youtube",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.006",
+   "input": "remind me at 5",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.007",
+   "input": "set a timer for",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.008",
+   "input": "what about",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.009",
+   "input": "um",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.010",
+   "input": "hmm",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.011",
+   "input": "uhh",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.012",
+   "input": "call mom,",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.013",
+   "input": "open chrome -",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.014",
+   "input": "so...",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.015",
+   "input": "wait…",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.016",
+   "input": "mummy ko",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.017",
+   "input": "youtube pe",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.018",
+   "input": "aur",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.019",
+   "input": "open youtube aur",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.020",
+   "input": "मम्मी को",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.021",
+   "input": "यूट्यूब और",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.022",
+   "input": "मम्मी को कॉल करो",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.023",
+   "input": "the end",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.024",
+   "input": "android",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.025",
+   "input": "kaam ho gaya",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.026",
+   "input": "it's done",
+   "expect": {
+    "unfinished": false
+   }
+  },
+  {
+   "id": "unfinished.027",
+   "input": "I like",
+   "expect": {
+    "unfinished": true
+   }
+  },
+  {
+   "id": "unfinished.028",
+   "input": "brand",
+   "expect": {
+    "unfinished": false
+   }
+  }
+ ]
+}

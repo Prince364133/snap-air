@@ -11,6 +11,7 @@ import threading
 import wave
 
 import numpy as np
+from src import diag  # noqa: E402
 
 _lock = threading.Lock()
 
@@ -25,7 +26,8 @@ def voices():
     try:
         SS = _synth_mod()
         return [(v.display_name, v.language, v.id) for v in SS.all_voices]
-    except Exception:
+    except Exception as e:
+        diag.record("winvoice.list", e, quiet=True)
         return []
 
 
@@ -53,8 +55,8 @@ class WindowsVoice:
         with _lock:
             try:
                 self.synth.options.speaking_rate = max(0.5, min(3.0, float(speed)))
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("winvoice.rate", e, quiet=True)
 
             async def run():
                 stream = await self.synth.synthesize_text_to_stream_async(text)

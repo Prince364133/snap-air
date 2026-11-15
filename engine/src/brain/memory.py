@@ -20,9 +20,12 @@ import threading
 import time
 import uuid
 
+from src import core_loader as core
 from src import storage
+from src import diag  # noqa: E402
 
-CATEGORIES = ["preference", "fact", "person", "project", "routine", "goal", "instruction", "event"]
+# Memory categories: the single list is core/schemas/memory_fact.schema.json
+CATEGORIES = list(core.schema("memory_fact")["properties"]["category"]["enum"])
 
 PROFILE_DEFAULTS = {
     "name": "", "preferred_name": "", "role": "", "about": "",
@@ -30,72 +33,54 @@ PROFILE_DEFAULTS = {
     "editor": "", "browser": "", "projects": [], "routine": {}, "onboarded": False,
 }
 
+
+
+class _AnyOf:
+    """Pattern list from core/intents (any matches -> truthy), used like a compiled regex."""
+
+    def __init__(self, domain):
+        self.domain = domain
+
+    def search(self, text):
+        return core.any_match(self.domain, text or "")
+
+
 # Cheap pre-filter so we don't spend CPU on "scroll down" or "what time is it"
-SELF_SIGNALS = re.compile(
-    r"\b(i|i'm|im|i've|i'd|i'll|my|me|mine|myself|we|our|us|prefer|like|love|hate|enjoy|always|usually|"
-    r"never|every|daily|favourite|favorite|remember|call me|i am|mera|meri|mere|mujhe|main|hum|hamara|"
-    r"pasand|yaad)\b", re.I)
+SELF_SIGNALS = _AnyOf("memory_self")
 
 STOP = set("the a an and or but to of in on at for with is are was were be been it this that these those "
            "i you he she they we my your his her their our me him them us do does did have has had not no "
            "so as by from about into over than then there here what when where which who whom why how "
            "can could would should will shall may might must just also very really please snap".split())
 
-# Never store secrets, whatever their source (rule-based, LLM, manual).
-SECRET = re.compile(
-    r"\b(password|passwd|passcode|pin|otp|one[- ]time code|cvv|secret|api[ _-]?key|token|private key|ssh key|"
-    r"card number|account number|ifsc|aadhaar|aadhar|pan number|social security|ssn)\b"
-    r"|\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,7}\b"
-    r"|\b(sk|pk|ghp|gho|xox[bp]|AKIA|AIza)[-_A-Za-z0-9]{12,}", re.I)
+# Never store secrets, whatever their source (rule-based, LLM, manual). core/intents: memory_secret
+SECRET = _AnyOf("memory_secret")
 
 
 def is_secret(text):
     return bool(SECRET.search(text or ""))
 
 
-# Rule-based extraction: works with no LLM at all. (pattern, template, category, importance, key)
-RULES = [
-    (r"\b(?:my name is|i am called|mera naam)\s+([A-Za-z][A-Za-z]{1,20})", "Name is {0}", "fact", 5, "name"),
-    (r"\bcall me\s+([A-Za-z][A-Za-z]{1,20})", "Prefers to be called {0}", "preference", 5, "call_me"),
-    (r"\bi (?:work as|am working as)\s+(?:an? )?([a-z][a-z ]{2,40}?)(?:\s+at\b|[.,!]|$)", "Works as {0}", "work", 4, "role"),
-    (r"\bi work at\s+([A-Za-z0-9][\w &.-]{1,40}?)(?:[.,!]|$)", "Works at {0}", "work", 4, "company"),
-    (r"\bi (?:start|begin) (?:work|working|my day|office)(?: at| around| by)?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)", "Usually starts work at {0}", "routine", 4, "start_time"),
-    (r"\bi (?:usually|always|normally|generally)\s+(.{4,80}?)(?:[.!]|$)", "Usually {0}", "routine", 3, None),
-    (r"\bi (?:love|really like|prefer|enjoy)\s+(.{3,60}?)(?:[.!]|$)", "Likes {0}", "preference", 3, None),
-    (r"\bi (?:hate|dislike|don't like|do not like)\s+(.{3,60}?)(?:[.!]|$)", "Dislikes {0}", "preference", 3, None),
-    (r"\bi use\s+(antigravity|vs ?code|cursor|windsurf|pycharm|intellij|vim|neovim|sublime|zed)\b", "Uses {0} for coding", "project", 3, "editor"),
-    (r"\bmy (?:goal|plan) is to\s+(.{4,80}?)(?:[.!]|$)", "Goal: {0}", "goal", 4, None),
-]
+# Rule-based extraction: works with no LLM at all. core/intents: memory_extract
+# (compiled pattern, template, category, importance, key)
+def _rules():
+    return [(e["rx"], e["template"], e["category"], e["importance"], e.get("key"))
+            for e in core.domain("memory_extract")]
 
-EXTRACT_SYSTEM = """You maintain the long-term memory of a personal desktop assistant about its user.
-From the LATEST EXCHANGE, extract only durable information worth remembering for weeks:
-preferences, habits, routines, people (name + relationship), projects, goals, schedules, personal details the
-user shares about themself, and instructions about how the assistant should behave.
-Ignore: greetings, small talk, one-off commands (open X, scroll, play Y), questions, anything the ASSISTANT said,
-temporary states ("I'm tired right now"), and facts already present in EXISTING MEMORIES.
-If the new information corrects or refines an existing memory, use op "update" with that memory's id and the
-full corrected text. Write each memory as one short third-person statement, e.g. "Prefers Slack over email for
-work messages", "Manager is Arun", "Standup is at 10:00 on weekdays".
-importance: 5 = identity/strong preference/instruction, 3 = useful, 1 = trivia.
-Never store secrets (passwords, OTPs, PINs, card/account numbers, keys) or facts only about other people.
-If new information makes an existing memory untrue, use op "delete" with its id.
-Return {"memories": []} if nothing qualifies (this is the most common answer)."""
 
-EXTRACT_SCHEMA = {
-    "type": "object",
-    "properties": {"memories": {"type": "array", "items": {
-        "type": "object",
-        "properties": {
-            "op": {"type": "string", "enum": ["add", "update", "delete"]},
-            "id": {"type": "string"},
-            "text": {"type": "string"},
-            "category": {"type": "string", "enum": CATEGORIES},
-            "importance": {"type": "integer", "minimum": 1, "maximum": 5},
-        },
-        "required": ["op", "text", "category", "importance"],
-    }}},
-    "required": ["memories"],
-}
+EXTRACT_SYSTEM = core.prompt("extract_memory")
+
+
+def _extract_schema():
+    import copy
+    s = copy.deepcopy(core.prompt_json("extract_memory.schema"))
+    cat = s["properties"]["memories"]["items"]["properties"]["category"]
+    cat.pop("description", None)
+    cat["enum"] = CATEGORIES
+    return s
+
+
+EXTRACT_SCHEMA = _extract_schema()
 
 
 def _tokens(text):
@@ -159,8 +144,8 @@ class MemoryStore:
         if self.on_change:
             try:
                 self.on_change()
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("memory.on_change", e, quiet=True)
 
     def save_profile(self):
         self.profile["updated"] = _now_iso()
@@ -168,8 +153,8 @@ class MemoryStore:
         if self.on_change:
             try:
                 self.on_change()
-            except Exception:
-                pass
+            except Exception as e:
+                diag.record("memory.on_change", e, quiet=True)
 
     def update_profile(self, changes):
         with self.lock:
@@ -374,9 +359,7 @@ class MemoryStore:
         return self.profile_text(), "\n".join(lines)
 
     # ------------------------------------------------------ write policy
-    EXPLICIT = re.compile(
-        r"^\s*(?:please\s+)?(?:remember|don't forget|do not forget|note that|keep in mind|yaad rakhna|yaad rakho)"
-        r"(?:\s+that)?[\s,:]+(.+)$", re.I)
+    EXPLICIT = core.domain("memory_explicit")[0]["rx"]
 
     def explicit_remember(self, text):
         m = self.EXPLICIT.match(text.strip())
@@ -394,8 +377,8 @@ class MemoryStore:
         if not self.learning_enabled or is_secret(user_text):
             return []
         out = []
-        for pat, tmpl, cat, imp, key in RULES:
-            m = re.search(pat, user_text, re.I)
+        for rx, tmpl, cat, imp, key in _rules():
+            m = rx.search(user_text)
             if not m:
                 continue
             groups = [g.strip().rstrip(".") for g in m.groups() if g]
@@ -444,7 +427,8 @@ class MemoryStore:
                                               "insights that would help a personal assistant (patterns, priorities, "
                                               "working style). No secrets, nothing about other people."},
                 {"role": "user", "content": facts}], schema, max_tokens=160)
-        except Exception:
+        except Exception as e:
+            diag.record("memory.insights", e, quiet=True)
             return []
         made = [self.add(t, "insight", 3, source="reflection") for t in (out or {}).get("insights", [])[:3]]
         self.profile["last_reflection"] = _now_iso()
