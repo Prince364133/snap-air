@@ -78,7 +78,13 @@ class ChipService : Service() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun onDestroy() {
+        if (instance == this) instance = null
         main.removeCallbacksAndMessages(null)
         rc?.stop()
         rc = null
@@ -86,6 +92,7 @@ class ChipService : Service() {
     }
 
     companion object {
+        @Volatile var instance: ChipService? = null
         private const val CHANNEL = "snapy_chip"
         private const val NOTIF_ID = 8
         private const val ACTION_STOP = "stop"

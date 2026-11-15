@@ -17,14 +17,15 @@ class ProfileStore {
   }
 
   /// Saves and updates every listener right away (the screen never waits on the phone).
-  static Future<bool> save({String? name, String? assistantName, String? iceNotes}) async {
+  static Future<bool> save({String? name, String? assistantName, String? iceNotes, String? avatar}) async {
     final old = notifier.value;
     notifier.value = SnapyProfile(
       name: name ?? old.name,
       assistantName: (assistantName == null || assistantName.trim().isEmpty) ? old.assistantName : assistantName.trim(),
       iceNotes: iceNotes ?? old.iceNotes,
+      avatar: avatar ?? old.avatar,
     );
-    final stored = await NextApi.setProfile(name: name, assistantName: assistantName, iceNotes: iceNotes);
+    final stored = await NextApi.setProfile(name: name, assistantName: assistantName, iceNotes: iceNotes, avatar: avatar);
     return stored != null;
   }
 

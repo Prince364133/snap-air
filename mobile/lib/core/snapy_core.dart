@@ -123,6 +123,38 @@ class SnapyCore {
   /// Shows the chip with "Display over other apps" when the Reel counter is off.
   static Future<bool> startChip() async => (await _ch.invokeMethod<bool>('startChip')) ?? false;
 
+  /// Stops the ambient camera ring and chip overlay.
+  static Future<bool> stopChip() async => (await _ch.invokeMethod<bool>('stopChip')) ?? false;
+
+  /// Checks if the ambient camera ring / chip is currently powered on.
+  static Future<bool> isChipActive() async => (await _ch.invokeMethod<bool>('isChipActive')) ?? true;
+
+  /// Checks whether Android 13+ sideload restricted permissions apply.
+  static Future<bool> isRestrictedSettings() async =>
+      (await _ch.invokeMethod<bool>('isRestrictedSettings')) ?? false;
+
+  /// Queries all real installed apps from the Android package manager.
+  static Future<List<Map<String, dynamic>>> getInstalledApps() async {
+    final res = await _ch.invokeMethod<List>('getInstalledApps');
+    return (res ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// In-memory cache for fast, flicker-free app icon rendering.
+  static final Map<String, Uint8List?> _iconCache = {};
+
+  /// Retrieves genuine system application icon bytes (PNG) for an installed package.
+  static Future<Uint8List?> getAppIcon(String package) async {
+    if (package.isEmpty) return null;
+    if (_iconCache.containsKey(package)) return _iconCache[package];
+    try {
+      final bytes = await _ch.invokeMethod<Uint8List>('getAppIcon', {'package': package});
+      _iconCache[package] = bytes;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Leaves the current app for the home screen (the "Not now" on the pause screen).
   static Future<void> goHome() => _ch.invokeMethod('goHome');
 

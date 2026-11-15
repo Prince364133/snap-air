@@ -6,7 +6,9 @@ import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../main.dart';
+import 'app_system_icon.dart';
 import 'assistant_panel.dart';
+import 'common.dart';
 import 'daily_three.dart';
 import 'life_section.dart';
 import 'profile_store.dart';
@@ -36,6 +38,8 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   Today? _today;
   bool _loadingUsage = true;
   int _chartMode = 0; // 0 = Reels, 1 = Long Videos, 2 = Screen Time
+  int _weekOffset = 0; // 0 = current week, -1 = previous, etc.
+  bool _chipActive = true;
   StreamSubscription? _sub;
 
   @override
@@ -66,14 +70,138 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
       if (p['usage'] == true) {
         t = await SnapyCore.today();
       }
+      final active = await SnapyCore.isChipActive();
       if (mounted) {
         setState(() {
           _perm = p;
           _today = t;
+          _chipActive = active;
           _loadingUsage = false;
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _togglePower() async {
+    final willEnable = !_chipActive;
+    setState(() => _chipActive = willEnable);
+    if (willEnable) {
+      await SnapyCore.startChip();
+      if (mounted) toast(context, 'Snapy powered ON · Camera halo & habits active');
+    } else {
+      await SnapyCore.stopChip();
+      if (mounted) toast(context, 'Snapy powered OFF · Background overlay paused');
+    }
+  }
+
+  String _monthLabel() {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final now = DateTime.now();
+    final d = now.add(Duration(days: _weekOffset * 7));
+    return '${months[d.month - 1]} ${d.year}';
+  }
+
+  Widget _buildAvatarView(SnapyProfile p, SnapyColors c, {double radius = 17}) {
+    final avatar = p.avatar;
+    final size = radius * 2;
+    if (avatar == 'cyan') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF28C8FF), Color(0xFF0077FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.bolt_rounded, color: Colors.white, size: radius * 1.0),
+      );
+    }
+    if (avatar == 'mint') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF3CFFC8), Color(0xFF10B981)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.eco_rounded, color: Colors.white, size: radius * 1.0),
+      );
+    }
+    if (avatar == 'violet') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.star_rounded, color: Colors.white, size: radius * 1.0),
+      );
+    }
+    if (avatar == 'sunset') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFFFF5E3A), Color(0xFFFFB800)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.local_fire_department_rounded, color: Colors.white, size: radius * 1.0),
+      );
+    }
+    if (avatar == 'initials') {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: c.accentSoft,
+        child: Text(
+          p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase(),
+          style: TextStyle(color: c.accent, fontSize: radius * 0.9, fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+    // Default: Cosmic Halo
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(2.5),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFF28C8FF),
+            Color(0xFF3CFFC8),
+            Color(0xFF78A0FF),
+            Color(0xFF8B5CF6),
+            Color(0xFFEC4899),
+            Color(0xFFFF5E3A),
+            Color(0xFFFFB800),
+            Color(0xFF28C8FF),
+          ],
+        ),
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFF0C0D14),
+        ),
+        child: Icon(Icons.auto_awesome, color: const Color(0xFF28C8FF), size: radius * 0.85),
+      ),
+    );
   }
 
   List<String> _getMissingPermissions() {
@@ -85,8 +213,14 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     return missing;
   }
 
-  void _grantNextPermission() {
+  Future<void> _grantNextPermission() async {
     if (!(_perm['realcount'] ?? false)) {
+      final isRestricted = await SnapyCore.isRestrictedSettings();
+      if (!mounted) return;
+      if (isRestricted) {
+        _showRestrictedSettingsGuide(context);
+        return;
+      }
       SnapyCore.openRealCountSettings();
     } else if (!(_perm['overlay'] ?? false)) {
       SnapyCore.openOverlaySettings();
@@ -95,6 +229,79 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     } else if (!(_perm['microphone'] ?? false)) {
       SnapyCore.requestPermission('microphone');
     }
+  }
+
+  void _showRestrictedSettingsGuide(BuildContext context) {
+    final c = SnapyColors.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(color: c.hairStrong, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.security_rounded, color: c.accent, size: 24),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Android Sideload Verification',
+                    style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 17),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Because Snapy was installed as an APK, Android requires a 1-time security unlock before enabling accessibility:\n\n'
+                '1. Tap "Open App Info" below.\n'
+                '2. Tap the ⋮ (three dots) at top-right corner.\n'
+                '3. Select "Allow restricted permissions".\n'
+                '4. Return here and tap "Grant Accessibility".',
+                style: TextStyle(color: c.text2, fontSize: 13.5, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        SnapyCore.openRealCountSettings();
+                      },
+                      child: const Text('Go to Settings'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        SnapyCore.openAppDetails();
+                      },
+                      child: const Text('Open App Info'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -109,9 +316,9 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
         child: RefreshIndicator(
           onRefresh: _loadData,
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             children: [
-              // 1. Welcome Greeting & Ask Snapy Header Bar
+              // 1. Welcome Greeting & Snapy Header Bar
               ValueListenableBuilder<SnapyProfile>(
                 valueListenable: ProfileStore.notifier,
                 builder: (_, p, _) {
@@ -119,23 +326,16 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      _buildAvatarView(p, c, radius: 16),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello, $name 👋',
-                              style: text.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 24,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Your attentive on-device companion',
-                              style: text.bodySmall?.copyWith(color: c.text2),
-                            ),
-                          ],
+                        child: Text(
+                          'Hello, $name',
+                          style: text.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 22,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       // Light / Dark mode toggle
@@ -147,12 +347,21 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                         ),
                         onPressed: SnapyApp.toggleTheme,
                       ),
+                      // Background Power ON / OFF toggle
+                      IconButton(
+                        tooltip: _chipActive ? 'Power Off Snapy' : 'Power On Snapy',
+                        icon: Icon(
+                          Icons.power_settings_new_rounded,
+                          color: _chipActive ? const Color(0xFF3CFFC8) : c.text3,
+                        ),
+                        onPressed: _togglePower,
+                      ),
                       const SizedBox(width: 4),
-                      // "Ask Snapy" button
+                      // "Snapy" button
                       FilledButton.icon(
                         onPressed: () => openAssistant(context),
                         icon: const Icon(Icons.auto_awesome, size: 16),
-                        label: const Text('Ask Snapy', style: TextStyle(fontWeight: FontWeight.w600)),
+                        label: const Text('Snapy', style: TextStyle(fontWeight: FontWeight.w600)),
                         style: FilledButton.styleFrom(
                           backgroundColor: c.accent,
                           foregroundColor: Colors.white,
@@ -406,7 +615,39 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
+          // Week navigation (< >) and month label
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _weekOffset == 0 ? 'This Week (${_monthLabel()})' : 'Week of ${_monthLabel()}',
+                style: TextStyle(color: c.text2, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded, size: 22),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    color: c.text2,
+                    tooltip: 'Previous week',
+                    onPressed: () => setState(() => _weekOffset -= 1),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded, size: 22),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    color: _weekOffset < 0 ? c.text2 : c.text3.withValues(alpha: 0.3),
+                    tooltip: 'Next week',
+                    onPressed: _weekOffset < 0 ? () => setState(() => _weekOffset += 1) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           // 7 Bars
           SizedBox(
             height: 120,
@@ -528,7 +769,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
             Expanded(
               child: Row(
                 children: [
-                  _buildAppIconBadge(c, pkg),
+                  AppSystemIcon(package: pkg, size: 34, cornerRadius: 8),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -591,34 +832,6 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildAppIconBadge(SnapyColors c, String pkg) {
-    Color bg = c.accentSoft;
-    IconData icon = Icons.apps;
-    if (pkg.contains('instagram')) {
-      bg = const Color(0xFFDD2A7B).withValues(alpha: 0.2);
-      icon = Icons.camera_alt_outlined;
-    } else if (pkg.contains('youtube')) {
-      bg = const Color(0xFFFF0000).withValues(alpha: 0.2);
-      icon = Icons.play_arrow_rounded;
-    } else if (pkg.contains('whatsapp')) {
-      bg = const Color(0xFF25D366).withValues(alpha: 0.2);
-      icon = Icons.chat_bubble_outline;
-    } else if (pkg.contains('facebook')) {
-      bg = const Color(0xFF1877F2).withValues(alpha: 0.2);
-      icon = Icons.facebook;
-    }
-
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: Icon(icon, size: 16, color: c.text),
     );
   }
 

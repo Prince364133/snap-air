@@ -213,15 +213,25 @@ class NextApi {
   // ------------------------------------------------------------------ profile
   static Future<SnapyProfile> profile() async {
     final v = await _invoke('profile') ?? await _core('profile');
-    return SnapyProfile.fromJson(_map(v));
+    final map = _map(v);
+    if (!map.containsKey('avatar') || '${map['avatar']}'.isEmpty) {
+      try {
+        final prefs = await SnapyCore.rcPrefs();
+        if (prefs.containsKey('user_avatar') && '${prefs['user_avatar']}'.isNotEmpty) {
+          map['avatar'] = prefs['user_avatar'];
+        }
+      } catch (_) {}
+    }
+    return SnapyProfile.fromJson(map);
   }
 
   /// Only the given fields change. Returns the stored profile (null = couldn't store).
-  static Future<SnapyProfile?> setProfile({String? name, String? assistantName, String? iceNotes}) async {
+  static Future<SnapyProfile?> setProfile({String? name, String? assistantName, String? iceNotes, String? avatar}) async {
     final p = <String, dynamic>{
       'name': ?name,
       'assistant_name': ?assistantName,
       'ice_notes': ?iceNotes,
+      'avatar': ?avatar,
     };
     var v = await _invoke('setProfile', p);
     v ??= await _core('set_profile', [jsonEncode(p)]);
@@ -230,6 +240,7 @@ class NextApi {
       await SnapyCore.setRcPrefs({
         'user_name': ?name,
         'ai_name': ?assistantName,
+        'user_avatar': ?avatar,
       });
     } catch (_) {}
     return v is Map ? SnapyProfile.fromJson(_map(v)) : null;
@@ -374,8 +385,8 @@ class VaultItem {
 }
 
 class SnapyProfile {
-  final String name, assistantName, iceNotes;
-  const SnapyProfile({this.name = '', this.assistantName = 'Snapy', this.iceNotes = ''});
+  final String name, assistantName, iceNotes, avatar;
+  const SnapyProfile({this.name = '', this.assistantName = 'Snapy', this.iceNotes = '', this.avatar = 'halo'});
 
   factory SnapyProfile.fromJson(Map<String, dynamic> j) {
     final a = '${j['assistant_name'] ?? ''}'.trim();
@@ -383,6 +394,7 @@ class SnapyProfile {
       name: '${j['name'] ?? j['preferred_name'] ?? ''}'.trim(),
       assistantName: a.isEmpty ? 'Snapy' : a,
       iceNotes: '${j['ice_notes'] ?? ''}',
+      avatar: '${j['avatar'] ?? j['user_avatar'] ?? 'halo'}',
     );
   }
 }

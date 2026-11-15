@@ -94,6 +94,12 @@ object VoiceController {
                 // a pause with nothing more said after an unfinished phrase: send what we have
                 if (sofar.isNotBlank()) { finish(app, sofar); return }
                 active = false
+                if (code == 13 || code == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
+                    android.util.Log.w("VoiceController", "Speech recognition code 13 (language unsupported) -> fallback to idle")
+                    emit(core, "idle", "")
+                    WakeWordService.resume(app)
+                    return
+                }
                 emit(core, if (code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) "idle" else "error",
                     "", error = errorText(code))
                 WakeWordService.resume(app)

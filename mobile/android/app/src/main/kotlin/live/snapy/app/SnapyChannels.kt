@@ -3,8 +3,12 @@ package live.snapy.app
 import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -13,6 +17,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 
 /**
  * Dart <-> Android, used by the main screen and the bottom sheet over other apps:
@@ -112,12 +117,89 @@ object SnapyChannels {
                     activity.startActivity(intent)
                     result.success(true)
                 }
+                "isRestrictedSettings" -> {
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        val appOps = activity.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
+                        var isRestricted = false
+                        try {
+                            if (appOps != null) {
+                                val mode = appOps.unsafeCheckOpNoThrow(
+                                    "android:access_restricted_settings",
+                                    android.os.Process.myUid(),
+                                    activity.packageName
+                                )
+                                isRestricted = (mode != android.app.AppOpsManager.MODE_ALLOWED)
+                            }
+                        } catch (_: Exception) {}
+                        result.success(isRestricted)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "startChip" -> {
+                    RcPrefs(activity).update(JSONObject().put("chip_enabled", true))
                     SnapyAccessibilityService.instance?.showPillPublic()
                     RealCountController.active?.reload()
-                    // without the Reel counter: the chip via "Display over other apps" (ChipService)
                     result.success(SnapyAccessibilityService.instance != null || ChipService.startIfWanted(activity.applicationContext))
                 }
+                "stopChip" -> {
+                    RcPrefs(activity).update(JSONObject().put("chip_enabled", false))
+                    RealCountController.active?.stop()
+                    ChipService.stop(activity)
+                    result.success(true)
+                }
+                "isChipActive" -> {
+                    val on = RcPrefs(activity).bool("chip_enabled", true)
+                    val running = SnapyAccessibilityService.instance != null || ChipService.instance != null
+                    result.success(on && running)
+                }
+                "getInstalledApps" -> Thread {
+                    try {
+                        val pm = activity.packageManager
+                        val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        val resolves = pm.queryIntentActivities(mainIntent, 0)
+                        val socialSet = setOf(
+                            "com.instagram.android", "com.google.android.youtube", "com.snapchat.android",
+                            "com.facebook.katana", "com.facebook.lite", "com.zhiliaoapp.musically",
+                            "com.ss.android.ugc.trill", "com.twitter.android", "com.reddit.frontpage",
+                            "com.whatsapp", "in.mohalla.video", "com.eterno.shortvideos"
+                        )
+                        val list = resolves.map { ri ->
+                            val p = ri.activityInfo.packageName
+                            val l = ri.loadLabel(pm).toString()
+                            mapOf("package" to p, "label" to l, "is_social" to socialSet.contains(p))
+                        }.sortedBy { (it["label"] as? String)?.lowercase() ?: "" }
+                        activity.runOnUiThread { result.success(list) }
+                    } catch (t: Throwable) {
+                        activity.runOnUiThread { result.success(emptyList<Map<String, Any>>()) }
+                    }
+                }.start()
+                "getAppIcon" -> Thread {
+                    val pkg = str("package")
+                    if (pkg.isEmpty()) {
+                        activity.runOnUiThread { result.success(null) }
+                        return@Thread
+                    }
+                    try {
+                        val pm = activity.packageManager
+                        val d = pm.getApplicationIcon(pkg)
+                        val bmp = if (d is BitmapDrawable && d.bitmap != null && !d.bitmap.isRecycled) {
+                            Bitmap.createScaledBitmap(d.bitmap, 96, 96, true)
+                        } else {
+                            val b = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+                            val cv = Canvas(b)
+                            d.setBounds(0, 0, 96, 96)
+                            d.draw(cv)
+                            b
+                        }
+                        val stream = ByteArrayOutputStream()
+                        bmp.compress(Bitmap.CompressFormat.PNG, 90, stream)
+                        val bytes = stream.toByteArray()
+                        activity.runOnUiThread { result.success(bytes) }
+                    } catch (_: Throwable) {
+                        activity.runOnUiThread { result.success(null) }
+                    }
+                }.start()
                 "today" -> Thread {
                     try {
                         val t = usage.today()
@@ -440,8 +522,15 @@ object SnapyChannels {
     } catch (_: Exception) { false }
 
     fun isAccessibilityOn(activity: Activity): Boolean {
+        if (SnapyAccessibilityService.instance != null) return true
         val enabled = Settings.Secure.getString(activity.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-        val me = ComponentName(activity, SnapyAccessibilityService::class.java).flattenToString()
-        return enabled.split(':').any { it.equals(me, ignoreCase = true) }
+        val meFull = ComponentName(activity, SnapyAccessibilityService::class.java).flattenToString()
+        val meShort = ComponentName(activity, SnapyAccessibilityService::class.java).flattenToShortString()
+        val pkg = activity.packageName
+        return enabled.split(':').any { s ->
+            s.equals(meFull, ignoreCase = true) ||
+            s.equals(meShort, ignoreCase = true) ||
+            (s.startsWith("$pkg/", ignoreCase = true) && s.contains("AccessibilityService", ignoreCase = true))
+        }
     }
 }

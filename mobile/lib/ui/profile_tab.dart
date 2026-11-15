@@ -102,6 +102,178 @@ class _ProfileTabState extends State<ProfileTab> {
     if (!ok && m == null) toast(context, tr('profile.unavailable'));
   }
 
+  Widget _buildAvatarView(SnapyProfile p, SnapyColors c, {double radius = 30}) {
+    final avatar = p.avatar;
+    final size = radius * 2;
+    if (avatar == 'cyan') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF28C8FF), Color(0xFF0077FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.bolt_rounded, color: Colors.white, size: radius * 0.9),
+      );
+    }
+    if (avatar == 'mint') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF3CFFC8), Color(0xFF10B981)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.eco_rounded, color: Colors.white, size: radius * 0.9),
+      );
+    }
+    if (avatar == 'violet') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.star_rounded, color: Colors.white, size: radius * 0.9),
+      );
+    }
+    if (avatar == 'sunset') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFFFF5E3A), Color(0xFFFFB800)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Icon(Icons.local_fire_department_rounded, color: Colors.white, size: radius * 0.9),
+      );
+    }
+    if (avatar == 'initials') {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: c.accentSoft,
+        child: Text(
+          p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase(),
+          style: TextStyle(color: c.accent, fontSize: radius * 0.9, fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+    // Default: Cosmic Halo
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(3),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFF28C8FF),
+            Color(0xFF3CFFC8),
+            Color(0xFF78A0FF),
+            Color(0xFF8B5CF6),
+            Color(0xFFEC4899),
+            Color(0xFFFF5E3A),
+            Color(0xFFFFB800),
+            Color(0xFF28C8FF),
+          ],
+        ),
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFF0C0D14),
+        ),
+        child: Icon(Icons.auto_awesome, color: const Color(0xFF28C8FF), size: radius * 0.8),
+      ),
+    );
+  }
+
+  void _chooseAvatar(BuildContext context) {
+    final c = SnapyColors.of(context);
+    final p = ProfileStore.current;
+    final options = [
+      (key: 'halo', label: 'Cosmic Halo', sub: 'Dynamic spectral ring'),
+      (key: 'cyan', label: 'Cyan Orb', sub: 'Electric neon energy'),
+      (key: 'mint', label: 'Emerald Aura', sub: 'Calm mindful mint'),
+      (key: 'violet', label: 'Violet Pulsar', sub: 'Deep cosmic intelligence'),
+      (key: 'sunset', label: 'Sunset Flare', sub: 'Warm focus blaze'),
+      (key: 'initials', label: 'Initials Monogram', sub: 'Personal name initial'),
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: c.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(color: c.hairStrong, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Choose Persona Avatar',
+                style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Personalize how you appear in Snapy and Conscious HUD',
+                style: TextStyle(color: c.text3, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              for (final opt in options) ...[
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  leading: _buildAvatarView(SnapyProfile(name: p.name, avatar: opt.key), c, radius: 20),
+                  title: Text(opt.label, style: TextStyle(color: c.text, fontWeight: FontWeight.w600, fontSize: 15)),
+                  subtitle: Text(opt.sub, style: TextStyle(color: c.text3, fontSize: 12)),
+                  trailing: p.avatar == opt.key
+                      ? Icon(Icons.check_circle_rounded, color: c.accent)
+                      : null,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await ProfileStore.save(avatar: opt.key);
+                    if (!mounted) return;
+                    toast(this.context, 'Avatar updated to ${opt.label}');
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
@@ -122,12 +294,22 @@ class _ProfileTabState extends State<ProfileTab> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
                   child: Row(children: [
-                    ExcludeSemantics(
-                      child: CircleAvatar(
-                        radius: 30,
-                        backgroundColor: c.accentSoft,
-                        child: Text(p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase(),
-                            style: TextStyle(color: c.accent, fontSize: 26, fontWeight: FontWeight.w700)),
+                    GestureDetector(
+                      onTap: () => _chooseAvatar(context),
+                      child: Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          _buildAvatarView(p, c, radius: 28),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: c.accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: c.card, width: 2),
+                            ),
+                            child: const Icon(Icons.palette_rounded, size: 10, color: Colors.white),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 16),

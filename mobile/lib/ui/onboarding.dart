@@ -527,7 +527,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
           _buildGrantedBanner(c, 'Guardian Service Active & Ready')
         else
           FilledButton.icon(
-            onPressed: () => SnapyCore.openRealCountSettings(),
+            onPressed: () async {
+              final isRestricted = await SnapyCore.isRestrictedSettings();
+              if (!mounted) return;
+              if (isRestricted) {
+                _showRestrictedHelp(context);
+                return;
+              }
+              SnapyCore.openRealCountSettings();
+            },
             icon: const Icon(Icons.check_circle_outline),
             label: const Text('Turn On Guardian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             style: FilledButton.styleFrom(
@@ -547,6 +555,70 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
           child: Text(granted ? 'Continue' : 'Skip for now'),
         ),
       ],
+    );
+  }
+
+  void _showRestrictedHelp(BuildContext context) {
+    final c = SnapyColors.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.bg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(width: 36, height: 4, decoration: BoxDecoration(color: c.hairStrong, borderRadius: BorderRadius.circular(2))),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.security_rounded, color: c.accent, size: 24),
+                  const SizedBox(width: 10),
+                  Text('Android Sideload Verification', style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 17)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Because Snapy was installed as an APK, Android requires a 1-time security unlock before enabling accessibility:\n\n'
+                '1. Tap "Open App Info" below.\n'
+                '2. Tap the ⋮ (three dots) at top-right corner.\n'
+                '3. Select "Allow restricted permissions".\n'
+                '4. Return here and tap "Turn On Guardian".',
+                style: TextStyle(color: c.text2, fontSize: 13.5, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        SnapyCore.openRealCountSettings();
+                      },
+                      child: const Text('Go to Settings'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        SnapyCore.openAppDetails();
+                      },
+                      child: const Text('Open App Info'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

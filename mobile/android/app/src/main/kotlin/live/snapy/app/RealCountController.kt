@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -62,8 +63,17 @@ class RealCountController(
         override fun onOpenSheet() = openSheet("/sheet")
         override fun onLaunchApp(pkg: String) = launchSocialApp(pkg)
         override fun onTakeNote() {
-            VoiceController.start(ctx, "note")
-            openSheet("/sheet")
+            if (AudioNoteRecorder.isRecording) {
+                val f = AudioNoteRecorder.stop(ctx)
+                if (f != null) {
+                    Toast.makeText(ctx, "✓ Audio note saved to Conscious Vault", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val ok = AudioNoteRecorder.start(ctx)
+                if (ok) {
+                    Toast.makeText(ctx, "🎙 Taking audio note silently...", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
         override fun onLongPress() = quickActions()
         override fun onSwipeDown() = breakdown()
@@ -433,11 +443,11 @@ class RealCountController(
         val reels = if (counting) "${store.totalReels()}" else "—"
         val f = fraction()
         val tone = ChipLogic.tone(f, rules.d("chip.amber_at", 1.0), engine.isBedtime(now), paused)
-        val full = if (paused) Strings.t(ctx, "chip.paused", mapOf("time" to time)) else Strings.t(ctx, "chip.text", mapOf("time" to time, "reels" to reels))
-        // split "5h 16m · ▶ 42" around the camera gap: time on the left, the rest on the right
+        val full = if (paused) "Counter paused · $time" else "$time · 🎞 $reels"
+        // split around the camera gap: time on the left, the rest on the right
         val left = if (full.startsWith(time)) time else full
-        val right = if (full.startsWith(time)) full.removePrefix(time) else ""
-        chip.render(left, right, tone, ChipLogic.ring(f), Strings.t(ctx, "chip.desc", mapOf("time" to time, "reels" to reels)))
+        val right = if (full.startsWith(time)) full.removePrefix(time).trim() else ""
+        chip.render(left, right, tone, ChipLogic.ring(f), "$time · $reels reels")
     }
 
     private fun applyVisibility() = main.post {

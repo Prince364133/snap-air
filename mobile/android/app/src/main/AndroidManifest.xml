@@ -93,11 +93,11 @@
         <!-- Shows reminder notifications at their time, even if Snapy isn't running -->
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 
-        <!-- Real Count + phone actions (not an accessibility tool: declared to Google Play) -->
+        <!-- Snapy Metrics Collection + phone actions (declared to Google Play) -->
         <service
             android:name=".SnapyAccessibilityService"
             android:exported="false"
-            android:label="Snapy Real Count"
+            android:label="Snapy Metrics Collection"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

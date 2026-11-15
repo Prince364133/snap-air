@@ -16,7 +16,7 @@ void main() {
   testWidgets('home shows Real Count, tasks, memory and the assistant button', (tester) async {
     await tester.pumpWidget(const SnapyApp());
     await tester.pump();
-    expect(find.text('Ask Snapy'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Snapy'), findsOneWidget);
     expect(find.text('Usage Frequency'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Top Used Apps'), 300);
     expect(find.text('Top Used Apps'), findsOneWidget);

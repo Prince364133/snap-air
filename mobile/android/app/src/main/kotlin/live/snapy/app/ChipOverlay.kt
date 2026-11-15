@@ -458,6 +458,35 @@ class ReelIconView(context: Context) : View(context) {
  *  - Drop Interaction: tapping camera halo smoothly unrolls a compact horizontal capsule strip (reference media_1794761463384_f466c5eb.png)
  *    Left target -> opens Snapy AI bottom sheet; Right target -> launches the social app.
  */
+class RecordingDotView(context: Context) : View(context) {
+    var isRecording = false
+        set(value) { field = value; invalidate() }
+
+    private val outerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+        color = 0x88FF3B30.toInt()
+    }
+    private val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0xFFFF3B30.toInt()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val cx = width / 2f
+        val cy = height / 2f
+        val r = minOf(cx, cy) - 2f
+        if (isRecording) {
+            canvas.drawCircle(cx, cy, r, outerPaint)
+            canvas.drawCircle(cx, cy, r * 0.55f, innerPaint)
+        } else {
+            canvas.drawCircle(cx, cy, r * 0.75f, outerPaint)
+            canvas.drawCircle(cx, cy, r * 0.45f, innerPaint)
+        }
+    }
+}
+
 class ChipOverlay(
     private val ctx: Context,
     private val wm: WindowManager,
@@ -488,13 +517,27 @@ class ChipOverlay(
     private var stripTimeText: TextView? = null
     private var stripReelText: TextView? = null
     private var stripReelIcon: ReelIconView? = null
+    private var noteDotView: RecordingDotView? = null
+    private var noteText: TextView? = null
 
     private var isSocialActive = false
     private var activeSocialPkg = "com.instagram.android"
     private var activeAppPkg = ""
+    private var currentAppMs = 0L
     private var appSessionStartMs = 0L
     private var totalReels = 0
     private var screenTimeStr = "0m"
+
+    fun formatAppTime(ms: Long): String {
+        val totalMinutes = (ms / 60000L).coerceAtLeast(0L)
+        return if (totalMinutes >= 60) {
+            val h = totalMinutes / 60
+            val m = totalMinutes % 60
+            "${h}h ${m}m"
+        } else {
+            "${maxOf(1, totalMinutes)}m"
+        }
+    }
 
     private var lp: WindowManager.LayoutParams? = null
     private var scale = 1f
@@ -519,7 +562,7 @@ class ChipOverlay(
 
         // 1. Camera Touch Area & Punch-Hole Halo Ring
         val haloBox = FrameLayout(ctx).apply {
-            val sz = dp(54f)
+            val sz = dp(32f)
             layoutParams = LinearLayout.LayoutParams(sz, sz)
             clipChildren = false
             clipToPadding = false
@@ -534,42 +577,46 @@ class ChipOverlay(
         haloBox.addView(halo)
         r.addView(haloBox)
 
-        // 2. Active App / Reel Badge (positioned directly below the camera ring)
+        // 2. Active App / Reel Badge (positioned directly 1px below camera ring)
         val badge = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             visibility = if (isSocialActive || activeAppPkg.isNotEmpty()) View.VISIBLE else View.GONE
-            setPadding(dp(6f), dp(2f), dp(8f), dp(2f))
+            setPadding(dp(5f), dp(1.5f), dp(6f), dp(1.5f))
             background = GradientDrawable().apply {
-                cornerRadius = dp(11f).toFloat()
+                cornerRadius = dp(9f).toFloat()
                 setColor(0xEE161824.toInt())
                 setStroke(dp(1f), 0x2EFFFFFF)
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(22f)
+                dp(19f)
             ).apply {
-                topMargin = dp(2f)
+                topMargin = dp(1f) // Exactly 1-2 pixels below camera ring!
             }
 
             val icon = ReelIconView(ctx).apply {
                 appPackage = activeSocialPkg
-                layoutParams = LinearLayout.LayoutParams(dp(15f), dp(15f)).apply {
-                    rightMargin = dp(4f)
+                layoutParams = LinearLayout.LayoutParams(dp(13f), dp(13f)).apply {
+                    rightMargin = dp(3.5f)
                 }
             }
             badgeIcon = icon
             addView(icon)
 
             val tv = TextView(ctx).apply {
-                text = "$totalReels"
+                text = if (isSocialActive && totalReels > 0) "$totalReels" else formatAppTime(currentAppMs)
                 setTextColor(0xFFFFFFFF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f * scale)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                 fontFeatureSettings = "tnum"
             }
             badgeCountText = tv
             addView(tv)
+
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { toggleCapsuleStrip() }
         }
         socialBadge = badge
         r.addView(badge)
@@ -633,20 +680,30 @@ class ChipOverlay(
             val cutout = insets.displayCutout
             if (cutout != null && cutout.boundingRects.isNotEmpty()) {
                 val r = cutout.boundingRects[0]
-                val sz = maxOf(r.width(), r.height())
-                val isTopNotch = (r.top <= 2 && r.height() > dp(14f))
+                val sz = minOf(r.width(), r.height()).coerceIn(dp(18f), dp(36f))
+                val isTopNotch = (r.top <= 2 && r.width() > dp(85f) && r.width() > r.height() * 2.2f)
                 val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
-                return CutoutData(true, r, r.centerX(), r.centerY(), sz, isTopNotch, isCorner)
+                val cy = if (r.top <= 2 && !isTopNotch) {
+                    (r.top + r.height() / 2).coerceAtLeast(sz / 2)
+                } else {
+                    r.centerY()
+                }
+                return CutoutData(true, r, r.centerX(), cy, sz, isTopNotch, isCorner)
             }
         } else if (Build.VERSION.SDK_INT >= 28) {
             @Suppress("DEPRECATION")
             val cutout = wm.defaultDisplay.cutout
             if (cutout != null && cutout.boundingRects.isNotEmpty()) {
                 val r = cutout.boundingRects[0]
-                val sz = maxOf(r.width(), r.height())
-                val isTopNotch = (r.top <= 2 && r.height() > dp(14f))
+                val sz = minOf(r.width(), r.height()).coerceIn(dp(18f), dp(36f))
+                val isTopNotch = (r.top <= 2 && r.width() > dp(85f) && r.width() > r.height() * 2.2f)
                 val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
-                return CutoutData(true, r, r.centerX(), r.centerY(), sz, isTopNotch, isCorner)
+                val cy = if (r.top <= 2 && !isTopNotch) {
+                    (r.top + r.height() / 2).coerceAtLeast(sz / 2)
+                } else {
+                    r.centerY()
+                }
+                return CutoutData(true, r, r.centerX(), cy, sz, isTopNotch, isCorner)
             }
         }
         val defaultSize = dp(24f)
@@ -663,7 +720,6 @@ class ChipOverlay(
         val p = lp ?: return
         try {
             val cutout = getCutout()
-            val hitSize = dp(54f)
             val dm = ctx.resources.displayMetrics
 
             if (cutout.isTopNotch) {
@@ -674,9 +730,14 @@ class ChipOverlay(
                     notchHeight = cutout.bounds.height().toFloat()
                     layoutParams = FrameLayout.LayoutParams(cutout.bounds.width() + dp(12f), cutout.bounds.height() + dp(8f), Gravity.CENTER_HORIZONTAL or Gravity.TOP)
                 }
+                val hitW = cutout.bounds.width() + dp(12f)
+                val hitH = cutout.bounds.height() + dp(8f)
+                haloContainer?.layoutParams = LinearLayout.LayoutParams(hitW, hitH)
+                p.x = (cutout.cx - hitW / 2).coerceIn(0, (dm.widthPixels - hitW).coerceAtLeast(0))
+                p.y = 0
             } else {
                 val haloSize = if (cutout.hasCutout) {
-                    minOf(cutout.size, dp(34f)) + dp(6f) // bounded halo around punch-hole lens
+                    maxOf(cutout.size, dp(26f)) + dp(4f)
                 } else {
                     dp(28f)
                 }
@@ -685,16 +746,19 @@ class ChipOverlay(
                     isTopNotch = false
                     isHaloRing = true
                     cutoutRadiusPx = if (cutout.hasCutout) {
-                        minOf(cutout.size / 2f, dp(17f).toFloat())
+                        (cutout.size / 2f).coerceIn(dp(6f).toFloat(), dp(16f).toFloat())
                     } else {
-                        dp(6.5f).toFloat() // Default camera punch-hole lens radius (13dp cutout)
+                        dp(6.5f).toFloat()
                     }
                     layoutParams = FrameLayout.LayoutParams(haloSize, haloSize, Gravity.CENTER)
                 }
+
+                val touchW = maxOf(haloSize, dp(48f))
+                haloContainer?.layoutParams = LinearLayout.LayoutParams(touchW, haloSize)
+                p.x = (cutout.cx - touchW / 2).coerceIn(0, (dm.widthPixels - touchW).coerceAtLeast(0))
+                p.y = (cutout.cy - haloSize / 2).coerceAtLeast(0)
             }
 
-            p.x = (cutout.cx - hitSize / 2).coerceIn(0, (dm.widthPixels - hitSize).coerceAtLeast(0))
-            p.y = (cutout.cy - hitSize / 2).coerceAtLeast(0)
             p.width = WindowManager.LayoutParams.WRAP_CONTENT
             p.height = WindowManager.LayoutParams.WRAP_CONTENT
 
@@ -719,7 +783,7 @@ class ChipOverlay(
         badgeCountText?.text = "$totalReels"
         stripReelIcon?.isReelMode = true
         stripReelIcon?.appPackage = pkg
-        stripReelText?.text = "$totalReels"
+        stripReelText?.text = "$totalReels reels"
         socialBadge?.visibility = View.VISIBLE
         animateReelNumberDrop()
     }
@@ -727,21 +791,15 @@ class ChipOverlay(
     fun setAppFeedMode(pkg: String, appMs: Long) = main.post {
         isSocialActive = false
         activeAppPkg = pkg
+        currentAppMs = appMs
         if (pkg.isNotEmpty()) activeSocialPkg = pkg
         badgeIcon?.isReelMode = false
         badgeIcon?.appPackage = pkg
-        val minutes = (appMs / 60000L).coerceAtLeast(0L)
-        val timeText = if (minutes >= 60) {
-            val h = minutes / 60
-            val m = minutes % 60
-            "⏱ ${h}h ${m}m"
-        } else {
-            "⏱ ${minutes}m"
-        }
+        val timeText = formatAppTime(appMs)
         badgeCountText?.text = timeText
-        stripTimeText?.text = timeText
         stripReelIcon?.isReelMode = false
         stripReelIcon?.appPackage = pkg
+        stripReelText?.text = timeText
         val badge = socialBadge ?: return@post
         if (pkg.isEmpty() || pkg == ctx.packageName || pkg == "com.android.systemui") {
             badge.visibility = View.GONE
@@ -831,18 +889,16 @@ class ChipOverlay(
     fun updateMetrics(time: String, reels: Int) = main.post {
         screenTimeStr = time
         totalReels = reels
-        badgeCountText?.text = "$totalReels"
-        stripTimeText?.text = "⏱ $screenTimeStr"
-        stripReelText?.text = "$totalReels"
+        badgeCountText?.text = if (isSocialActive && totalReels > 0) "$totalReels" else formatAppTime(currentAppMs)
+        stripReelText?.text = if (isSocialActive && totalReels > 0) "$totalReels reels" else formatAppTime(currentAppMs)
     }
 
     fun render(time: String, count: String, tone: ChipTone, ring: Float, desc: String) = main.post {
         screenTimeStr = time
         val rCount = count.filter { it.isDigit() }.toIntOrNull() ?: totalReels
         totalReels = rCount
-        badgeCountText?.text = "$totalReels"
-        stripTimeText?.text = "⏱ $screenTimeStr"
-        stripReelText?.text = "$totalReels"
+        badgeCountText?.text = if (isSocialActive && totalReels > 0) "$totalReels" else formatAppTime(currentAppMs)
+        stripReelText?.text = if (isSocialActive && totalReels > 0) "$totalReels reels" else formatAppTime(currentAppMs)
     }
 
     fun setHidden(hidden: Boolean) = main.post { root?.visibility = if (hidden) View.GONE else View.VISIBLE }
@@ -972,6 +1028,8 @@ class ChipOverlay(
                     stripTimeText = null
                     stripReelText = null
                     stripReelIcon = null
+                    noteDotView = null
+                    noteText = null
                 }
             }
             .start()
@@ -982,7 +1040,7 @@ class ChipOverlay(
         val dm = ctx.resources.displayMetrics
         val capsuleW = minOf(dm.widthPixels - dp(24f), dp(320f))
 
-        // Horizontal obsidian capsule matching media_1794761463384_f466c5eb.png
+        // Horizontal obsidian capsule
         val stripRoot = LinearLayout(ctx).apply {
             id = android.R.id.content
             orientation = LinearLayout.HORIZONTAL
@@ -996,11 +1054,11 @@ class ChipOverlay(
             elevation = dp(12f).toFloat()
         }
 
-        // 1. Left Target: Snapy AI Section (Touch -> opens AI Bottom Sheet)
+        // 1. Left Target: Snapy AI Living Orb (Touch -> opens AI Bottom Sheet)
         val leftSection = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4f), dp(2f), dp(6f), dp(2f))
+            setPadding(dp(4f), dp(2f), dp(4f), dp(2f))
             isClickable = true
             isFocusable = true
             background = GradientDrawable().apply {
@@ -1015,17 +1073,6 @@ class ChipOverlay(
             }
             addView(orb)
 
-            // Title Text: "Real Count" or "+1 Reel"
-            val titleTv = TextView(ctx).apply {
-                text = "Real Count"
-                setTextColor(0xFFFFFFFF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f * scale)
-                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                setPadding(dp(7f), 0, dp(4f), 0)
-            }
-            stripTitleText = titleTv
-            addView(titleTv)
-
             setOnClickListener {
                 dismissCapsuleStrip()
                 cb.onOpenSheet()
@@ -1033,15 +1080,15 @@ class ChipOverlay(
         }
         stripRoot.addView(leftSection)
 
-        // 2. Note Section [🎙 Note] (Touch -> starts voice note / meeting capture)
+        // 2. Note Section [🔴 Note] (Touch -> starts silent audio note / recording)
         val noteSection = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(7f), dp(3f), dp(7f), dp(3f))
+            setPadding(dp(8f), dp(3.5f), dp(9f), dp(3.5f))
             isClickable = true
             isFocusable = true
             background = GradientDrawable().apply {
-                cornerRadius = dp(12f).toFloat()
+                cornerRadius = dp(14f).toFloat()
                 setColor(0x28FFFFFF)
                 setStroke(dp(1f), 0x33FFFFFF)
             }
@@ -1050,23 +1097,58 @@ class ChipOverlay(
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 leftMargin = dp(6f)
-                rightMargin = dp(4f)
+                rightMargin = dp(6f)
             }
+
+            // Red dot with ring around it
+            val redDot = RecordingDotView(ctx).apply {
+                isRecording = AudioNoteRecorder.isRecording
+                layoutParams = LinearLayout.LayoutParams(dp(14f), dp(14f)).apply {
+                    rightMargin = dp(5f)
+                }
+            }
+            noteDotView = redDot
+            addView(redDot)
+
             val noteTv = TextView(ctx).apply {
-                text = "🎙 Note"
+                text = if (AudioNoteRecorder.isRecording) "Recording..." else "Note"
                 setTextColor(0xFFFFFFFF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f * scale)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f * scale)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
             }
+            noteText = noteTv
             addView(noteTv)
+
+            AudioNoteRecorder.onTimerTick = { s ->
+                main.post {
+                    val m = s / 60
+                    val sec = s % 60
+                    noteTv.text = String.format(java.util.Locale.US, "Rec %d:%02d", m, sec)
+                    redDot.isRecording = true
+                }
+            }
+
             setOnClickListener {
-                dismissCapsuleStrip()
-                cb.onTakeNote()
+                if (AudioNoteRecorder.isRecording) {
+                    val f = AudioNoteRecorder.stop(ctx)
+                    redDot.isRecording = false
+                    noteTv.text = "Note"
+                    if (f != null) {
+                        android.widget.Toast.makeText(ctx, "✓ Audio note saved to Conscious Vault", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    val ok = AudioNoteRecorder.start(ctx)
+                    if (ok) {
+                        redDot.isRecording = true
+                        noteTv.text = "Rec 0:00"
+                        android.widget.Toast.makeText(ctx, "🎙 Taking audio note silently...", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
         stripRoot.addView(noteSection)
 
-        // 3. Middle: Divider & Screen Time
+        // 3. Middle: Divider
         val divider = View(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(dp(1f), dp(16f)).apply {
                 leftMargin = dp(4f)
@@ -1076,28 +1158,11 @@ class ChipOverlay(
         }
         stripRoot.addView(divider)
 
-        val timeTv = TextView(ctx).apply {
-            text = "⏱ $screenTimeStr"
-            setTextColor(0xFFB0B0B8.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f * scale)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            fontFeatureSettings = "tnum"
-        }
-        stripTimeText = timeTv
-        stripRoot.addView(timeTv)
-
-        val dotTv = TextView(ctx).apply {
-            text = " · "
-            setTextColor(0x55FFFFFF)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f * scale)
-        }
-        stripRoot.addView(dotTv)
-
-        // 3. Right Target: Social App Launch (Touch -> launches Instagram / current app)
+        // 4. Right: App Icon & Metric (Reels count or App Screen Time)
         val rightSection = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(6f), dp(2f), dp(4f), dp(2f))
+            setPadding(dp(6f), dp(2f), dp(6f), dp(2f))
             isClickable = true
             isFocusable = true
             background = GradientDrawable().apply {
@@ -1105,19 +1170,19 @@ class ChipOverlay(
                 setColor(0x00000000)
             }
 
-            // Official Reel Icon (Instagram sunset gradient or YouTube Shorts red)
             val reelIcon = ReelIconView(ctx).apply {
                 appPackage = activeSocialPkg
-                layoutParams = LinearLayout.LayoutParams(dp(19f), dp(19f))
+                isReelMode = isSocialActive && totalReels > 0
+                layoutParams = LinearLayout.LayoutParams(dp(18f), dp(18f))
             }
             stripReelIcon = reelIcon
             addView(reelIcon)
 
-            // Total Reels Count
             val countTv = TextView(ctx).apply {
-                text = "$totalReels"
+                val dataText = if (isSocialActive && totalReels > 0) "$totalReels reels" else formatAppTime(currentAppMs)
+                text = dataText
                 setTextColor(0xFFFFFFFF.toInt())
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f * scale)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                 fontFeatureSettings = "tnum"
                 setPadding(dp(5f), 0, 0, 0)
@@ -1134,7 +1199,7 @@ class ChipOverlay(
 
         // Position directly below camera punch-hole
         val cutout = getCutout()
-        val topY = if (cutout.hasCutout) cutout.bounds.bottom + dp(8f) else dp(44f)
+        val topY = if (cutout.hasCutout) cutout.cy + (cutout.size / 2) + dp(6f) else dp(44f)
 
         val p = WindowManager.LayoutParams(
             capsuleW,
@@ -1206,7 +1271,7 @@ class ChipOverlay(
                 MotionEvent.ACTION_MOVE -> {
                     vt?.addMovement(e)
                     val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) { dragging = true; main.removeCallbacks(longPress) }
+                    if (!dragging && (abs(dx) > slop * 2.5f || abs(dy) > slop * 2.5f)) { dragging = true; main.removeCallbacks(longPress) }
                     if (dragging && !longFired) {
                         p.x = (startX + dx).toInt().coerceAtLeast(0); p.y = (startY + dy).toInt().coerceAtLeast(0)
                         try { wm.updateViewLayout(v, p) } catch (_: Exception) { }
