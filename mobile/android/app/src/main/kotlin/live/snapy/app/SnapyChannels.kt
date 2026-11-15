@@ -66,17 +66,37 @@ object SnapyChannels {
                     if (Build.VERSION.SDK_INT >= 33) activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 41)
                     result.success(true)
                 }
-                "openUsageAccess" -> { activity.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); result.success(true) }
+                "openUsageAccess" -> {
+                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    activity.startActivity(intent)
+                    result.success(true)
+                }
                 "openOverlaySettings" -> {
                     try {
                         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.packageName))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         activity.startActivity(intent)
                     } catch (_: Exception) {
-                        activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        activity.startActivity(intent)
                     }
                     result.success(true)
                 }
-                "openRealCountSettings" -> { activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); result.success(true) }
+                "openAppDetails" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.packageName))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        activity.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERR", e.message, null)
+                    }
+                }
+                "openRealCountSettings" -> {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    activity.startActivity(intent)
+                    result.success(true)
+                }
                 "startChip" -> {
                     SnapyAccessibilityService.instance?.showPillPublic()
                     RealCountController.active?.reload()
@@ -167,6 +187,83 @@ object SnapyChannels {
                     }
                     if (perm != null) activity.requestPermissions(arrayOf(perm), 43)
                     result.success(perm != null)
+                }
+                "getInstalledSocialApps" -> {
+                    val pm = activity.packageManager
+                    val known = listOf(
+                        "com.instagram.android" to "Instagram",
+                        "com.google.android.youtube" to "YouTube",
+                        "com.snapchat.android" to "Snapchat",
+                        "com.facebook.katana" to "Facebook",
+                        "com.facebook.lite" to "Facebook Lite",
+                        "com.zhiliaoapp.musically" to "TikTok",
+                        "com.ss.android.ugc.trill" to "TikTok",
+                        "com.reddit.frontpage" to "Reddit",
+                        "in.mohalla.video" to "Moj",
+                        "com.eterno.shortvideos" to "Josh"
+                    )
+                    val list = ArrayList<Map<String, Any>>()
+                    val prefs = RcPrefs(activity)
+                    for ((pkg, label) in known) {
+                        try {
+                            val info = pm.getApplicationInfo(pkg, 0)
+                            val appLabel = pm.getApplicationLabel(info).toString()
+                            val limit = prefs.int("limit_$pkg", 100)
+                            val lock = prefs.bool("lock_$pkg", true)
+                            list.add(mapOf(
+                                "package" to pkg,
+                                "label" to if (appLabel.isNotEmpty()) appLabel else label,
+                                "installed" to true,
+                                "limit" to limit,
+                                "lock" to lock
+                            ))
+                        } catch (_: Exception) {}
+                    }
+                    result.success(list)
+                }
+                "setAppReelLimit" -> {
+                    val pkg = str("package")
+                    val limit = call.argument<Int>("limit") ?: 100
+                    val lock = call.argument<Boolean>("lock") ?: true
+                    val prefs = RcPrefs(activity)
+                    prefs.putInt("limit_$pkg", limit)
+                    prefs.putBool("lock_$pkg", lock)
+                    RealCountController.active?.reload()
+                    result.success(true)
+                }
+                "testGeminiKey" -> Thread {
+                    val key = str("key")
+                    try {
+                        val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models?key=$key")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 8000
+                        val code = conn.responseCode
+                        if (code in 200..299) {
+                            activity.runOnUiThread { result.success(mapOf("ok" to true, "message" to "Key verified successfully!")) }
+                        } else {
+                            val err = try { conn.errorStream.bufferedReader().use { it.readText() } } catch (_: Exception) { "HTTP $code" }
+                            var userReason = "Invalid API key ($code)"
+                            if (err.contains("API_KEY_INVALID")) userReason = "The API key entered is invalid."
+                            else if (err.contains("RESOURCE_EXHAUSTED")) userReason = "Quota limit reached for this API key."
+                            else if (err.contains("PERMISSION_DENIED")) userReason = "Permission denied. Check if Gemini API is enabled."
+                            activity.runOnUiThread { result.success(mapOf("ok" to false, "error" to userReason)) }
+                        }
+                    } catch (e: Exception) {
+                        activity.runOnUiThread { result.success(mapOf("ok" to false, "error" to (e.message ?: "Network error. Check connection."))) }
+                    }
+                }.start()
+                "toggleTorch" -> {
+                    val on = call.argument<Boolean>("on") ?: false
+                    try {
+                        val cm = activity.getSystemService(android.content.Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                        val id = cm.cameraIdList.firstOrNull()
+                        if (id != null) cm.setTorchMode(id, on)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
                 }
                 "setWakeWord" -> {
                     val on = call.argument<Boolean>("on") ?: false

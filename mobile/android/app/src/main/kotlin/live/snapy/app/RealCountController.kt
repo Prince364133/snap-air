@@ -228,6 +228,25 @@ class RealCountController(
         chip.onReelCounted(pkg, store.totalReels())
         render()
         decide(NudgeTrigger.REEL_COUNTED)
+
+        val limit = prefs.int("limit_$pkg", prefs.int("reel_limit", 100))
+        val lockEnabled = prefs.bool("lock_$pkg", true)
+        val currentReels = store.reels(pkg)
+        if (lockEnabled && limit > 0 && currentReels >= limit) {
+            val svc = ctx as? AccessibilityService
+            svc?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            val label = app.optString("label", pkg)
+            main.post {
+                cards.show(
+                    "Reel Limit Reached",
+                    "🚫 $label reels locked for today ($currentReels/$limit reached). Stay focused, boss!",
+                    emptyList(),
+                    chipBottom(),
+                    5000,
+                    bigText = true
+                ) {}
+            }
+        }
     }
 
     fun onVoice(state: String, text: String) {

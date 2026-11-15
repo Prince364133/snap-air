@@ -25,6 +25,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _saving = false;
   String _voiceLang = 'auto';
   String? _wakeProgress;
+  String? _keyStatusMsg;
+  bool _keyValid = false;
   StreamSubscription? _sub;
 
   @override
@@ -56,13 +58,46 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveKey() async {
-    setState(() => _saving = true);
+    final keyStr = _key.text.trim();
+    if (keyStr.isEmpty) {
+      setState(() {
+        _keyStatusMsg = 'Please paste a valid API key.';
+        _keyValid = false;
+      });
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _keyStatusMsg = 'Verifying key with Google Gemini API…';
+    });
     try {
-      final b = await SnapyCore.setApiKey(_provider, _key.text.trim());
-      _key.clear();
+      final testRes = await SnapyCore.testGeminiKey(keyStr);
+      if (testRes['ok'] == true) {
+        final b = await SnapyCore.setApiKey(_provider, keyStr);
+        _key.clear();
+        if (mounted) {
+          setState(() {
+            _brain = b;
+            _keyValid = true;
+            _keyStatusMsg = '✓ Key verified and active! Encrypted securely on device.';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✓ Gemini API key active and verified.')));
+        }
+      } else {
+        final errorMsg = testRes['error'] ?? 'API key test failed.';
+        if (mounted) {
+          setState(() {
+            _keyValid = false;
+            _keyStatusMsg = '⚠️ $errorMsg\nPlease verify this key or generate a new free key at aistudio.google.com';
+          });
+        }
+      }
+    } catch (e) {
       if (mounted) {
-        setState(() => _brain = b);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Key saved — encrypted on this phone')));
+        setState(() {
+          _keyValid = false;
+          _keyStatusMsg = '⚠️ Verification error: $e';
+        });
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -125,10 +160,32 @@ class _SettingsPageState extends State<SettingsPage> {
                 obscureText: true,
                 decoration: const InputDecoration(labelText: 'API key', hintText: 'Paste your key — stored encrypted on this phone'),
               ),
+              if (_keyStatusMsg != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _keyValid ? c.green.withValues(alpha: 0.15) : c.red.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _keyValid ? c.green.withValues(alpha: 0.4) : c.red.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    _keyStatusMsg!,
+                    style: TextStyle(color: _keyValid ? c.green : c.red, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
-                child: FilledButton(onPressed: _saving ? null : _saveKey, child: const Text('Save key')),
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _saveKey,
+                  icon: _saving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_circle_outline, size: 18),
+                  label: Text(_saving ? 'Verifying…' : 'Save key'),
+                ),
               ),
             ]),
           ),

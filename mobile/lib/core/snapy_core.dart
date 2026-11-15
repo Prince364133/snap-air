@@ -87,6 +87,7 @@ class SnapyCore {
       Map<String, String>.from(await _ch.invokeMethod('appVersions', {'packages': packages}) as Map);
 
   static Future<void> openOverlaySettings() => _ch.invokeMethod('openOverlaySettings');
+  static Future<void> openAppDetails() => _ch.invokeMethod('openAppDetails');
 
   /// Opens a settings screen: an explicit component (pkg/cls) or an action. false if it isn't there.
   static Future<bool> openTarget(Map<String, String?> target) async =>
@@ -97,6 +98,32 @@ class SnapyCore {
 
   /// Leaves the current app for the home screen (the "Not now" on the pause screen).
   static Future<void> goHome() => _ch.invokeMethod('goHome');
+
+  /// Fetches installed social apps that support short-form video feeds with current limits.
+  static Future<List<Map<String, dynamic>>> getInstalledSocialApps() async {
+    final res = await _ch.invokeMethod<List>('getInstalledSocialApps');
+    return (res ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Sets daily reel limit and feed lock toggle for a specific app.
+  static Future<bool> setAppReelLimit(String package, int limit, bool lock) async {
+    return (await _ch.invokeMethod<bool>('setAppReelLimit', {
+      'package': package,
+      'limit': limit,
+      'lock': lock,
+    })) ?? false;
+  }
+
+  /// Tests Google Gemini API key live against Gemini API.
+  static Future<Map<String, dynamic>> testGeminiKey(String key) async {
+    final res = await _ch.invokeMethod<Map>('testGeminiKey', {'key': key});
+    return Map<String, dynamic>.from(res ?? {'ok': false, 'error': 'Unknown error'});
+  }
+
+  /// Toggles device flashlight.
+  static Future<bool> toggleTorch(bool on) async {
+    return (await _ch.invokeMethod<bool>('toggleTorch', {'on': on})) ?? false;
+  }
 }
 
 /// One day of Real Count.

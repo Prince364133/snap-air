@@ -12,11 +12,16 @@ class RcPrefs(ctx: Context) {
     private val sp = ctx.applicationContext.getSharedPreferences("snapy_rc", Context.MODE_PRIVATE)
 
     fun bool(k: String) = sp.getBoolean(k, (DEFAULTS[k] as? Boolean) ?: false)
+    fun bool(k: String, def: Boolean) = sp.getBoolean(k, def)
     fun int(k: String) = sp.getInt(k, (DEFAULTS[k] as? Int) ?: 0)
+    fun int(k: String, def: Int) = sp.getInt(k, def)
     fun long(k: String) = sp.getLong(k, 0L)
+    fun long(k: String, def: Long) = sp.getLong(k, def)
     fun str(k: String) = sp.getString(k, (DEFAULTS[k] as? String) ?: "") ?: ""
+    fun str(k: String, def: String) = sp.getString(k, def) ?: def
 
     fun putLong(k: String, v: Long) = sp.edit().putLong(k, v).apply()
+    fun putInt(k: String, v: Int) = sp.edit().putInt(k, v).apply()
     fun putString(k: String, v: String) = sp.edit().putString(k, v).apply()
     fun putBool(k: String, v: Boolean) = sp.edit().putBoolean(k, v).apply()
 
@@ -28,16 +33,35 @@ class RcPrefs(ctx: Context) {
             is Int -> o.put(k, int(k))
             else -> o.put(k, str(k))
         }
+        // Include dynamic keys
+        for ((k, v) in sp.all) {
+            if (!o.has(k)) {
+                o.put(k, v)
+            }
+        }
         return o
     }
 
-    /** Merge changes from Flutter; unknown keys are ignored. */
+    /** Merge changes from Flutter; unknown keys are persisted dynamically. */
     fun update(changes: JSONObject) {
         val e = sp.edit()
-        for (k in changes.keys()) when (DEFAULTS[k]) {
-            is Boolean -> e.putBoolean(k, changes.optBoolean(k))
-            is Int -> e.putInt(k, changes.optInt(k))
-            is String -> e.putString(k, changes.optString(k))
+        for (k in changes.keys()) {
+            val d = DEFAULTS[k]
+            if (d != null) {
+                when (d) {
+                    is Boolean -> e.putBoolean(k, changes.optBoolean(k))
+                    is Int -> e.putInt(k, changes.optInt(k))
+                    is String -> e.putString(k, changes.optString(k))
+                }
+            } else {
+                val v = changes.opt(k)
+                when (v) {
+                    is Boolean -> e.putBoolean(k, v)
+                    is Int -> e.putInt(k, v)
+                    is Long -> e.putLong(k, v)
+                    is String -> e.putString(k, v)
+                }
+            }
         }
         e.apply()
     }

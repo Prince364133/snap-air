@@ -8,7 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme.dart';
 import 'i18n/i18n.dart';
 import 'realcount/realcount_data.dart';
-import 'ui/home_page.dart';
+import 'ui/main_scaffold.dart';
 import 'ui/reset_page.dart';
 import 'ui/sheet_page.dart';
 
@@ -62,7 +62,7 @@ class SnapyApp extends StatelessWidget {
       case '/break':
         return BreakPage(app: q['app'] ?? '', seconds: int.tryParse(q['s'] ?? '') ?? 10);
       default:
-        return const HomePage();
+        return const MainScaffold();
     }
   }
 

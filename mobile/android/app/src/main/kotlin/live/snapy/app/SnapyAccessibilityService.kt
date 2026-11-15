@@ -129,6 +129,34 @@ class SnapyAccessibilityService : AccessibilityService() {
         }.start()
     }
 
+    // ------------------------------------------------------------------ hardware shortcuts
+    private var volUpTime = 0L
+    private var volDownTime = 0L
+
+    override fun onKeyEvent(event: android.view.KeyEvent): Boolean {
+        val now = System.currentTimeMillis()
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                if (volUpTime == 0L) volUpTime = now
+            } else if (event.action == android.view.KeyEvent.ACTION_UP) {
+                volUpTime = 0L
+            }
+        } else if (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                if (volDownTime == 0L) volDownTime = now
+            } else if (event.action == android.view.KeyEvent.ACTION_UP) {
+                volDownTime = 0L
+            }
+        }
+        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2400L)) {
+            volUpTime = 0L
+            volDownTime = 0L
+            openSheet()
+            return true
+        }
+        return super.onKeyEvent(event)
+    }
+
     // ------------------------------------------------------------------ events
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
@@ -184,6 +212,19 @@ class SnapyAccessibilityService : AccessibilityService() {
         rc?.onReelCounted()
         animateReelNumberDrop()
         updatePill()
+
+        // Check per-app reel limit and lock if reached
+        val prefs = RcPrefs(this)
+        val limit = prefs.int("limit_$pkg", prefs.int("reel_limit", 100))
+        val lockEnabled = prefs.bool("lock_$pkg", true)
+        val currentReels = store.reels(pkg)
+        if (lockEnabled && limit > 0 && currentReels >= limit) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            val label = app.optString("label", pkg)
+            main.post {
+                Toast.makeText(this@SnapyAccessibilityService, "🚫 $label reels locked for today ($currentReels/$limit reached). Stay focused!", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     /** Time inside short-video feeds: from the first reel until leaving the app (idle gaps capped). */
