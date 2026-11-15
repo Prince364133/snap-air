@@ -28,7 +28,9 @@ ENGLISH_VOICES = [("af_heart", "Heart (warm, female)"), ("af_bella", "Bella (bri
                   ("af_nicole", "Nicole (soft, female)"), ("am_michael", "Michael (calm, male)"),
                   ("am_fenrir", "Fenrir (deep, male)"), ("bf_emma", "Emma (British, female)"),
                   ("bm_george", "George (British, male)")]
-KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
+from src import appdata  # noqa: E402
+
+KOKORO_URL = appdata.get("voice_model.url")
 INDIC_SCRIPTS = [(re.compile(r"[ఀ-౿]"), "te"), (re.compile(r"[ഀ-ൿ]"), "ml"),
                  (re.compile(r"[ঀ-৿]"), "bn"), (re.compile(r"[؀-ۿ]"), "ur"),
                  (re.compile(r"[஀-௿]"), "ta"), (re.compile(r"[઀-૿]"), "gu"),
@@ -159,12 +161,7 @@ class Speaker:
         if importlib.util.find_spec("kokoro_onnx") is None:      # optional dependency not installed
             self.engine = "sapi" if sys.platform == "win32" else "none"
             return
-        if not (os.path.exists(onnx) and os.path.exists(voices)):
-            self.engine = "sapi" if sys.platform == "win32" else "none"
-            try:
-                self._download(d, ["voices-v1.0.bin", "kokoro-v1.0.int8.onnx"])
-            except Exception as e:
-                print("[TTS] Couldn't download the natural voice (offline?):", e)
+        # the natural voice is downloaded by first-run setup (with progress); the Windows voice is used meanwhile
         if os.path.exists(onnx) and os.path.exists(voices):
             try:
                 from kokoro_onnx import Kokoro
@@ -176,6 +173,9 @@ class Speaker:
             except Exception as e:
                 print("[TTS] Kokoro failed, using Windows voice:", e)
         self.engine = "sapi" if sys.platform == "win32" else "none"
+
+    def reload(self):
+        threading.Thread(target=self._load, daemon=True).start()
 
     # ------------------------------------------------------------ API
     def say(self, text, lang="en"):

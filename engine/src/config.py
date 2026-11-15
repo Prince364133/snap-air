@@ -56,6 +56,10 @@ DEFAULTS = {
     "speak_confirmations": False,  # speak "Scrolled down" etc. for quick commands
 
     # --- AI brain ---
+    "smart_media_listening": True, # while a video/song plays, raise the mic bar by how loud the video leaks in
+    "end_of_speech_s": 0.8,        # quiet needed before a phrase counts as finished
+    "continuation_wait_s": 1.5,    # an unfinished-sounding phrase waits this long for the rest
+    "max_utterance_s": 20,
     "agent_name": "Snapy",         # users can rename their assistant; it answers to this name
     "llm_model": "qwen3:1.7b",
     "ai_provider": "auto",         # local | cloud | auto (cloud when an API key is set and online)

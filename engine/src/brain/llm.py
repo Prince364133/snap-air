@@ -105,14 +105,19 @@ def _ollama_exe():
 
 
 class LLM:
-    def __init__(self, settings=None, host="http://127.0.0.1:11434"):
+    def __init__(self, settings=None, host=None):
         self.settings = settings
+        if host is None:
+            from src import appdata
+            host = appdata.get("ollama.host")
         self.host = host
         self.busy = threading.Event()        # set while a user-facing turn runs
         self.fg_lock = threading.Lock()
         self._embed_ok = None
         self._embed_checked = 0.0
         self.pulling = None                  # {"name", "pct", "status"}
+        self._cancel_pull = threading.Event()
+        self._active_pull_resp = None
         self.last_error = None
 
     # ------------------------------------------------------------ config
@@ -187,11 +192,16 @@ class LLM:
 
     def pull(self, name, on_progress=None):
         """Download a model with progress callbacks (pct 0..100)."""
+        self._cancel_pull.clear()
         self.pulling = {"name": name, "pct": 0, "status": "starting"}
         try:
             with requests.post(self.host + "/api/pull", json={"name": name, "stream": True},
                                stream=True, timeout=(5, 600)) as r:
+                self._active_pull_resp = r
                 for line in r.iter_lines():
+                    if self._cancel_pull.is_set():
+                        self.pulling = None
+                        return False
                     if not line:
                         continue
                     d = json.loads(line)
@@ -199,17 +209,34 @@ class LLM:
                         raise RuntimeError(d["error"])
                     total, done = d.get("total"), d.get("completed")
                     pct = round(done * 100 / total, 1) if total and done else self.pulling["pct"]
-                    self.pulling = {"name": name, "pct": pct, "status": d.get("status", "")}
+                    self.pulling = {"name": name, "pct": pct, "status": d.get("status", ""),
+                                    "done": done or 0, "total": total or 0}
                     if on_progress:
                         on_progress(self.pulling)
             self.pulling = None
             return True
         except Exception as e:
+            if self._cancel_pull.is_set():
+                self.pulling = None
+                return False
             self.last_error = f"Download failed: {e}"
             self.pulling = {"name": name, "pct": 0, "status": "error", "error": str(e)}
             if on_progress:
                 on_progress(self.pulling)
             return False
+        finally:
+            self._active_pull_resp = None
+
+    def cancel_pull(self):
+        """Immediately abort active model download."""
+        self._cancel_pull.set()
+        r = getattr(self, "_active_pull_resp", None)
+        if r:
+            try:
+                r.close()
+            except Exception:
+                pass
+        self.pulling = None
 
     # -------------------------------------------------------------- chat
     def _payload(self, messages, schema=None, max_tokens=256, temperature=0.4, stream=False):

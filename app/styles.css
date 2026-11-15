@@ -293,6 +293,33 @@ li:hover .row-actions, .note:hover .row-actions, .mem:hover .row-actions { opaci
 .sheet h2 { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-bottom: 6px; }
 .sheet h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
 .sheet .lead { color: var(--text-2); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
+.emoji-layer { position: fixed; inset: 0; pointer-events: none; z-index: 300; overflow: hidden; }
+.emoji-pop { position: absolute; bottom: -60px; opacity: 0; animation-name: emoji-rise; animation-timing-function: cubic-bezier(.2,.7,.3,1);
+             animation-fill-mode: forwards; filter: drop-shadow(0 4px 10px rgba(0,0,0,.25)); }
+@keyframes emoji-rise { 0% { transform: translate(0, 0) scale(.6) rotate(-10deg); opacity: 0; }
+  15% { opacity: 1; } 80% { opacity: 1; }
+  100% { transform: translate(var(--drift), -85vh) scale(1.1) rotate(12deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .emoji-pop { animation-name: emoji-fade; } @keyframes emoji-fade { 0%,100% { opacity: 0; } 30%,70% { opacity: 1; transform: translateY(-40vh); } } }
+.setup-item { padding: 12px 0; border-top: 1px solid var(--hair); }
+.setup-item:first-child { border-top: none; }
+.setup-row { display: flex; align-items: center; gap: 10px; }
+.setup-row .name { font-weight: 600; flex: 1; }
+.setup-row .meta { color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.setup-desc { color: var(--text-2); font-size: 12px; margin: 2px 0 8px 26px; }
+.setup-bar { height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; margin-left: 26px; }
+.setup-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .3s ease; }
+.setup-item.done .setup-bar i { background: var(--green); }
+.setup-item.error .setup-bar i { background: var(--red); }
+.setup-item.installing .setup-bar i { width: 100% !important; background: linear-gradient(90deg, var(--accent) 0%, rgba(10,132,255,.35) 50%, var(--accent) 100%);
+  background-size: 200% 100%; animation: indet 1.2s linear infinite; }
+@keyframes indet { to { background-position: -200% 0; } }
+.setup-icon { width: 16px; height: 16px; border-radius: 50%; flex: none; border: 2px solid var(--hair-strong); display: grid; place-items: center; font-size: 10px; color: #fff; }
+.setup-item.downloading .setup-icon, .setup-item.installing .setup-icon { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.setup-item.done .setup-icon { background: var(--green); border-color: var(--green); }
+.setup-item.error .setup-icon { background: var(--red); border-color: var(--red); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.setup-err { color: var(--red); font-size: 12px; margin: 6px 0 0 26px; }
+.ob-setup { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--fill); }
 .sheet-foot { display: flex; align-items: center; gap: 8px; margin-top: 22px; }
 .steps { display: flex; gap: 6px; justify-content: center; margin-bottom: 20px; }
 .steps i { width: 7px; height: 7px; border-radius: 50%; background: var(--fill-2); transition: all .2s; }

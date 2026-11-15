@@ -1,11 +1,11 @@
 {
   "name": "snapy",
   "version": "2.0.0",
-  "description": "Snapy — your private AI companion for Windows",
+  "description": "Snapy \u2014 your private AI companion for Windows",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:engine": "cd ../engine && .venv\\Scripts\\python -m PyInstaller snapy-engine.spec --noconfirm && .venv\\Scripts\\python bundle_models.py",
+    "build:engine": "cd ../engine && .venv\\Scripts\\python -m PyInstaller snapy-engine.spec --noconfirm",
     "build:installer": "electron-builder --win nsis",
     "dist": "npm run build:engine && npm run build:installer"
   },
@@ -67,6 +67,7 @@
       "installerHeaderIcon": "build/icon.ico",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "compression": "maximum"
   }
 }

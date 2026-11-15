@@ -17,6 +17,8 @@ import datetime as dt
 import os
 import queue
 import re
+
+from src import appdata
 import threading
 import time
 import uuid
@@ -67,7 +69,7 @@ Facts: use PROFILE and MEMORY to personalise; never invent facts about the user.
 Address the user by their name only occasionally. People named in MEMORY are not the user.
 Actions: set tool when the user wants something done, else tool="none". Pick exactly one tool.
 TOOLS and args:
-desktop {command}: control the PC with a short English command, e.g. "open spotify", "switch to chrome", "play lofi hip hop on youtube", "volume up", "next tab", "scroll down", "pause", "search for <query>", any keyboard shortcut like "press windows h", "press control shift t", "press alt f4", or Windows actions like "open voice typing", "open clipboard history", "open task manager"
+desktop {command}: control the PC with a short English command, e.g. "open spotify", "switch to chrome", "play <exactly what the user asked for> on youtube", "volume up", "next tab", "scroll down", "pause", "search for <query>", any keyboard shortcut like "press windows h", "press control shift t", "press alt f4", or Windows actions like "open voice typing", "open clipboard history", "open task manager"
 add_task {title, when}: task/reminder; when like "5 pm", "in 10 minutes", "tomorrow 9am" or "" | complete_task {title} | tasks {}
 add_note {text} | find_notes {query}
 remember {fact}: lasting fact about the user, third person | forget {fact}
@@ -80,7 +82,8 @@ Answer from PROFILE, MEMORY and OPEN TASKS yourself (tool "none") when they cont
 Use memories only when relevant to the request; never recite them unprompted. Never repeat secrets.
 EXAMPLES:
 User: who's my manager? -> {"say": "Your manager is Arun, and he prefers Slack.", "tool": "none", "args": {}}
-User: yaar lofi chala do -> {"say": "Lofi laga deta hoon!", "tool": "desktop", "args": {"command": "play lofi hip hop on youtube"}}
+User: yaar arijit ke gaane chala do -> {"say": "Arijit ke gaane laga deta hoon!", "tool": "desktop", "args": {"command": "play arijit singh songs on youtube"}}
+(Always put the user's own topic in the command — never a different song, artist or genre.)
 User: explain recursion simply -> {"say": "Recursion is when a function solves a problem by calling itself on a smaller piece of it until it reaches a simple case.", "tool": "none", "args": {}}
 User: mujhe aaj kya karna hai? -> {"say": "Aaj 5 baje tak PR push karna hai.", "tool": "none", "args": {}}
 User: who won the match last night? -> {"say": "Let me check that.", "tool": "web_search", "args": {"query": "match result last night"}}"""
@@ -114,6 +117,7 @@ class Assistant:
         self.screen = None                # screen-understanding backend (UI Automation); loaded lazily
         self._q = queue.Queue()
         self._cancel = threading.Event()
+        self._answering, self._partial, self.interrupted = None, "", None
         self._bg = queue.Queue()
         threading.Thread(target=self._loop, daemon=True).start()
         threading.Thread(target=self._bg_loop, daemon=True).start()
@@ -175,6 +179,9 @@ class Assistant:
         self._q.put((text, source, lang))
 
     def interrupt(self):
+        # remember what we were answering, so the next reply can cover both questions
+        if self._answering:
+            self.interrupted = {"q": self._answering, "said": self._partial.strip(), "t": time.time()}
         self._cancel.set()
         self.speaker.interrupt()
         self.agent.stop_autoscroll()
@@ -344,6 +351,16 @@ class Assistant:
         # read the current browser tab
         if re.search(r"\b(read|summari[sz]e|explain)\b.*\b(this|the|my|current|open) (page|tab|article)\b", low):
             return self._read_tab(text, lang, speak)
+
+        # "record this video" — the video's own sound from Windows (not the mic), to ask about later
+        vc = getattr(self, "video_capture", None)
+        if vc is not None:
+            if re.search(r"\b(record|listen to|capture|transcribe|sun(o|lo)|note)\b.{0,25}\b(video|this|song|lecture|"
+                         r"podcast|talk|tutorial|it)\b|\bvideo (record|sun)", low) and \
+                    not re.search(r"\b(stop|end|finish|band|screen)\b", low) and not re.search(r"\bmeeting|call\b", low):
+                return self.start_video_capture(lang, speak)
+            if vc.recording and re.search(r"\b(stop|end|finish|band|bas)\b", low):
+                return self.stop_video_capture(lang, speak)
 
         # meeting notes
         if re.search(r"\b(start|begin)\w*\b.{0,20}\bnotes\b|^take (meeting )?notes( (of|for|from|in|during) "
@@ -559,6 +576,31 @@ class Assistant:
             self.emit({"type": "meeting", **self.meeting.state()})
             self.reply("Taking notes. Let everyone know notes are being taken.", lang, speak, tool="meeting")
 
+    def start_video_capture(self, lang="en", speak=True):
+        vc = self.video_capture
+        if vc.recording:
+            return self.reply("I'm already listening to the video.", lang, speak)
+        title = ""
+        try:
+            from src.os_control import windows as win
+            title = win.foreground_title() or ""
+        except Exception:
+            pass
+        vc.start(title=title or "Video", sources=("system",))
+        return self.reply("Listening to the video’s sound now — straight from your PC, not the mic. Ask me anything about "
+                          "it, or say “stop recording” when you’re done.", lang, speak, tool="video")
+
+    def stop_video_capture(self, lang="en", speak=True):
+        vc = self.video_capture
+        if not vc.recording:
+            return self.reply("I wasn't recording a video.", lang, speak)
+        self.reply("Okay, let me go through what I heard…", lang, speak, tool="video")
+        res = vc.stop(wait=True) or {}
+        if res.get("empty") or not vc.segments:
+            return self.reply("I didn't catch any speech in that video.", lang, speak, error=True)
+        summary = " ".join(res.get("summary") or [])[:600]
+        return self.reply((summary or "Got it.") + " Ask me anything about it.", lang, speak, tool="video")
+
     def _finish_meeting(self, lang, speak):
         self.set_state("thinking")
         res = self.meeting.stop()
@@ -591,8 +633,21 @@ class Assistant:
         today = "; ".join(t["title"] + (f" ({human_time(t['remind_at'])})" if t.get("remind_at") else "")
                           for t in open_tasks) or "none"
         meeting = " A meeting is being recorded right now." if self.meeting.recording else ""
+        note = ""
+        it = self.interrupted
+        if it and time.time() - it["t"] < appdata.get("timings.interruption_memory_s", 90) and it["q"] != text:
+            note = (f"\nINTERRUPTED: the user cut you off while you were answering \"{it['q']}\""
+                    + (f" (you had said: \"{it['said'][:200]}\")" if it["said"] else "")
+                    + ". Answer the new message first; then, if the earlier question is still unanswered and "
+                      "relevant, briefly finish it too.")
+            self.interrupted = None
+        video = ""
+        vc = getattr(self, "video_capture", None)
+        if vc is not None and getattr(vc, "segments", None) and re.search(
+                r"\b(video|it|this|that|he|she|they|explain|summar|mean|said|say|about)\b", text.lower()):
+            video = "\nVIDEO TRANSCRIPT (recorded from the PC's sound at the user's request):\n" + vc.transcript()[-3000:]
         return (f"TIME: {now.strftime('%A %d %B %Y, %I:%M %p')}\nPROFILE:\n{profile or '(not set up yet)'}\n"
-                f"MEMORY:\n{memories or '(nothing yet)'}\nOPEN TASKS: {today}.{meeting}\n"
+                f"MEMORY:\n{memories or '(nothing yet)'}\nOPEN TASKS: {today}.{meeting}{note}{video}\n"
                 f"Reply language: {self._reply_language(lang, speak)}.")
 
     @staticmethod
@@ -619,6 +674,7 @@ class Assistant:
         self.history.append({"role": "user", "content": text})
 
         msg_id = uuid.uuid4().hex[:8]
+        self._answering, self._partial = text, ""
         streamer, chunker = JsonFieldStreamer("say"), SentenceChunker()
         spoken, raw = "", ""
         last_emit = 0
@@ -628,6 +684,7 @@ class Assistant:
                 piece = streamer.feed(chunk)
                 if piece:
                     spoken += piece
+                    self._partial = spoken
                     if speak:
                         for sentence in chunker.feed(piece):
                             self.speaker.say(sentence, lang)
@@ -644,7 +701,9 @@ class Assistant:
                   f"{st.get('eval_count')} tok in {(st.get('eval_duration') or 0) / 1e9:.1f}s, "
                   f"load {(st.get('load_duration') or 0) / 1e9:.1f}s")
         if self._cancel.is_set():
+            self._answering = None
             return
+        self._answering = None
         if speak:
             for sentence in chunker.flush():
                 self.speaker.say(sentence, lang)
@@ -680,6 +739,7 @@ class Assistant:
                 self.pending = {"kind": "action", "command": cmd}
                 self.reply(f"Just to confirm — should I {cmd}?", lang, speak)
                 return
+            cmd = self._keep_users_topic(cmd, user_text)
             r = self.agent.execute_intent(cmd)
             if not r.ok and r.action != "ignored":
                 self.reply(r.message, lang, speak, error=True)
@@ -753,6 +813,22 @@ class Assistant:
             self.emit({"type": "ui_action", "action": "open_drawer", "tab": "tasks"})
         elif tool == "activity":
             self.emit({"type": "ui_action", "action": "open_drawer", "tab": "activity"})
+
+    def _keep_users_topic(self, cmd, user_text):
+        """Small models sometimes copy an example ("play lofi…") instead of what was asked.
+        If the AI's play/search topic shares no words with what the user said, use the user's words."""
+        m = re.match(r"^(play|search for|search|watch|put on)\s+(.+?)(\s+on\s+(?:youtube|spotify))?$", cmd.strip(), re.I)
+        if not m:
+            return cmd
+        topic_words = set(re.findall(r"[a-z\u0900-\u097f]{3,}", m.group(2).lower())) - {"some", "songs", "song", "music", "video", "videos"}
+        said = (user_text or "").lower()
+        if not topic_words or any(w in said for w in topic_words):
+            return cmd
+        own = self.agent._play_request(self.agent._plain(self.agent.normalize(user_text or "")))
+        if own:
+            print(f"[Assistant] AI picked “{m.group(2)}” but the user asked for “{own}” — using the user's words")
+            return f"{m.group(1)} {own}{m.group(3) or ' on youtube'}"
+        return cmd
 
     # ------------------------------------------------------------- screen
     def _screen_backend(self):
@@ -979,7 +1055,7 @@ class Assistant:
         sc = self._screen_backend()
         if topic:
             import urllib.parse
-            self.agent.os.open_url("https://www.youtube.com/results?search_query=" + urllib.parse.quote(topic))
+            self.agent.os.open_url(appdata.get("web.youtube_search") + urllib.parse.quote(topic))
             time.sleep(4)
         els, _ = sc.snapshot(time_budget=5)
         vids = [e for e in els if e.ctype == "HyperlinkControl" and len(e.name) > 20 and e.area > 2500]

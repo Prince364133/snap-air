@@ -179,6 +179,7 @@ class AgentController:
         self.gesture_callback = None   # fn(paused: bool)
         self.voice_callback = None     # fn(mode: str)
         self.last_command = None
+        self.on_ui = None              # fn(message) -> HUD (quit, emoji burst…)
         self.autoscroll_dir = 0
         self.autoscroll_speed = 1.0
         self._autoscroll_thread = None
@@ -254,7 +255,7 @@ class AgentController:
         for x, y in (("ee", "i"), ("ii", "i"), ("oo", "u"), ("aa", "a"), ("ph", "f"), ("w", "v"), ("ck", "k"),
                      ("q", "k"), ("y", "i"), ("z", "s"), ("th", "t"), ("sh", "s")):
             w = w.replace(x, y)
-        w = re.sub(r"(.)+", r"", w)
+        w = re.sub(r"(.)\1+", r"\1", w)
         return re.sub(r"h$", "", w)
 
     def strip_wake_original(self, raw):
@@ -307,6 +308,18 @@ class AgentController:
         # Payload text keeps original casing, minus the wake word
         original = self.strip_wake_original(raw)
 
+        cmd, original = self._plain(cmd), self._plain_original(original)
+        special = self._special(cmd)
+        if special:
+            return special
+        cmd_wo, nth = self._ordinal(cmd)
+        play = self._play_request(cmd_wo)
+        if play:
+            self.play_youtube(play, nth) if nth and nth > 1 else self.play_youtube(play)
+            which = f" (result {nth})" if nth and nth > 1 else ""
+            result = Result(True, f'Playing "{play}" on YouTube{which}', "youtube")
+            self.last_command = (cmd, original)
+            return result
         result = self._run(cmd, original)
         if result is None:
             result = self._try_compound(cmd, original)
@@ -321,6 +334,98 @@ class AgentController:
         if result.action not in ("repeat", "help", "wake"):
             self.last_command = (cmd, original)
         return result
+
+    POLITE = re.compile(r"^(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |"
+                        r"i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+")
+
+    def _plain(self, cmd):
+        """'can you please open youtube' -> 'open youtube' (the rules expect plain commands)."""
+        out = self.POLITE.sub("", cmd).strip()
+        out = re.sub(r"\s+(?:please|for me|now|yaar|na|bhai)$", "", out).strip()
+        return out or cmd
+
+    def _plain_original(self, original):
+        out = re.sub(r"^\W*(?:(?:can|could|would|will) (?:you|u) (?:please )?|please |kindly |just |"
+                     r"i (?:want|wanna|would like|'d like) (?:you )?to |i want |let's |let us )+", "", original, flags=re.I)
+        return out.strip() or original
+
+    QUIT = re.compile(r"(?:close|quit|exit|shut ?down|turn off|stop|band karo|band ho ja(?:o)?|band kar do)"
+                      r"(?: (?:yourself|snapy|snappy|snap|the assistant|the app|assistant))?(?: now| please)?")
+    EMOJI = re.compile(r"(?:.*\b)?(?:emoji|emojis|emoticons|smileys)\b.*")
+
+    def _special(self, cmd):
+        """Snapy-level actions: quit itself, emoji burst."""
+        name = self.normalize(self.agent_name)
+        if self.QUIT.fullmatch(cmd) and (cmd.split()[0] in ("quit", "exit", "shutdown", "shut", "band") or
+                                         re.search(r"yourself|snapy|snappy|snap\b|assistant|the app|" + re.escape(name), cmd)):
+            if self.on_ui:
+                self.on_ui({"type": "ui_action", "action": "quit"})
+            return Result(True, f"Closing {self.agent_name}. See you soon!", "quit")
+        if self.EMOJI.fullmatch(cmd) and re.search(r"\b(show|render|display|put|throw|send|rain|shower|draw|dikhao|"
+                                                   r"bhejo|karo|some|good|nice|cool)\b", cmd):
+            from src import appdata
+            sets = appdata.get("emoji_sets", {}) or {}
+            chosen = next((v for k, v in sets.items() if k != "default" and re.search(rf"\b(?:{k})", cmd)), sets.get("default", []))
+            if self.on_ui:
+                self.on_ui({"type": "ui_action", "action": "emoji", "emojis": chosen})
+            return Result(True, "Here you go! " + " ".join(chosen[:4]), "emoji")
+        return None
+
+    @staticmethod
+    def _ordinal(cmd):
+        """Which result the user wants: 'play arijit songs, the 4th video' -> ('play arijit songs', 4),
+        'play the second result of lofi' -> ('play lofi', 2), 'video number 3' -> 3."""
+        from src import appdata
+        words = appdata.get("ordinals", {}) or {}
+        alt = "|".join(sorted(map(re.escape, words), key=len, reverse=True))
+        noun = r"(?:one|video|result|link|song|wala|wali)"
+        pats = [
+            rf"[, ]*(?:and )?(?:play |open |click )?(?:the )?({alt})(?: {noun})?$",               # ... the 4th video
+            rf"[, ]*(?:the )?(?:video|result|song) (?:number |no )?(\d+)$",                         # ... video number 4
+            rf"(?<=\bplay )(?:the )?({alt}) {noun} (?:of|for|from|on) ",                            # play the 2nd video of X
+            rf"(?<=\bplay )(?:the )?({alt}) ",                                                      # play the second X
+        ]
+        for p in pats:
+            m = re.search(p, cmd)
+            if m:
+                tok = m.group(1)
+                n = int(tok) if tok.isdigit() else words.get(tok)
+                rest = re.sub(r"\s+", " ", cmd[:m.start()] + " " + cmd[m.end():]).strip(" ,")
+                if n and rest:
+                    return rest, n
+        return cmd, None
+
+    @staticmethod
+    def _play_request(cmd):
+        """Music/video requests, always using the user's own words as the search:
+        'open youtube and play some hindi music', 'listen to hindi romantic songs',
+        'hindi gaane chalao', 'arijit singh ke gaane bajao', 'play X on youtube'."""
+        music = r"\b(?:gaane|gaana|gana|songs?|music|bhajan|lofi|playlist|podcast|album|mix|video|movie|trailer)\b"
+        pats = [
+            r"(?:open |go to |on )?youtube (?:and |then )?(?:play|search(?: for)?|find|put on|search and play) (.+)",
+            r"(?:play|put on|search for|find|watch) (.+?) (?:on|in) youtube",
+            r"youtube (?:pe|par) (.+?) (?:chalao|chala do|chalado|lagao|laga do|play karo|play kar do|dikhao)",
+            r"(?:listen to|listen|hear) (.*" + music + r".*)",
+            r"(?:play) (.*" + music + r".*)",
+            r"(.+?) (?:bajao|baja do|bajado)",
+            r"(.*" + music + r".*?) (?:chalao|chala do|chalado|sunao|suna do|lagao|laga do|play karo|play kar do)",
+        ]
+        for p in pats:
+            m = re.fullmatch(p, cmd)
+            if m:
+                q = re.sub(r"^(?:(?:some|a few|me|kuch|koi|mujhe|mere liye|hume|humein|thode|achhe)\s+)+", "", m.group(1).strip())
+                q = re.sub(r"\s+(?:on youtube|youtube (?:pe|par))$", "", q).strip()
+                # speech recognition often hears "Hindi" as "Hindu" before music words
+                q = re.sub(r"\bhindu\b(?=\s+(?:romantic|sad|old|new|love|party|devotional|songs?|music|gaane|gana))", "hindi", q)
+                # "play the 4th video" with no topic = click it on the current screen, not a new search
+                from src import appdata
+                filler = {"the", "one", "video", "videos", "result", "link", "wala", "wali", "number", "no"} | \
+                    set((appdata.get("ordinals", {}) or {}).keys())
+                if all(w in filler or w.isdigit() for w in q.split()):
+                    return None
+                if q and q not in ("it", "that", "this", "music", "something", "kuch", "video", "youtube"):
+                    return q
+        return None
 
     def _run(self, cmd, original):
         for pattern, fn in self.commands:
@@ -477,9 +582,9 @@ class AgentController:
             o.hotkey("alt", "tab")
             return Result(True, "Switched app", "switch")
 
-        @cmd(r"(?:switch|go|change|jump) (?:over )?to (?:the )?(.+?)(?: app| window)?")
+        @cmd(r"(?:switch|go|change|jump|move)(?: the)?(?: window| app| screen| tab)? (?:over )?to (?:the )?(.+?)(?: app| window| ide)?|(.+?) (?:pe|par) (?:jao|chalo|switch karo)")
         def _(m, orig):
-            name = m.group(1)
+            name = m.group(1) or m.group(2)
             if name in ("next tab", "previous tab", "last tab"):
                 return None
             tabm = re.fullmatch(r"tab (\w+)", name)
@@ -863,17 +968,18 @@ class AgentController:
             return Result(True, f"Opening {app[0].title()}", "launch")
         return Result(False, f"Couldn't find an app or site called \"{name}\"", "launch")
 
-    def play_youtube(self, query):
-        """Open the top YouTube result directly (so it actually plays),
+    def play_youtube(self, query, nth=1):
+        """Open the n-th YouTube result directly (so it actually plays),
         falling back to the search results page."""
-        url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote(query)
+        from src import appdata
+        url = appdata.get("web.youtube_search") + urllib.parse.quote(query)
         try:
             html = requests.get(url, timeout=3, headers={"User-Agent": "Mozilla/5.0",
                                                          "Accept-Language": "en-US,en;q=0.9"}).text
-            m = re.search(r'"videoRenderer":\{"videoId":"([\w-]{11})"', html) or \
-                re.search(r'"videoId":"([\w-]{11})"', html)
-            if m:
-                url = "https://www.youtube.com/watch?v=" + m.group(1)
+            ids = list(dict.fromkeys(re.findall(r'"videoRenderer":\{"videoId":"([\w-]{11})"', html))) or \
+                list(dict.fromkeys(re.findall(r'"videoId":"([\w-]{11})"', html)))
+            if ids:
+                url = "https://www.youtube.com/watch?v=" + ids[min(max(1, int(nth)), len(ids)) - 1]
         except Exception:
             pass
         self.os.open_url(url)
@@ -947,7 +1053,8 @@ class AgentController:
                   "If it is not a request to control the computer, answer NONE.\nExamples: "
                   + "; ".join(examples) + f"\nUser: {phrase}\nCommand:")
         try:
-            r = requests.post("http://127.0.0.1:11434/api/generate", timeout=6, json={
+            from src import appdata
+            r = requests.post(appdata.get("ollama.host") + "/api/generate", timeout=6, json={
                 "model": self._s("ollama_model", "qwen2.5:3b"), "prompt": prompt, "stream": False,
                 "options": {"temperature": 0, "num_predict": 20}})
             text = r.json().get("response", "").strip().splitlines()[0].strip().strip('"')

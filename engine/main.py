@@ -40,7 +40,7 @@ import cv2
 _probe("cv2")
 import websockets
 
-from src import storage
+from src import storage, appdata
 from src.config import Settings
 from src.ai.agent_controller import AgentController
 _probe("agent (pyautogui)")
@@ -60,12 +60,12 @@ from src.life.tasks import TaskStore, human_time
 from src.os_control.mouse_controller import MouseController
 _probe("before tts import")
 from src.voice.tts import Speaker, ENGLISH_VOICES
-from src.voice.voice_listener import VoiceListener
+from src.voice.voice_listener import VoiceListener, sounds_unfinished
 from src.web import tools as webtools
 _probe("all imports")
 
 PREVIEW_TITLE = "Snapy - Camera"
-PORT = int(os.environ.get("SNAP_AIR_PORT", "8765"))
+PORT = int(os.environ.get("SNAP_AIR_PORT") or appdata.get("server.port"))
 
 settings = Settings()
 clients = set()
@@ -112,12 +112,24 @@ agent = AgentController(settings=settings)
 state["brain"] = "cloud" if brain.is_cloud else ("local" if llm.ready() else "none")
 
 
+def user_languages():
+    """Languages to choose between in "auto" mode: English + Hindi, plus any the user listed."""
+    names = appdata.get("languages", {})
+    out = list(appdata.get("default_listen_languages", ["en"]))
+    for l in (memory.profile.get("languages") or []) if "memory" in globals() else []:
+        code = names.get(str(l).strip().lower(), str(l).strip().lower()[:2])
+        if code in names.values() and code not in out:
+            out.append(code)
+    return tuple(out)
+
+
 def whisper_model_name():
     lang = settings["voice_language"]
     q = settings["speech_quality"]
-    if lang == "en":
-        return {"fast": "tiny.en", "balanced": "tiny.en", "accurate": "small.en"}.get(q, "tiny.en")
-    return {"fast": "tiny", "balanced": "base", "accurate": "small"}.get(q, "base")
+    # mixed English/Hindi uses the multilingual table; "tiny" mis-detects languages too often,
+    # so app.json maps even "fast" to "base" there
+    table = appdata.get("speech_models.english" if lang == "en" else "speech_models.multilingual")
+    return table.get(q) or table["fast"]
 
 
 voice = VoiceListener(model_name=whisper_model_name(), sensitivity=settings["mic_sensitivity"],
@@ -174,6 +186,15 @@ def _on_meeting(st):
     send_all({"type": "meeting", **st})
 
 
+# "Record this video": the video's own sound straight from Windows (not the mic), transcribed
+# on this PC so you can ask about it. No notes/tasks are created and no audio is kept.
+def _on_video_capture(st):
+    send_all({"type": "video_capture", **st})
+
+
+video_capture = MeetingRecorder(transcribe_fn=_transcribe_meeting, llm=brain, on_update=_on_video_capture,
+                                on_auto_stop=lambda: assistant.stop_video_capture("en", False))
+
 meeting = MeetingRecorder(transcribe_fn=_transcribe_meeting, llm=brain, notes=notes, tasks=tasks, memory=memory,
                           on_update=_on_meeting,
                           on_auto_stop=lambda: assistant._finish_meeting("en", False))   # 20 min of silence
@@ -199,7 +220,7 @@ def _on_call_change(app):
     assistant.in_call = app           # stay silent during calls
     if app:
         speaker.interrupt()
-    if app and not meeting.recording and (app != _last_call_offer["app"] or time.time() - _last_call_offer["t"] > 1800):
+    if app and not meeting.recording and (app != _last_call_offer["app"] or time.time() - _last_call_offer["t"] > appdata.get("timings.call_offer_cooldown_s")):
         _last_call_offer.update(app=app, t=time.time())
         send_all({"type": "banner", "kind": "call", "title": f"In a call on {app}?",
                   "text": "Want me to take notes? Let everyone know you're recording.", "app": app})
@@ -212,6 +233,7 @@ assistant = Assistant(settings, agent, memory, tasks, notes, activity, briefing,
                       emit=lambda p: (_track_assistant(p), send_all(p)), web=webtools)
 assistant.on_follow_up = lambda seconds: voice.arm(seconds)
 assistant.vision = vision
+assistant.video_capture = video_capture
 threading.Thread(target=ocr_available, daemon=True).start()
 
 
@@ -265,7 +287,39 @@ def on_voice_status(s):
                   "action": {"label": "Open privacy settings", "type": "open_privacy_mic"}})
 
 
+# A pause in the middle of a sentence must not split it into two commands: a phrase that
+# sounds unfinished ("open youtube and", "remind me to") waits briefly for the rest.
+_pending_speech = {"text": "", "armed": False, "lang": "en", "timer": None}
+_pending_lock = threading.Lock()
+
+
 def on_transcript(text, armed, lang="en"):
+    with _pending_lock:
+        p = _pending_speech
+        if p["timer"] is not None:
+            p["timer"].cancel()
+            text = (p["text"] + " " + text).strip()
+            armed = armed or p["armed"]
+            p.update(text="", timer=None)
+        if sounds_unfinished(text):
+            p.update(text=text, armed=armed, lang=lang)
+            p["timer"] = threading.Timer(float(settings["continuation_wait_s"]), _flush_pending)
+            p["timer"].start()
+            send_all({"type": "transcript", "text": text + " …", "lang": lang})
+            return
+    _handle_transcript(text, armed, lang)
+
+
+def _flush_pending():
+    with _pending_lock:
+        p = _pending_speech
+        text, armed, lang = p["text"], p["armed"], p["lang"]
+        p.update(text="", timer=None)
+    if text:
+        _handle_transcript(text, armed, lang)
+
+
+def _handle_transcript(text, armed, lang="en"):
     mode = settings["voice_mode"]
     send_all({"type": "transcript", "text": text, "lang": lang})
     heard_wake, rest = agent.strip_wake_word(text)
@@ -293,6 +347,41 @@ def on_transcript(text, armed, lang="en"):
 
 
 voice.set_callbacks(on_transcript=on_transcript, on_status=on_voice_status)
+
+from src.os_control.media import MediaWatcher, SystemAudioMeter  # noqa: E402
+
+
+system_audio = SystemAudioMeter()
+
+
+def _on_media(st):
+    state["media"] = st
+    system_audio.set_active(bool(st["playing"] and settings["smart_media_listening"]))
+    send_all({"type": "media", **st})
+
+
+media = MediaWatcher(on_change=_on_media)
+voice.system_level_fn = lambda: system_audio.level
+
+
+def apply_listening_timing():
+    voice.end_of_speech_s = float(settings["end_of_speech_s"])
+    voice.max_utterance_s = float(settings["max_utterance_s"])
+
+
+apply_listening_timing()
+
+# Snapy-level actions requested by voice (quit, emoji burst) go to the HUD
+
+
+def _on_agent_ui(msg):
+    send_all(msg)
+    if msg.get("action") == "quit":
+        # the HUD closes the app; make sure the engine follows even if no HUD is connected
+        threading.Timer(4.0, lambda: os._exit(0)).start()
+
+
+agent.on_ui = _on_agent_ui
 
 
 def apply_voice_mode():
@@ -327,10 +416,15 @@ def on_settings_changed(changed):
         gestures.apply_settings(settings.as_dict())
     if "voice_mode" in changed:
         apply_voice_mode()
+    if set(changed) & {"end_of_speech_s", "max_utterance_s"}:
+        apply_listening_timing()
+    if "smart_media_listening" in changed:
+        system_audio.set_active(bool(media.playing and settings["smart_media_listening"]))
     if "mic_sensitivity" in changed:
         voice.set_sensitivity(changed["mic_sensitivity"])
     if "voice_language" in changed or "speech_quality" in changed:
         voice.set_language(settings["voice_language"])
+        voice.allowed_langs = user_languages()
         voice.set_model(whisper_model_name())
     if "tts_enabled" in changed and not changed["tts_enabled"]:
         speaker.interrupt()
@@ -371,41 +465,128 @@ def pull_model(name):
     llm.ensure_server()
     ok = llm.pull(name, on_progress=lambda p: send_all(models_payload()))
     send_all(models_payload())
-    toast(f"{name} is ready" if ok else f"Couldn't download {name}: {llm.last_error}", ok, "model")
+    if not getattr(llm, "_cancel_pull", None) or not llm._cancel_pull.is_set():
+        toast(f"{name} is ready" if ok else f"Couldn't download {name}: {llm.last_error}", ok, "model")
     return ok
 
 
 _ollama_install = {"status": None, "pct": 0}
+_cancel_ollama = threading.Event()
+from src.setup_assets import Setup, whisper_ready, kokoro_ready, WHISPER_REPO, WHISPER_FILES, KOKORO_URL, KOKORO_FILES  # noqa: E402
+setup = Setup(on_change=lambda st: send_all(st))
 
 
-def install_ollama():
+def run_setup():
+    """First-run downloads with real progress: speech, voice, AI engine, AI model."""
+    import importlib.util
+    if setup.running:
+        return
+    setup.running = True
+    try:
+        local_ai = settings["ai_provider"] != "cloud"
+        from src.brain.llm import _ollama_exe
+        has_runtime = bool(_ollama_exe())
+        rec = compatibility()["recommended"]
+        has_brain = False
+        if has_runtime and llm.ensure_server():
+            installed = llm.installed_models()
+            cur = settings["llm_model"]
+            has_brain = any(m in (cur, cur + ":latest", rec, rec + ":latest") for m in installed) or any(
+                m["compatible"] and any(i in (m["name"], m["name"] + ":latest") for i in installed)
+                for m in compatibility()["models"])
+        wname = whisper_model_name()
+        setup.plan(need_speech=not whisper_ready(wname),
+                   need_voice=importlib.util.find_spec("kokoro_onnx") is not None and not kokoro_ready(),
+                   need_runtime=local_ai and not has_runtime,
+                   need_brain=local_ai and not has_brain, brain_name=rec)
+        if not setup.items:
+            return
+        from src.setup_assets import whisper_dir
+        from src.voice.tts import model_dir as kokoro_dir
+        for it in list(setup.items):
+            try:
+                if it["id"] == "speech":
+                    d = os.path.join(storage.data_dir(), "models", f"faster-whisper-{wname}")
+                    setup.fetch("speech", [(WHISPER_REPO.format(name=wname) + f, os.path.join(d, f)) for f in WHISPER_FILES])
+                    voice.reload()
+                elif it["id"] == "voice":
+                    setup.fetch("voice", [(KOKORO_URL + f, os.path.join(kokoro_dir(), f)) for f in KOKORO_FILES])
+                    speaker.reload()
+                elif it["id"] == "runtime":
+                    install_ollama(progress_item="runtime")
+                    if _ollama_install.get("status") != "done":
+                        raise RuntimeError(_ollama_install.get("error") or "the AI engine didn't install")
+                elif it["id"] == "brain":
+                    if not llm.ensure_server():
+                        raise RuntimeError("the AI engine isn't running")
+                    setup.update("brain", state="downloading")
+
+                    def prog(p):
+                        if p.get("total") and p["total"] > 50_000_000:      # the model weights layer
+                            setup.get("brain").update(done=p["done"], total=p["total"])
+                        setup._emit()
+                    if not llm.pull(rec, on_progress=prog):
+                        raise RuntimeError(llm.last_error or "download failed")
+                    settings.update({"llm_model": rec})
+                    setup.update("brain", state="done", done=setup.get("brain")["total"])
+                    send_all(models_payload())
+            except Exception as e:
+                setup.update(it["id"], state="error", error=str(e)[:160])
+        _ = whisper_dir
+    finally:
+        setup.running = False
+        setup._emit(force=True)
+
+
+def install_ollama(progress_item=None):
     """Download and silently install Ollama (the free local AI runtime), then the
-    recommended model for this PC."""
+    recommended model for this PC. With progress_item, reports bytes to first-run setup."""
     import tempfile
     import requests as rq
     if _ollama_install["status"] == "running":
         return
+    _cancel_ollama.clear()
     _ollama_install.update(status="running", pct=0)
     send_all(models_payload())
     try:
-        dest = os.path.join(tempfile.gettempdir(), "OllamaSetup.exe")
-        with rq.get("https://ollama.com/download/OllamaSetup.exe", stream=True, timeout=(10, 120)) as r:
+        dest = os.path.join(tempfile.gettempdir(), appdata.get("ollama.installer_file"))
+        with rq.get(appdata.get("ollama.installer_url"), stream=True, timeout=(10, 120)) as r:
             r.raise_for_status()
             total = int(r.headers.get("content-length") or 0)
-            done = 0
+            done, t0 = 0, time.time()
+            if progress_item:
+                setup.update(progress_item, state="downloading", total=total or setup.get(progress_item)["total"])
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
+                    if _cancel_ollama.is_set():
+                        _ollama_install.update(status="cancelled", pct=0)
+                        send_all(models_payload())
+                        return
                     f.write(chunk)
                     done += len(chunk)
+                    if progress_item:
+                        el = max(0.5, time.time() - t0)
+                        setup.get(progress_item).update(done=done, speed=int(done / el))
+                        setup._emit()
                     if total:
                         _ollama_install["pct"] = round(done * 90 / total, 1)
-                        send_all(models_payload())
+                        if not progress_item:
+                            send_all(models_payload())
+        if _cancel_ollama.is_set():
+            _ollama_install.update(status="cancelled", pct=0)
+            send_all(models_payload())
+            return
         _ollama_install.update(status="installing", pct=92)
+        if progress_item:
+            setup.update(progress_item, state="installing", speed=0)
         send_all(models_payload())
         import subprocess as sp
-        sp.run([dest, "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES"], timeout=900)
+        sp.run([dest, *appdata.get("ollama.installer_args", [])], timeout=appdata.get("ollama.install_timeout_s"))
         _ollama_install.update(status="done", pct=100)
-        auto_setup_model()
+        if progress_item:
+            setup.update(progress_item, state="done", done=setup.get(progress_item)["total"])
+        else:
+            auto_setup_model()
     except Exception as e:
         _ollama_install.update(status="error", pct=0, error=str(e))
         toast(f"Couldn't install the local AI engine: {e}", False, "model")
@@ -446,7 +627,8 @@ def full_hello():
         "meeting": meeting.state(), "onboarding_needed": not memory.profile.get("onboarded"),
         "focus": assistant.focus.state(), "contexts": assistant.contexts.items,
         "autostarted": "--autostart" in sys.argv or os.environ.get("SNAP_AIR_AUTOSTART") == "1",
-        "data_dir": storage.data_dir(), **{k: v for k, v in models_payload().items() if k != "type"},
+        "data_dir": storage.data_dir(), "setup": setup.state(),
+        **{k: v for k, v in models_payload().items() if k != "type"},
     }
 
 
@@ -479,7 +661,7 @@ def complete_onboarding(data):
         memory.add("Uses " + ", ".join(apps["communication"][:3]) + " to communicate", "fact", 2, source="onboarding")
     if profile.get("role"):
         memory.add(f"Works as {profile['role']}", "fact", 4, source="onboarding")
-    threading.Thread(target=auto_setup_model, daemon=True).start()   # best model this PC can run
+    threading.Thread(target=run_setup, daemon=True).start()   # anything still missing, with progress
     send_all({"type": "onboarding_done"})
     threading.Thread(target=greet_now, kwargs={"force": True}, daemon=True).start()
 
@@ -543,7 +725,7 @@ def scheduler():
                 quiet = bool(state["in_call"]) or assistant.focus.active
                 if not quiet and briefing.should_greet(now, in_call=state["in_call"]):
                     threading.Thread(target=greet_now, daemon=True).start()
-                elif not quiet and gap and gap >= 3 * 3600 and settings["welcome_back"] and memory.profile.get("onboarded"):
+                elif not quiet and gap and gap >= appdata.get("timings.welcome_back_gap_s") and settings["welcome_back"] and memory.profile.get("onboarded"):
                     n_open = len(tasks.open_tasks())
                     name = memory.profile.get("preferred_name") or memory.profile.get("name") or ""
                     send_all({"type": "banner", "kind": "info", "title": f"Welcome back{', ' + name if name else ''}!",
@@ -556,7 +738,7 @@ def scheduler():
                 threading.Thread(target=memory.ensure_vectors, daemon=True).start()
             end = settings["recap_time"] or memory.profile.get("work_end") or "18:00"
             if wrapup_offered != now.date() and now.strftime("%H:%M") >= end and activity.data and \
-                    activity.data.get("last_active") and time.time() - activity.data["last_active"] < 600:
+                    activity.data.get("last_active") and time.time() - activity.data["last_active"] < appdata.get("timings.recently_active_s"):
                 wrapup_offered = now.date()
                 send_all({"type": "banner", "kind": "wrapup", "title": "Wrapping up for today?",
                           "text": "I can summarise what you did and what's left for tomorrow."})
@@ -634,7 +816,7 @@ async def ws_handler(ws):
                 tasks.delete(d.get("id"))
                 send_all({"type": "tasks", "tasks": tasks.open_tasks()})
             elif t == "task_snooze":
-                tasks.snooze(d.get("id"), int(d.get("minutes", 10)))
+                tasks.snooze(d.get("id"), int(d.get("minutes") or appdata.get("timings.snooze_default_min")))
                 send_all({"type": "tasks", "tasks": tasks.open_tasks()})
             # notes
             elif t in ("note_add", "add_note") and d.get("text"):
@@ -712,11 +894,30 @@ async def ws_handler(ws):
                 bg(complete_onboarding, d)
             elif t == "set_api_key":
                 prov = d.get("provider") or cloud.provider
-                secrets_store.set_key(f"cloud_{prov}", d.get("key", ""))
+                key = (d.get("key") or "").strip()
+                secrets_store.set_key(f"cloud_{prov}", key)
                 settings.update({"cloud_provider": prov})
+                if key:
+                    settings.update({"ai_provider": "cloud"})
+                    cloud._online = (time.time(), True)
+                    state["brain"] = "cloud"
+                else:
+                    if settings.get("ai_provider") == "cloud":
+                        settings.update({"ai_provider": "auto"})
+                    state["brain"] = "cloud" if brain.is_cloud else ("local" if llm.ready() else "none")
                 cloud.last_error = None
+                send_all({"type": "state_update", **state})
                 send_all(models_payload())
-                toast("API key saved (encrypted on this PC)" if d.get("key") else "API key removed", True, "cloud")
+                prov_lbl = PROVIDERS.get(prov, {}).get("label", prov)
+                toast(f"API key saved — switched to live {prov_lbl}" if key else "API key removed", True, "cloud")
+            elif t in ("cancel_pull", "cancel_install"):
+                llm.cancel_pull()
+                _cancel_ollama.set()
+                setup.cancel()
+                if _ollama_install.get("status") in ("running", "installing"):
+                    _ollama_install.update(status="cancelled", pct=0)
+                send_all(models_payload())
+                toast("Installation cancelled", True, "model")
             elif t == "cloud_test":
                 def _test():
                     try:
@@ -729,7 +930,9 @@ async def ws_handler(ws):
             elif t == "open_speech_settings":
                 os.startfile("ms-settings:speech")
             elif t == "vision_install":
-                bg(pull_model, "qwen3.5:4b")
+                bg(pull_model, appdata.get("vision.install_model"))
+            elif t == "setup_retry":
+                bg(run_setup)
             elif t == "install_ollama":
                 bg(install_ollama)
             elif t == "model_pull" and d.get("name"):
@@ -772,8 +975,9 @@ async def run_server():
     global ws_loop
     ws_loop = asyncio.get_running_loop()
     try:
-        async with websockets.serve(ws_handler, "localhost", PORT, max_size=8 * 1024 * 1024):
-            print(f"[HUD] WebSocket server on ws://localhost:{PORT}")
+        host = appdata.get("server.host")
+        async with websockets.serve(ws_handler, host, PORT, max_size=int(appdata.get("server.max_message_mb")) * 1024 * 1024):
+            print(f"[HUD] WebSocket server on ws://{host}:{PORT}")
             await broadcast_state()
     except OSError as e:
         print("[HUD] Could not start WebSocket server (is another engine running?):", e)
@@ -784,8 +988,8 @@ async def run_server():
 def open_camera(index):
     backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
     cap = cv2.VideoCapture(index, backend)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, appdata.get("camera.width"))
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, appdata.get("camera.height"))
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return cap if cap.isOpened() else None
@@ -881,7 +1085,7 @@ def camera_loop():
             cv2.rectangle(img, (int(l * w), int(t * h)), (int(r * w), int(b * h)), (255, 0, 255), 2)
             label = "PAUSED" if gestures.paused else gestures.pose + (" (DRAG)" if gestures.dragging else "")
             cv2.putText(img, label, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.imshow(PREVIEW_TITLE, cv2.resize(img, (320, 240)))
+            cv2.imshow(PREVIEW_TITLE, cv2.resize(img, (appdata.get("camera.preview_width"), appdata.get("camera.preview_height"))))
             if not preview_open:
                 cv2.setWindowProperty(PREVIEW_TITLE, cv2.WND_PROP_TOPMOST, 1)
                 preview_open = True
@@ -909,14 +1113,14 @@ def startup():
     close_osk()
     # the greeting itself is triggered by the activity tracker's session start
     send_all(models_payload())
-    if memory.profile.get("onboarded"):
-        auto_setup_model()           # first run after onboarding / model removed: install the right one
+    run_setup()                      # first run (or a model was removed): download what's missing, with progress
     send_all(models_payload())
 
 
 if __name__ == "__main__":
     apply_voice_mode()
     voice.start()
+    media.start()
     activity.start()
     threading.Thread(target=lambda: asyncio.run(run_server()), daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()

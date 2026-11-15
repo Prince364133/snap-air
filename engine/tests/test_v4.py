@@ -220,3 +220,77 @@ class ScreenTaskTests(unittest.TestCase):
             self.assertIn("confirm", a.replies[-1][0])
         finally:
             PAGE.pop()
+
+
+class PlayRequestTests(unittest.TestCase):
+    """Regression: 'open YouTube and play some Hindi music' played lofi (the AI copied a prompt example)."""
+    def setUp(self):
+        self.a = AgentController(settings={}, os_actions=FakeOS(), app_index=FakeApps())
+        self.played = []
+        self.a.play_youtube = lambda q, n=1: self.played.append(q)
+
+    def test_users_own_words_are_played(self):
+        for said, q in [("Can you open YouTube and play some Hindi music?", "hindi music"),
+                        ("I want to listen some Hindu romantic songs.", "hindi romantic songs"),
+                        ("arijit ke gaane bajao", "arijit ke gaane"),
+                        ("play despacito on youtube", "despacito")]:
+            self.played.clear()
+            self.a.execute_intent(said)
+            self.assertEqual(self.played, [q], said)
+
+    def test_ambiguous_verbs_are_not_music(self):
+        for said in ["mujhe ek joke sunao yaar", "10 minute baad padhai ka reminder lagao", "i want to listen snappy",
+                     "kahani sunao", "fan chalao"]:
+            self.assertIsNone(self.a._play_request(self.a._plain(self.a.normalize(said))), said)
+
+    def test_ai_topic_swap_is_corrected(self):
+        from src.brain.assistant import Assistant
+        x = Assistant.__new__(Assistant)
+        x.agent = self.a
+        self.assertIn("hindi romantic gaane", x._keep_users_topic("play lofi hip hop on youtube", "kuch hindi romantic gaane sunao"))
+        self.assertEqual(x._keep_users_topic("play lofi hip hop on youtube", "yaar lofi chala do"), "play lofi hip hop on youtube")
+
+
+class SpeechFilterTests(unittest.TestCase):
+    def test_garbage_from_real_log_is_dropped(self):
+        from src.voice.voice_listener import looks_hallucinated, wrong_script
+        L = ("en", "hi")
+        for t in ["7-7-7-7-7-7-7-7-7-7-7-7-7-7-7-7-7-7", "You are " + "not the one who is " * 12]:
+            self.assertTrue(looks_hallucinated(t), t)
+        for t in ["Котюбийго ров.", "回想你来等", "저건, 저건, 저, 바리"]:
+            self.assertTrue(wrong_script(t, L), t)
+        for t in ["Can you open YouTube and play some Hindi music?", "आज मेरे काम क्या हैं?", "Volume up.", "kal subah gym yaad dilana"]:
+            self.assertFalse(looks_hallucinated(t) or wrong_script(t, L), t)
+
+
+
+class ConversationTests(unittest.TestCase):
+    def test_pause_mid_sentence_waits_for_the_rest(self):
+        from src.voice.voice_listener import sounds_unfinished
+        for t in ["Open YouTube and", "remind me to", "play some songs by", "mujhe kal ke liye ek reminder aur", "so um"]:
+            self.assertTrue(sounds_unfinished(t), t)
+        for t in ["Open YouTube.", "volume up", "remind me at 5 to push the PR", "what's the weather?"]:
+            self.assertFalse(sounds_unfinished(t), t)
+
+    def test_nth_video_quit_and_emoji(self):
+        a = AgentController(settings={}, os_actions=FakeOS(), app_index=FakeApps())
+        played, ui = [], []
+        a.play_youtube = lambda q, n=1: played.append((q, n))
+        a.on_ui = lambda m: ui.append(m)
+        a.execute_intent("open YouTube and play arijit singh songs, the 4th video")
+        self.assertEqual(played[-1], ("arijit singh songs", 4))
+        a.execute_intent("play the second video of lofi music")
+        self.assertEqual(played[-1], ("lofi music", 2))
+        self.assertIsNone(a._play_request(a._ordinal("play the 4th video")[0]))   # no topic -> click on screen
+        a.execute_intent("Snapy close yourself")
+        self.assertEqual(ui[-1]["action"], "quit")
+        self.assertEqual(a.execute_intent("close the tab").action, "tab")             # not Snapy
+        a.execute_intent("show some party emojis on the screen")
+        self.assertEqual(ui[-1]["action"], "emoji")
+        self.assertIn("🎉", ui[-1]["emojis"])
+
+    def test_app_data_has_no_missing_keys(self):
+        from src import appdata
+        for k in ["server.port", "ollama.installer_url", "speech_models.repo_url", "voice_model.url",
+                  "vision.install_model", "web.youtube_search", "timings.call_offer_cooldown_s", "ordinals.fourth"]:
+            self.assertIsNotNone(appdata.get(k), k)

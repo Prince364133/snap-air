@@ -2,9 +2,9 @@
 
 Daily automation (commands, tasks, reminders, notes, memory, gestures) always
 runs locally. When the user adds an API key, conversation and meeting
-summaries can go to a cloud model for sub-second answers and zero laptop load.
-Providers: Google Gemini, OpenAI, and any OpenAI-compatible endpoint
-(OpenRouter, Groq, Together, a self-hosted GPU server...).
+summaries go to a cloud model for sub-second answers and zero laptop load.
+Providers: Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, Mistral,
+DeepSeek, OpenRouter, Perplexity, and custom OpenAI-compatible endpoints.
 """
 import json
 import re
@@ -17,10 +17,66 @@ from src import secrets_store
 from src.brain.llm import LLM, ThinkFilter
 
 PROVIDERS = {
-    "gemini": {"label": "Google Gemini", "model": "gemini-2.5-flash"},
-    "openai": {"label": "OpenAI", "model": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"},
-    "compatible": {"label": "OpenAI-compatible (OpenRouter, Groq, own server…)", "model": "",
-                   "base_url": "https://openrouter.ai/api/v1"},
+    "gemini": {
+        "label": "Google Gemini",
+        "model": "gemini-2.5-flash",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "desc": "Ultra-fast multimodal flagship from Google",
+    },
+    "openai": {
+        "label": "OpenAI (GPT-4o mini)",
+        "model": "gpt-4o-mini",
+        "base_url": "https://api.openai.com/v1",
+        "desc": "Fast, smart, and lightweight flagship from OpenAI",
+    },
+    "anthropic": {
+        "label": "Anthropic Claude (Haiku 3.5)",
+        "model": "claude-3-5-haiku-20241022",
+        "base_url": "https://api.anthropic.com/v1",
+        "desc": "Lightning fast and highly capable Haiku 3.5",
+    },
+    "grok": {
+        "label": "xAI Grok",
+        "model": "grok-2-mini",
+        "base_url": "https://api.x.ai/v1",
+        "desc": "Fast conversational intelligence from xAI",
+    },
+    "groq": {
+        "label": "Groq (Ultra-fast LPU)",
+        "model": "llama-3.3-70b-versatile",
+        "base_url": "https://api.groq.com/openai/v1",
+        "desc": "Near-instant response speed via Groq LPU",
+    },
+    "mistral": {
+        "label": "Mistral AI",
+        "model": "mistral-small-latest",
+        "base_url": "https://api.mistral.ai/v1",
+        "desc": "European high-efficiency reasoning model",
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com/v1",
+        "desc": "Powerful DeepSeek-V3 intelligence",
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "model": "auto",
+        "base_url": "https://openrouter.ai/api/v1",
+        "desc": "Unified gateway routing to the best available model",
+    },
+    "perplexity": {
+        "label": "Perplexity",
+        "model": "sonar",
+        "base_url": "https://api.perplexity.ai",
+        "desc": "Search-grounded online intelligence",
+    },
+    "compatible": {
+        "label": "Custom (OpenAI-compatible / self-hosted)",
+        "model": "gpt-4o-mini",
+        "base_url": "https://api.openai.com/v1",
+        "desc": "Custom server, vLLM, or self-hosted GPU endpoint",
+    },
 }
 JSON_HINT = ('\nRespond with a JSON object whose keys appear in this order: "say", "tool", "args". '
              'No text outside the JSON.')
@@ -45,11 +101,19 @@ class CloudLLM:
 
     @property
     def model(self):
-        return self._s("cloud_model", PROVIDERS.get(self.provider, {}).get("model", ""))
+        prov = self.provider
+        if prov == "compatible":
+            custom = self._s("cloud_model", "")
+            if custom:
+                return custom
+        return PROVIDERS.get(prov, {}).get("model", "gemini-2.5-flash")
 
     @property
     def base_url(self):
-        return self._s("cloud_base_url", PROVIDERS.get(self.provider, {}).get("base_url", "")).rstrip("/")
+        prov_base = PROVIDERS.get(self.provider, {}).get("base_url", "")
+        if self.provider == "compatible":
+            return self._s("cloud_base_url", prov_base or "https://api.openai.com/v1").rstrip("/")
+        return prov_base.rstrip("/")
 
     def key(self):
         return secrets_store.get_key(f"cloud_{self.provider}")
@@ -62,10 +126,16 @@ class CloudLLM:
         if time.time() - t < 60:
             return ok
         try:
-            requests.head("https://www.google.com", timeout=2)
+            from src import appdata
+            url = appdata.get("web.connectivity_check") or "https://www.google.com"
+            requests.head(url, timeout=2)
             ok = True
         except requests.RequestException:
-            ok = False
+            try:
+                requests.head("https://1.1.1.1", timeout=2)
+                ok = True
+            except Exception:
+                ok = False
         self._online = (time.time(), ok)
         return ok
 
@@ -76,10 +146,43 @@ class CloudLLM:
     def _openai_req(self, messages, json_mode, max_tokens, temperature, stream):
         body = {"model": self.model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
                 "stream": stream}
-        if json_mode:
+        if json_mode and self.provider in ("openai", "groq", "mistral", "deepseek", "openrouter", "compatible"):
             body["response_format"] = {"type": "json_object"}
+        headers = {"Authorization": f"Bearer {self.key()}", "Content-Type": "application/json"}
+        if self.provider == "openrouter":
+            headers["HTTP-Referer"] = "https://github.com/snapy-ai/snapy"
+            headers["X-Title"] = "Snapy AI"
         return requests.post(self.base_url + "/chat/completions", json=body, stream=stream, timeout=(6, 120),
-                             headers={"Authorization": f"Bearer {self.key()}", "Content-Type": "application/json"})
+                             headers=headers)
+
+    def _anthropic_req(self, messages, json_mode, max_tokens, temperature, stream):
+        system_parts = [m["content"] for m in messages if m["role"] == "system"]
+        system_prompt = "\n\n".join(system_parts) if system_parts else ""
+        chat_msgs = []
+        for m in messages:
+            if m["role"] != "system":
+                chat_msgs.append({
+                    "role": "assistant" if m["role"] == "assistant" else "user",
+                    "content": m["content"]
+                })
+        if not chat_msgs:
+            chat_msgs = [{"role": "user", "content": "Hello"}]
+        body = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": chat_msgs,
+            "stream": stream,
+        }
+        if system_prompt:
+            body["system"] = system_prompt
+        headers = {
+            "x-api-key": self.key(),
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        url = (self.base_url or "https://api.anthropic.com/v1") + "/messages"
+        return requests.post(url, json=body, stream=stream, timeout=(6, 120), headers=headers)
 
     def _gemini_req(self, messages, json_mode, max_tokens, temperature, stream):
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
@@ -99,7 +202,12 @@ class CloudLLM:
         if json_mode:
             messages = [dict(m) for m in messages]
             messages[0] = {**messages[0], "content": messages[0]["content"] + JSON_HINT}
-        fn = self._gemini_req if self.provider == "gemini" else self._openai_req
+        if self.provider == "gemini":
+            fn = self._gemini_req
+        elif self.provider == "anthropic":
+            fn = self._anthropic_req
+        else:
+            fn = self._openai_req
         r = fn(messages, json_mode, max_tokens, temperature, stream)
         if r.status_code >= 400:
             try:
@@ -128,6 +236,12 @@ class CloudLLM:
                     for part in (c.get("content") or {}).get("parts", []):
                         if part.get("text"):
                             yield part["text"]
+            elif provider == "anthropic":
+                if d.get("type") == "content_block_delta":
+                    delta = d.get("delta") or {}
+                    txt = delta.get("text")
+                    if txt:
+                        yield txt
             else:
                 for c in d.get("choices", [])[:1]:
                     t = (c.get("delta") or {}).get("content")
@@ -140,6 +254,9 @@ class CloudLLM:
         if provider == "gemini":
             parts = d["candidates"][0]["content"]["parts"]
             return "".join(p.get("text", "") for p in parts)
+        if provider == "anthropic":
+            contents = d.get("content") or []
+            return "".join(c.get("text", "") for c in contents if c.get("type") == "text")
         return d["choices"][0]["message"]["content"]
 
     # ------------------------------------------------------- LLM interface

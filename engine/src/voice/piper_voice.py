@@ -41,7 +41,9 @@ CATALOG = {
 
 def entry(lang, name):
     return next((e for e in CATALOG.get(lang, []) if e[0] == name), None)
-BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+from src import appdata  # noqa: E402
+
+BASE_URL = appdata.get("native_voices.base_url")
 
 
 def _espeak_backend(lang):

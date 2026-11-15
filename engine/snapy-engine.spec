@@ -17,7 +17,7 @@ for pkg in ("mediapipe", "faster_whisper", "ctranslate2", "onnxruntime", "kokoro
 
 hiddenimports += collect_submodules("src") + ["pyautogui", "pyperclip", "pygetwindow", "pymsgbox", "pytweening",
                                               "pyscreeze", "mouseinfo", "websockets.legacy", "winreg"]
-datas += [("src/vision/hand_landmarker.task", "src/vision")]
+datas += [("src/vision/hand_landmarker.task", "src/vision"), ("src/data/app.json", "src/data")]
 
 a = Analysis(
     ["main.py"],
@@ -25,9 +25,15 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    excludes=["playwright", "tkinter", "IPython", "pytest", "PyInstaller", "comtypes.test"],   # mediapipe needs matplotlib
+    # "av" (PyAV/FFmpeg, 65 MB) is only used by faster-whisper to open audio files; Snapy passes
+    # microphone samples directly and installs a stub at runtime (voice_listener.py)
+    excludes=["playwright", "tkinter", "IPython", "pytest", "PyInstaller", "comtypes.test", "av"],   # mediapipe needs matplotlib
     noarchive=False,
 )
+# OpenCV's FFmpeg plugin (31 MB) is only for video files/streams; the webcam uses DirectShow/MSMF
+a.binaries = [b for b in a.binaries if "opencv_videoio_ffmpeg" not in b[0]]
+a.datas = [d for d in a.datas if "opencv_videoio_ffmpeg" not in d[0] and not d[0].startswith("av.libs")]
+a.binaries = [b for b in a.binaries if not b[0].startswith("av.libs")]
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz,

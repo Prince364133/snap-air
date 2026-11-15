@@ -9,6 +9,7 @@
 """
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -28,10 +29,44 @@ COMMAND_PROMPT = ("Scroll down. Switch to Chrome. Next tab. Open YouTube. Take n
                   "Remind me at 5 pm. Volume up. Pause.")
 
 
+LOOP = re.compile(r"(.{1,24}?)(?:[\s,.\-]*\1){4,}", re.S)
+# scripts Snapy expects for each language it listens for (Latin covers English & Hinglish)
+SCRIPTS = {"en": r"A-Za-z", "hi": r"A-Za-z\u0900-\u097F", "mr": r"A-Za-z\u0900-\u097F", "ne": r"A-Za-z\u0900-\u097F",
+           "bn": r"A-Za-z\u0980-\u09FF", "te": r"A-Za-z\u0C00-\u0C7F", "ta": r"A-Za-z\u0B80-\u0BFF",
+           "ml": r"A-Za-z\u0D00-\u0D7F", "gu": r"A-Za-z\u0A80-\u0AFF", "kn": r"A-Za-z\u0C80-\u0CFF",
+           "pa": r"A-Za-z\u0A00-\u0A7F", "ur": r"A-Za-z\u0600-\u06FF"}
+
+
+UNFINISHED = re.compile(r"(?:\b(?:and|or|but|to|the|a|an|of|for|with|by|in|at|from|about|into|after|before|then|so|because|like|that|which|my|your|"
+                        r"aur|ya|ki|ke|ka|ko|mein|se|toh|phir|par|pe|jo|um+|uh+|hmm+)|,|-|\.\.\.|…)\s*$", re.I)
+
+
+def sounds_unfinished(text):
+    """True when a phrase stops mid-sentence ("open youtube and", "remind me to")."""
+    return bool(UNFINISHED.search((text or "").strip()))
+
+
 def looks_hallucinated(text):
-    """Whisper loops on noise ("open YouTube. open YouTube. open YouTube...")."""
+    """Whisper loops on noise: "open YouTube. open YouTube. open YouTube...",
+    "7-7-7-7-7…", "not the one who is not the one who is…"."""
     parts = [p.strip().lower() for p in text.replace("!", ".").replace("?", ".").split(".") if p.strip()]
-    return len(parts) >= 3 and len(set(parts)) <= len(parts) / 2
+    if len(parts) >= 3 and len(set(parts)) <= len(parts) / 2:
+        return True
+    words = re.findall(r"\w+", text.lower())
+    if len(words) >= 8 and len(set(words)) / len(words) < 0.35:
+        return True
+    return bool(LOOP.search(text)) and len(text) > 40
+
+
+def wrong_script(text, langs):
+    """True if the text is mostly in a script none of the user's languages use
+    (noise decoded as Korean/Thai/Chinese when the user speaks English/Hindi)."""
+    letters = re.findall(r"[^\W\d_]", text)
+    if len(letters) < 3:
+        return False
+    allowed = "".join(SCRIPTS.get(l, "A-Za-z") for l in langs) or "A-Za-z"
+    ok = sum(1 for c in letters if re.match(f"[{allowed}]", c))
+    return ok / len(letters) < 0.6
 
 
 class VoiceListener:
@@ -41,6 +76,12 @@ class VoiceListener:
         self.sample_rate = sample_rate
         self.model_name = model_name
         self.language = None if language in (None, "", "auto") else language
+        # languages the user actually speaks; "auto" chooses between these instead of all 99
+        self.allowed_langs = ("en", "hi")
+        self.system_level_fn = None   # loudness of what the speakers play (video/music), 0 if nothing
+        self.media_coupling = 0.3     # learned: how much speaker sound leaks into the mic
+        self.end_of_speech_s = 0.8    # quiet that ends a phrase (set from settings)
+        self.max_utterance_s = 20
         self.suppress_fn = None       # legacy: returns True to mute the mic completely
         # Barge-in (full duplex): the mic stays open while Snap talks.
         self.talking_fn = None        # True while Snap is speaking
@@ -71,6 +112,11 @@ class VoiceListener:
         level = max(1, min(10, int(level)))
         self.min_threshold = 0.03 * (0.72 ** (level - 1))   # 5 -> ~0.008
 
+    def reload(self):
+        """Load the speech model again (after first-run setup downloaded it)."""
+        self.model = None
+        threading.Thread(target=self._init_model, daemon=True).start()
+
     def set_model(self, name):
         if name and name != self.model_name:
             self.model_name = name
@@ -93,16 +139,28 @@ class VoiceListener:
     def _init_model(self):
         name = self.model_name
         try:
+            try:
+                import av  # noqa: F401  (faster-whisper only uses PyAV to open audio *files*)
+            except ImportError:
+                import types
+                stub = types.ModuleType("av")       # Snapy passes microphone samples directly,
+                sys.modules["av"] = stub            # so the 65 MB FFmpeg build isn't shipped
             from faster_whisper import WhisperModel
             print(f"[Voice] Loading faster-whisper ({name})…")
             # More threads is NOT faster for tiny models (8 was 2.5x slower in testing)
             threads = max(2, min(4, (os.cpu_count() or 4) // 4))
-            # the installer ships tiny.en so voice works offline on first launch
-            bundled = os.path.join(os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
-                                   else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                                   "models", f"faster-whisper-{name}")
-            m = WhisperModel(bundled if os.path.isdir(bundled) else name, device="cpu", compute_type="int8",
-                             cpu_threads=threads)
+            # the speech model is downloaded by first-run setup (with progress); a full
+            # installer may bundle it, and dev machines may have it in the Hugging Face cache
+            from src.setup_assets import whisper_dir, whisper_ready
+            if whisper_ready(name):
+                source = whisper_dir(name)
+            elif os.path.isdir(os.path.expanduser(f"~/.cache/huggingface/hub/models--Systran--faster-whisper-{name}")):
+                source = name
+            else:
+                self.model_error = None
+                self._status("Setting up speech…")
+                return
+            m = WhisperModel(source, device="cpu", compute_type="int8", cpu_threads=threads)
             # warm-up so the first real command isn't slow
             m.transcribe(np.zeros(self.sample_rate, dtype=np.float32), language="en", without_timestamps=True)
             if name == self.model_name:
@@ -225,6 +283,13 @@ class VoiceListener:
             self.level = rms
             threshold = max(self.min_threshold, self.noise_floor * 3.0)
             need = 2
+            sys_level = self.system_level_fn() if self.system_level_fn else 0.0
+            if sys_level > 0.005 and not (self.headphones_fn and self.headphones_fn()):
+                # a video/song is playing through the speakers: its sound leaks into the mic.
+                # Learn how much leaks, and only count speech clearly louder than that leak.
+                threshold = max(threshold, sys_level * self.media_coupling * 2.0)
+                if not speaking:
+                    self.media_coupling = 0.98 * self.media_coupling + 0.02 * min(2.0, rms / sys_level)
             echo_guard = talking and not (self.headphones_fn and self.headphones_fn())
             if echo_guard:
                 # Echo guard: our own voice leaks from the speakers into the mic, so the bar
@@ -256,30 +321,47 @@ class VoiceListener:
 
             recording.append(chunk)
             quiet_chunks = quiet_chunks + 1 if rms < threshold * 0.8 else 0
-            too_long = len(recording) * self.CHUNK_S > 10
-            if quiet_chunks >= 6 or too_long:           # 0.6 s of quiet ends the phrase
+            too_long = len(recording) * self.CHUNK_S > self.max_utterance_s
+            if quiet_chunks * self.CHUNK_S >= self.end_of_speech_s or too_long:
                 audio = np.concatenate(recording)
                 speaking, recording, loud_chunks, pre_roll = False, [], 0, []
                 if len(audio) >= self.sample_rate * 0.45:
                     # talking over Snap counts as addressing Snap (no wake word needed)
+                    # talking over Snapy counts as addressing it — the system-audio guard above
+                    # already keeps a video's own sound from triggering this
                     self.jobs.put((audio, self.armed or barged))
                 else:
                     self._status("Ready")
 
     # ------------------------------------------------------- transcribe
-    def transcribe(self, audio):
-        lang = self.language if not self.model_name.endswith(".en") else "en"
+    def _decode(self, audio, lang):
         segments, info = self.model.transcribe(
             audio, language=lang, beam_size=1, temperature=0.0, without_timestamps=True,
             condition_on_previous_text=False, initial_prompt=COMMAND_PROMPT if (lang or "en") == "en" else None)
-        self.last_lang = getattr(info, "language", None) or lang or "en"
         parts = []
         for seg in segments:
             if seg.no_speech_prob > 0.6 and seg.avg_logprob < -0.8:
                 continue   # almost certainly noise
             parts.append(seg.text.strip())
-        text = " ".join(parts).strip()
-        return "" if looks_hallucinated(text) else text
+        return " ".join(parts).strip(), info
+
+    def transcribe(self, audio):
+        lang = self.language if not self.model_name.endswith(".en") else "en"
+        text, info = self._decode(audio, lang)
+        detected = getattr(info, "language", None) or lang or "en"
+        allowed = tuple(self.allowed_langs) or ("en",)
+        if lang is None and detected not in allowed:
+            # "auto" guessed a language the user doesn't speak (usually noise or a short
+            # Hindi/Hinglish phrase): decode again in the most likely language they DO speak
+            probs = dict(getattr(info, "all_language_probs", None) or [])
+            best = max(allowed, key=lambda l: probs.get(l, 0.0))
+            text, _ = self._decode(audio, best)
+            detected = best
+        self.last_lang = detected
+        langs = allowed if lang is None else (lang,)
+        if looks_hallucinated(text) or wrong_script(text, langs):
+            return ""
+        return text
 
     def _transcribe_worker(self):
         while True:

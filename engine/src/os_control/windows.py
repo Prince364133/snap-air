@@ -1,5 +1,6 @@
 """Win32 window helpers (ctypes, no extra dependencies)."""
 import ctypes
+import re
 import os
 import sys
 import time
@@ -128,18 +129,17 @@ def ensure_target_focus():
 
 def find_window(query):
     """Best window matching a spoken name (title words or process name)."""
+    import difflib
+    from src import appdata
     q = query.lower().strip()
     if not q:
         return None
-    aliases = {"vs code": "code", "vscode": "code", "visual studio code": "code",
-               "chrome": "chrome", "google chrome": "chrome", "edge": "msedge",
-               "file explorer": "explorer", "files": "explorer", "explorer": "explorer",
-               "terminal": "windowsterminal", "word": "winword", "excel": "excel",
-               "powerpoint": "powerpnt", "outlook": "outlook", "teams": "ms-teams"}
-    exe_hint = aliases.get(q)
+    exe_hint = (appdata.get("window_aliases", {}) or {}).get(q)
+    qs = q.replace(" ", "")                     # "anti gravity" == "antigravity"
     best, best_score = None, 0
     for hwnd, title, exe in list_windows():
         tl = title.lower()
+        tls = tl.replace(" ", "")
         score = 0
         if exe_hint and exe == exe_hint:
             score = 100
@@ -151,6 +151,14 @@ def find_window(query):
             score = 60
         elif all(w in tl for w in q.split()):
             score = 50
+        elif len(qs) >= 4 and (qs in tls or qs in exe.replace(" ", "")):
+            score = 45
+        else:
+            # misheard names: compare with each word of the title and the app name
+            words = re.findall(r"[a-z0-9]+", tl) + [exe.replace(" ", "")]
+            r = max((difflib.SequenceMatcher(None, qs, w).ratio() for w in words if len(w) >= 3), default=0)
+            if r >= 0.8:
+                score = int(30 + 10 * r)
         if score > best_score:
             best, best_score = (hwnd, title), score
     return best

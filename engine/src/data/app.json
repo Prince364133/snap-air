@@ -1,0 +1,215 @@
+{
+  "_comment": "Product data for Snapy: download sources, model names, timings and limits. Change values here, not in code. User preferences live in settings.json (see src/config.py).",
+  "server": {
+    "host": "localhost",
+    "port": 8765,
+    "max_message_mb": 8
+  },
+  "ollama": {
+    "host": "http://127.0.0.1:11434",
+    "installer_url": "https://ollama.com/download/OllamaSetup.exe",
+    "installer_file": "OllamaSetup.exe",
+    "installer_args": [
+      "/VERYSILENT",
+      "/NORESTART",
+      "/SUPPRESSMSGBOXES"
+    ],
+    "install_timeout_s": 900
+  },
+  "speech_models": {
+    "repo_url": "https://huggingface.co/Systran/faster-whisper-{name}/resolve/main/",
+    "files": [
+      "config.json",
+      "tokenizer.json",
+      "vocabulary.txt",
+      "model.bin"
+    ],
+    "english": {
+      "fast": "tiny.en",
+      "balanced": "tiny.en",
+      "accurate": "small.en"
+    },
+    "multilingual": {
+      "fast": "base",
+      "balanced": "base",
+      "accurate": "small"
+    }
+  },
+  "voice_model": {
+    "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/",
+    "files": [
+      "voices-v1.0.bin",
+      "kokoro-v1.0.int8.onnx"
+    ]
+  },
+  "native_voices": {
+    "base_url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+  },
+  "setup_size_estimates": {
+    "speech": 140000000,
+    "voice": 120000000,
+    "runtime": 1100000000,
+    "brain": 1400000000
+  },
+  "vision": {
+    "install_model": "qwen3.5:4b",
+    "local_models": [
+      "qwen3.5:4b",
+      "qwen3.5:2b",
+      "qwen2.5vl:3b",
+      "gemma3:4b",
+      "qwen2.5vl:7b"
+    ],
+    "min_gpu_vram_gb": 4,
+    "max_image_side": 1024
+  },
+  "web": {
+    "youtube_search": "https://www.youtube.com/results?search_query=",
+    "connectivity_check": "https://www.google.com"
+  },
+  "timings": {
+    "call_offer_cooldown_s": 1800,
+    "welcome_back_gap_s": 10800,
+    "recently_active_s": 600,
+    "snooze_default_min": 10,
+    "media_poll_s": 1.5,
+    "video_capture_max_min": 60,
+    "interruption_memory_s": 90
+  },
+  "camera": {
+    "width": 640,
+    "height": 480,
+    "preview_width": 320,
+    "preview_height": 240
+  },
+  "languages": {
+    "english": "en",
+    "hindi": "hi",
+    "hinglish": "hi",
+    "marathi": "mr",
+    "bengali": "bn",
+    "telugu": "te",
+    "tamil": "ta",
+    "malayalam": "ml",
+    "gujarati": "gu",
+    "kannada": "kn",
+    "punjabi": "pa",
+    "urdu": "ur",
+    "nepali": "ne"
+  },
+  "default_listen_languages": [
+    "en",
+    "hi"
+  ],
+  "window_aliases": {
+    "vs code": "code",
+    "vscode": "code",
+    "visual studio code": "code",
+    "chrome": "chrome",
+    "google chrome": "chrome",
+    "edge": "msedge",
+    "file explorer": "explorer",
+    "files": "explorer",
+    "explorer": "explorer",
+    "terminal": "windowsterminal",
+    "word": "winword",
+    "excel": "excel",
+    "powerpoint": "powerpnt",
+    "outlook": "outlook",
+    "teams": "ms-teams"
+  },
+  "emoji_sets": {
+    "default": [
+      "😄",
+      "🎉",
+      "✨",
+      "😎",
+      "🚀",
+      "💙",
+      "🌟",
+      "🥳"
+    ],
+    "party|celebrat|birthday|congrat": [
+      "🎉",
+      "🥳",
+      "🎊",
+      "🎂",
+      "🍾",
+      "✨"
+    ],
+    "love|heart|romantic|pyaar": [
+      "❤️",
+      "😍",
+      "💖",
+      "💕",
+      "🥰",
+      "💘"
+    ],
+    "happy|smile|khush": [
+      "😄",
+      "😊",
+      "😁",
+      "🌞",
+      "✨"
+    ],
+    "fire|lit|hot|awesome": [
+      "🔥",
+      "⚡",
+      "💥",
+      "🚀",
+      "😎"
+    ],
+    "sad|cry|dukhi": [
+      "😢",
+      "💧",
+      "🫂",
+      "💙"
+    ],
+    "rain|baarish": [
+      "🌧️",
+      "☔",
+      "💧",
+      "🌈"
+    ],
+    "food|hungry|bhookh": [
+      "🍕",
+      "🍔",
+      "🍩",
+      "🍜",
+      "🍰"
+    ]
+  },
+  "ordinals": {
+    "first": 1,
+    "1st": 1,
+    "second": 2,
+    "2nd": 2,
+    "third": 3,
+    "3rd": 3,
+    "fourth": 4,
+    "4th": 4,
+    "fifth": 5,
+    "5th": 5,
+    "sixth": 6,
+    "6th": 6,
+    "seventh": 7,
+    "7th": 7,
+    "eighth": 8,
+    "8th": 8,
+    "ninth": 9,
+    "9th": 9,
+    "tenth": 10,
+    "10th": 10,
+    "pehla": 1,
+    "pehli": 1,
+    "doosra": 2,
+    "doosri": 2,
+    "dusra": 2,
+    "teesra": 3,
+    "teesri": 3,
+    "chautha": 4,
+    "chauthi": 4,
+    "paanchva": 5,
+    "paanchvi": 5
+  }
+}

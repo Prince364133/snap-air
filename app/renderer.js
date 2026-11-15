@@ -102,6 +102,7 @@ const HANDLERS = {
         dataDir = d.data_dir || '';
         models = d;
         focus = d.focus || {}; contexts = d.contexts || [];
+        SETUP = d.setup || null; setTimeout(renderSetup, 0);
         ipcRenderer.send('set-login-item', !!S.start_at_login);
         renderAll();
         if (d.onboarding_needed) openOnboarding();
@@ -114,6 +115,7 @@ const HANDLERS = {
     note_added(d) { notes.unshift(d.note); renderNotes(); renderGlance(); renderTodayExtras(); },
     today(d) { tasks = d.tasks; activity = d.activity; meeting = d.meeting; renderTasks(); renderGlance(); renderMeeting(); },
     activity(d) { activity = d.summary; routine = d.routine || routine; renderActivity(); renderGlance(); },
+    setup(d) { SETUP = d; renderSetup(); },
     models(d) { models = d; if (activeTab === 'settings') renderModelSection(); if (obOpen) renderObStep(); },
     meeting(d) { meeting = d; renderMeeting(); renderIsland(); },
     chat_message(d) { renderMessage(d); },
@@ -139,7 +141,10 @@ const HANDLERS = {
         else if (d.action === 'open_drawer') { if (d.tab === 'notes' && d.filter) setNoteFilter(d.filter); openDrawer(d.tab || 'assistant'); }
         else if (d.action === 'close_panels') closeDrawer();
         else if (d.action === 'toggle_hud') document.body.classList.toggle('hud-hidden');
+        else if (d.action === 'quit') setTimeout(shutdownSnapy, 1200);       // let "See you soon" be heard
+        else if (d.action === 'emoji') emojiBurst(d.emojis || []);
     },
+    video_capture(d) { videoCapture = d; renderIsland(); },
 };
 
 // ------------------------------------------------------------------- orbs
@@ -198,6 +203,8 @@ function renderIsland() {
     else if (eng.voice_armed || /Hearing/.test(eng.voice_status || '')) text = 'Listening…';
     else if (/Transcrib/.test(eng.voice_status || '')) text = '…';
     else if (/Loading|failed|unavailable/i.test(eng.voice_status || '')) text = eng.voice_status;
+    else if (SETUP && SETUP.running && !SETUP.complete && (SETUP.items || []).length) text = `Setting up… ${setupPct(SETUP)}%`;
+    else if (videoCapture && videoCapture.recording) text = 'Listening to the video…';
     else if (meeting.recording) text = 'Taking meeting notes';
     else if (eng.voice_mode === 'push') text = 'Press Ctrl+Alt+Space to talk';
     else text = `Say “${NAME()}…”`;
@@ -892,18 +899,28 @@ function renderModelSection() {
     const pulling = m.pulling && m.pulling.status !== 'error';
     if (picked.name) {
         if (!picked.compatible) action = h('span', { class: 'caption danger-text' }, 'Not compatible');
+        else if (pulling && m.pulling.name === picked.name) action = h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel');
         else if (has(picked.name)) action = picked.name === m.current ? h('span', { class: 'caption' }, 'In use')
             : h('button', { class: 'btn small primary', onclick: () => send({ type: 'model_select', name: picked.name }) }, 'Use');
         else action = h('button', { class: 'btn small primary', disabled: !m.ollama_installed || pulling,
             onclick: () => send({ type: 'model_pull', name: picked.name }) }, `Install ${picked.size}`);
     }
 
+    const cancelBtn = (pulling || oi.status === 'running' || oi.status === 'installing')
+        ? h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel')
+        : null;
+
     const localRows = [
-        h('div', { class: 'g-row' }, h('span', {}, h('span', { class: 'status-dot ' + dot }), status),
-            !m.ollama_installed && oi.status !== 'running' && oi.status !== 'installing'
-                ? h('button', { class: 'btn small primary', onclick: () => send({ type: 'install_ollama' }) }, 'Install (free)') : null),
+        h('div', { class: 'g-row' },
+            h('span', {}, h('span', { class: 'status-dot ' + dot }), status),
+            cancelBtn || (!m.ollama_installed && oi.status !== 'running' && oi.status !== 'installing'
+                ? h('button', { class: 'btn small primary', onclick: () => send({ type: 'install_ollama' }) }, 'Install (free)') : null)),
         pulling || oi.status === 'running'
-            ? h('div', { class: 'g-row col' }, h('div', { class: 'progress' }, h('i', { style: `width:${(pulling && m.pulling.pct) || oi.pct || 0}%` }))) : null,
+            ? h('div', { class: 'g-row col' },
+                h('div', { class: 'progress' }, h('i', { style: `width:${(pulling && m.pulling.pct) || oi.pct || 0}%` })),
+                h('div', { class: 'row', style: 'justify-content:flex-end;margin-top:4px' },
+                    h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel installation')))
+            : null,
         h('div', { class: 'g-row col' },
             h('div', { class: 'caption' }, `This PC: ${hw.ram_total || '?'} GB RAM (${hw.ram_free || '?'} GB free) · ${hw.cores || '?'} threads · ${hw.gpu_vram ? hw.gpu_vram + ' GB GPU' : 'no dedicated GPU'} → models up to ${cat.max_params ? Math.round(cat.max_params) + 'B' : '?'} run smoothly.`),
             h('div', { class: 'row', style: 'gap:8px;margin-top:8px' }, sel, action),
@@ -918,23 +935,62 @@ function renderModelSection() {
         if (k === cl.provider) o.selected = true;
         return o;
     }));
-    provSel.onchange = () => updateSetting('cloud_provider', provSel.value);
-    const keyIn = h('input', { type: 'password', placeholder: cl.key ? `Saved (${cl.key}) — paste to replace` : 'Paste your API key', autocomplete: 'off' });
-    const defModel = (cl.providers && cl.providers[cl.provider] && cl.providers[cl.provider].model) || 'set one';
+    provSel.onchange = () => {
+        updateSetting('cloud_provider', provSel.value);
+        renderModelSection();
+    };
+    const currentProvInfo = (cl.providers && cl.providers[cl.provider]) || {};
+    const defModel = currentProvInfo.model || 'auto';
+    const keyIn = h('input', {
+        type: 'password',
+        placeholder: cl.key ? `Saved (${cl.key}) — paste to replace` : `Paste your ${currentProvInfo.label || ''} API key`,
+        autocomplete: 'off'
+    });
+
+    const keyGuides = {
+        gemini: 'Get a free API key at aistudio.google.com',
+        openai: 'Get an API key at platform.openai.com',
+        anthropic: 'Get an API key at console.anthropic.com',
+        grok: 'Get an API key at console.x.ai',
+        groq: 'Get an ultra-fast free API key at console.groq.com',
+        mistral: 'Get an API key at console.mistral.ai',
+        deepseek: 'Get an API key at platform.deepseek.com',
+        openrouter: 'Get an API key at openrouter.ai/keys',
+        perplexity: 'Get an API key at perplexity.ai/settings/api',
+        compatible: 'Enter your custom endpoint API key'
+    };
+
     const cloudRows = [
         h('div', { class: 'g-row' }, h('span', {}, 'Provider'), provSel),
-        h('div', { class: 'g-row' }, h('span', {}, 'Model', h('span', { class: 'sub' }, `Default: ${defModel}`)),
-            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'model id' })),
+        h('div', { class: 'm-note', style: 'margin:4px 0 6px 0;color:var(--text-sub)' },
+            '⚡ Smart Model: ', h('strong', { style: 'color:var(--text)' }, cl.model || defModel),
+            ' · Auto-selected for fastest sub-second responses and zero laptop load.'),
         cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Base URL'),
             settingControl({ key: 'cloud_base_url', type: 'text', placeholder: cl.base_url || 'https://…/v1' })) : null,
+        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Custom Model ID (optional)'),
+            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'e.g. mistral-small' })) : null,
         h('div', { class: 'g-row col' },
             h('div', { class: 'row', style: 'gap:8px' }, keyIn,
-                h('button', { class: 'btn small primary', onclick: () => { send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() }); keyIn.value = ''; } }, 'Save'),
+                h('button', { class: 'btn small primary', onclick: () => {
+                    const keyVal = keyIn.value.trim();
+                    if (keyVal) {
+                        send({ type: 'set_api_key', provider: provSel.value, key: keyVal });
+                        updateSetting('ai_provider', 'cloud');
+                        showToast('API key saved — switched to live cloud brain');
+                    } else {
+                        showToast('Please enter an API key', false);
+                    }
+                    keyIn.value = '';
+                } }, 'Save'),
                 h('button', { class: 'btn small', disabled: !cl.configured, onclick: () => send({ type: 'cloud_test' }) }, 'Test'),
-                cl.key ? h('button', { class: 'mini', onclick: () => send({ type: 'set_api_key', provider: provSel.value, key: '' }) }, 'Remove') : null),
+                cl.key ? h('button', { class: 'mini', onclick: () => {
+                    send({ type: 'set_api_key', provider: provSel.value, key: '' });
+                    updateSetting('ai_provider', m.ready ? 'local' : 'auto');
+                    showToast('API key removed');
+                } }, 'Remove') : null),
             h('div', { class: 'm-note', style: 'margin-top:6px' },
-                (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? 'Cloud brain is active.' : ''}`
-                    : 'Get a key at aistudio.google.com (Gemini) or platform.openai.com.') + (cl.error ? '  ⚠ ' + cl.error : ''))),
+                (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? '🟢 Live Cloud brain is active.' : ''}`
+                    : (keyGuides[cl.provider] || 'Paste your API key to activate.')) + (cl.error ? '  ⚠ ' + cl.error : ''))),
         h('div', { class: 'g-row' }, h('span', {}, 'Let the cloud help learn memories', h('span', { class: 'sub' }, 'Off = memory learning stays on this PC')),
             settingControl({ key: 'cloud_for_memory', type: 'switch' })),
     ];
@@ -1044,6 +1100,75 @@ $('greeting-later').onclick = () => { send({ type: 'dismiss_briefing' }); hideGr
 
 // ------------------------------------------------------------- onboarding
 let obOpen = false, obStep = 0, obAutoPulled = false;
+let SETUP = null, setupHidden = false;
+let videoCapture = null;
+
+// "Show some emojis on the screen": a short, light burst that floats up and fades (never blocks clicks)
+function emojiBurst(list) {
+    if (!list.length) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const layer = h('div', { class: 'emoji-layer', 'aria-hidden': 'true' });
+    document.body.appendChild(layer);
+    const count = reduce ? 6 : 28;
+    for (let i = 0; i < count; i++) {
+        const e = h('span', { class: 'emoji-pop' }, list[i % list.length]);
+        e.style.left = (4 + Math.random() * 92) + 'vw';
+        e.style.fontSize = (28 + Math.random() * 34) + 'px';
+        e.style.animationDelay = (Math.random() * 1.2) + 's';
+        e.style.animationDuration = (2.6 + Math.random() * 1.8) + 's';
+        e.style.setProperty('--drift', (Math.random() * 120 - 60) + 'px');
+        layer.appendChild(e);
+    }
+    setTimeout(() => layer.remove(), 5500);
+}
+const fmtMB = (b) => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.round((b || 0) / 1e6) + ' MB';
+function setupPct(st) { return st && st.total ? Math.min(100, Math.round(st.done * 100 / st.total)) : 0; }
+function setupItemEl(it) {
+    const pct = it.total ? Math.min(100, it.done * 100 / it.total) : 0;
+    let meta;
+    if (it.state === 'done') meta = 'Done';
+    else if (it.state === 'skipped') meta = 'Not needed';
+    else if (it.state === 'installing') meta = 'Installing…';
+    else if (it.state === 'error') meta = 'Failed';
+    else if (it.state === 'downloading') {
+        const left = it.speed > 0 ? Math.max(1, Math.round((it.total - it.done) / it.speed)) : 0;
+        meta = `${fmtMB(it.done)} of ${fmtMB(it.total)}` + (it.speed > 0 ? ` · ${(it.speed / 1e6).toFixed(1)} MB/s · ${left >= 60 ? Math.round(left / 60) + ' min' : left + ' s'} left` : '');
+    } else meta = `Waiting · ${fmtMB(it.total)}`;
+    return h('div', { class: `setup-item ${it.state}` },
+        h('div', { class: 'setup-row' }, h('span', { class: 'setup-icon' }, it.state === 'done' ? '✓' : it.state === 'error' ? '!' : ''),
+            h('span', { class: 'name' }, it.label), h('span', { class: 'meta' }, meta)),
+        h('div', { class: 'setup-desc' }, it.desc),
+        h('div', { class: 'setup-bar' }, h('i', { style: `width:${it.state === 'done' ? 100 : pct}%` })),
+        it.error && it.state !== 'done' ? h('div', { class: 'setup-err' }, it.error) : null);
+}
+function renderSetup() {
+    const st = SETUP;
+    const active = st && st.items && st.items.length && !st.complete;
+    const failed = st && (st.items || []).some((i) => i.state === 'error');
+    // onboarding shows a compact version inside its own sheet
+    const box = document.getElementById('ob-setup');
+    if (box) {
+        box.classList.toggle('hidden', !active && !failed);
+        if (active || failed) box.replaceChildren(h('div', { class: 'caption', style: 'margin-bottom:6px;font-weight:600' },
+            failed && !st.running ? 'Some downloads failed — retry from Settings or the setup window.' : `Getting ${NAME()} ready · ${setupPct(st)}%`),
+            ...st.items.map(setupItemEl));
+    }
+    const sheet = $('setup-sheet');
+    const show = !obOpen && !setupHidden && (active || failed);
+    sheet.classList.toggle('hidden', !show);
+    if (!st || !st.items) return;
+    $('setup-list').replaceChildren(...st.items.map(setupItemEl));
+    $('setup-total').textContent = st.complete ? 'All set' : `${fmtMB(st.done)} of ${fmtMB(st.total)} · ${setupPct(st)}%`;
+    $('setup-retry').classList.toggle('hidden', !(failed && !st.running));
+    $('setup-lead').textContent = failed && !st.running
+        ? 'Some downloads didn’t finish. Check your internet connection and try again — finished parts are kept.'
+        : `Downloading what ${NAME()} needs to run on this PC. You can keep working — this continues in the background.`;
+    if (st.complete && !sheet.classList.contains('hidden')) setTimeout(() => sheet.classList.add('hidden'), 1500);
+    renderIsland();
+}
+$('setup-hide').onclick = () => { setupHidden = true; $('setup-sheet').classList.add('hidden'); };
+$('setup-retry').onclick = () => { setupHidden = false; send({ type: 'setup_retry' }); };
+$('island-status').addEventListener('click', () => { if (SETUP && !SETUP.complete && (SETUP.items || []).length) { setupHidden = false; renderSetup(); } });
 const ob = { name: '', role: '', work_start: '09:00', work_end: '18:00', city: '', languages: ['English'],
              voice: true, activity: false, gestures: false, login: true, greeting_voice: false, editor: '', projects: {}, main: '' };
 const OB_STEPS = ['welcome', 'about', 'language', 'permissions', 'setup', 'brain', 'done'];
@@ -1054,7 +1179,7 @@ function openOnboarding() {
     send({ type: 'scan_system' });
     renderObStep();
 }
-function closeOnboarding() { obOpen = false; $('onboarding').classList.add('hidden'); }
+function closeOnboarding() { obOpen = false; $('onboarding').classList.add('hidden'); renderSetup(); }
 function chipGroup(options, selected, multi, onChange) {
     return h('div', { class: 'chip-row' }, ...options.map((o) => h('button', {
         class: 'chip' + ((multi ? selected.includes(o) : selected === o) ? ' selected' : ''),
@@ -1074,6 +1199,7 @@ function perm(icon, color, title, text, key) {
 }
 let obOrb = null;
 function renderObStep() {
+    setTimeout(() => { const b = $('ob-body'); if (b && !document.getElementById('ob-setup')) b.appendChild(h('div', { id: 'ob-setup', class: 'ob-setup hidden' })); renderSetup(); }, 0);
     const step = OB_STEPS[obStep];
     $('ob-steps').replaceChildren(...OB_STEPS.map((_, i) => h('i', { class: i === obStep ? 'on' : '' })));
     $('ob-back').classList.toggle('hidden', obStep === 0);
@@ -1137,19 +1263,41 @@ function renderObStep() {
             inner = [h('p', { class: 'lead' }, `Ready — ${m.current} is installed and runs fully offline.`)];
         } else if (pulling) {
             inner = [h('p', { class: 'lead' }, `Installing ${m.pulling.name} for this PC… you can continue meanwhile.`),
-                h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` })), h('p', { class: 'fine' }, `${Math.round(m.pulling.pct || 0)}%`)];
+                h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` })),
+                h('div', { class: 'row', style: 'justify-content:space-between;align-items:center;margin-top:6px' },
+                    h('p', { class: 'fine', style: 'margin:0' }, `${Math.round(m.pulling.pct || 0)}%`),
+                    h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel'))];
         } else {
-            // automatic: install the recommended model as soon as this step is shown
-            if (!obAutoPulled) { obAutoPulled = true; send({ type: 'update_settings', settings: { llm_model: rec } }); send({ type: 'model_pull', name: rec }); }
-            inner = [h('p', { class: 'lead' }, `Installing ${info.label || rec} automatically…`)];
+            // first-run setup downloads it (progress below); only start a pull if setup isn't handling it
+            const handled = SETUP && (SETUP.items || []).some((i) => i.id === 'brain' && i.state !== 'error');
+            if (!handled && !obAutoPulled) { obAutoPulled = true; send({ type: 'update_settings', settings: { llm_model: rec } }); send({ type: 'model_pull', name: rec }); }
+            inner = [h('p', { class: 'lead' }, `Installing ${info.label || rec} automatically — you can continue meanwhile.`)];
         }
-        const keyIn = h('input', { type: 'password', placeholder: 'Optional: paste a Gemini or OpenAI API key', style: 'flex:1;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--card)' });
-        const provSel = h('select', { class: 'select' }, h('option', { value: 'gemini' }, 'Gemini'), h('option', { value: 'openai' }, 'OpenAI'));
+        const keyIn = h('input', { type: 'password', placeholder: 'Optional: paste any Cloud AI API key', style: 'flex:1;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--card)' });
+        const cloudProvList = (m.cloud && m.cloud.providers) ? Object.entries(m.cloud.providers) : [
+            ['gemini', { label: 'Google Gemini' }],
+            ['openai', { label: 'OpenAI' }],
+            ['anthropic', { label: 'Anthropic Claude' }],
+            ['grok', { label: 'xAI Grok' }],
+            ['groq', { label: 'Groq (Ultra-fast LPU)' }],
+            ['mistral', { label: 'Mistral AI' }],
+            ['deepseek', { label: 'DeepSeek' }],
+            ['openrouter', { label: 'OpenRouter' }],
+            ['perplexity', { label: 'Perplexity' }]
+        ];
+        const provSel = h('select', { class: 'select' }, ...cloudProvList.map(([k, v]) => h('option', { value: k }, v.label)));
         body.replaceChildren(h('h2', {}, 'My AI brain'), hwLine, ...inner,
             h('div', { class: 'group-title', style: 'margin-top:20px' }, 'Want instant answers? (optional)'),
-            h('p', { class: 'caption' }, 'Add a cloud API key and conversations and meeting summaries answer in about half a second with no load on your laptop. Commands, reminders, memory and activity always stay on this PC.'),
+            h('p', { class: 'caption' }, 'Add any cloud API key (Google Gemini, OpenAI, Claude, Grok, Groq, Mistral, DeepSeek, OpenRouter, Perplexity) and answers respond in ~0.5s with zero load on your laptop. Commands, reminders, memory and activity always stay on this PC.'),
             h('div', { class: 'row', style: 'gap:8px;margin-top:8px' }, provSel, keyIn,
-                h('button', { class: 'btn', onclick: () => { if (keyIn.value.trim()) { send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() }); send({ type: 'update_settings', settings: { ai_provider: 'auto' } }); keyIn.value = ''; showToast('Key saved — encrypted on this PC'); } } }, 'Save')));
+                h('button', { class: 'btn', onclick: () => {
+                    if (keyIn.value.trim()) {
+                        send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() });
+                        updateSetting('ai_provider', 'cloud');
+                        keyIn.value = '';
+                        showToast('Key saved — switched to live cloud brain');
+                    }
+                } }, 'Save')));
     } else if (step === 'done') {
         body.replaceChildren(h('div', { class: 'ob-hero' }, h('h2', {}, `You're all set${ob.name ? ', ' + ob.name : ''}!`),
             h('p', { class: 'lead' }, 'Try one of these:'),

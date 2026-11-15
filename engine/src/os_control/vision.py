@@ -17,11 +17,13 @@ import time
 
 import requests
 
+from src import appdata
 from src.os_control.screen import Element
 
-OLLAMA = "http://127.0.0.1:11434"
-# Vision-capable Ollama models, best first (all permissively licensed: Apache-2.0 / Gemma terms)
-LOCAL_VISION_MODELS = ["qwen3.5:4b", "qwen3.5:2b", "qwen2.5vl:3b", "gemma3:4b", "qwen2.5vl:7b"]
+OLLAMA = appdata.get("ollama.host")
+# Vision-capable Ollama models, best first (from src/data/app.json)
+LOCAL_VISION_MODELS = appdata.get("vision.local_models", [])
+MAX_SIDE = int(appdata.get("vision.max_image_side", 1024))
 POINT_PROMPT = ("You are a GUI grounding model. Find the UI element the user means in this screenshot and "
                 "answer ONLY JSON {\"found\": true|false, \"x\": 0-1000, \"y\": 0-1000, \"label\": \"short name\"} "
                 "where x,y is the element's centre as a fraction of image width/height times 1000.")
@@ -200,7 +202,7 @@ class Vision:
             return None
         if pref == "auto":
             from src.brain.llm import hardware
-            if hardware().get("gpu_vram", 0) < 4:
+            if hardware().get("gpu_vram", 0) < float(appdata.get("vision.min_gpu_vram_gb", 4)):
                 return None
         return installed_local_model(self.settings)
 
@@ -225,7 +227,7 @@ class Vision:
         except Exception as e:
             print("[Vision] OCR failed:", e)
         # tier 3/4: vision model pointing
-        small, (left, top, scale) = capture(rect, max_side=1024)
+        small, (left, top, scale) = capture(rect, max_side=MAX_SIDE)
         prompt = POINT_PROMPT + f"\nThe user wants: {query}"
         for tier, fn in (("local", lambda: ask_local(self.local_model(), prompt, small) if self.local_model() else None),
                          ("cloud", lambda: ask_cloud(self.cloud, prompt, small) if self.cloud_ok() else None)):
@@ -249,7 +251,7 @@ class Vision:
         return None, f"I couldn't find “{query}” on this screen."
 
     def describe(self, rect, question="Describe what is on this screen in 2 short sentences."):
-        img, _ = capture(rect, max_side=1024)
+        img, _ = capture(rect, max_side=MAX_SIDE)
         for tier, fn in (("local", lambda: ask_local(self.local_model(), question + ' Answer JSON {"answer": "..."}', img,
                                                      max_tokens=200) if self.local_model() else None),
                          ("cloud", lambda: ask_cloud(self.cloud, question + ' Answer JSON {"answer": "..."}', img)
