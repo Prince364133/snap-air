@@ -1,6 +1,7 @@
 package live.snapy.app
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -11,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -157,6 +159,23 @@ class SnapyAccessibilityService : AccessibilityService() {
     private fun showPill() {
         if (pill != null) return
         val h = dp(26f)
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, h,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        )
+        if (Build.VERSION.SDK_INT >= 30) lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        placeBesideCamera(lp, h)
+
+        var initialX = 0
+        var initialY = 0
+        var initialTouchX = 0f
+        var initialTouchY = 0f
+        var isDragging = false
+        var downTime = 0L
+
         val p = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -171,44 +190,82 @@ class SnapyAccessibilityService : AccessibilityService() {
                 fontFeatureSettings = "tnum"
             }
             addView(pillText)
-            setOnClickListener { openSheet() }
-            setOnLongClickListener { hiddenUntil = System.currentTimeMillis() + 3600_000; updatePill(); true }
-            contentDescription = "Snapy Real Count — tap to talk to Snapy"
+            contentDescription = "Snapy Real Count — drag to reposition, tap to talk to Snapy"
+
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = lp.x
+                        initialY = lp.y
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        isDragging = false
+                        downTime = System.currentTimeMillis()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - initialTouchX).toInt()
+                        val dy = (event.rawY - initialTouchY).toInt()
+                        if (!isDragging && (abs(dx) > dp(5f) || abs(dy) > dp(5f))) {
+                            isDragging = true
+                        }
+                        if (isDragging) {
+                            val screenW = resources.displayMetrics.widthPixels
+                            val screenH = resources.displayMetrics.heightPixels
+                            lp.x = (initialX + dx).coerceIn(0, screenW - dp(80f))
+                            lp.y = (initialY + dy).coerceIn(0, screenH - h)
+                            try { wm.updateViewLayout(this, lp) } catch (_: Exception) {}
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val elapsed = System.currentTimeMillis() - downTime
+                        if (!isDragging) {
+                            if (elapsed >= 3000) {
+                                // 3-second hold: shut off / snooze for 1 hour
+                                hiddenUntil = System.currentTimeMillis() + 3600_000
+                                updatePill()
+                            } else {
+                                // Simple tap: open assistant
+                                openSheet()
+                            }
+                        } else {
+                            // Remember position where user dragged it
+                            getSharedPreferences("snapy_pill", Context.MODE_PRIVATE).edit()
+                                .putInt("pill_x", lp.x)
+                                .putInt("pill_y", lp.y)
+                                .apply()
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
         }
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, h,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        )
-        if (Build.VERSION.SDK_INT >= 30) lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        placeBesideCamera(lp, h)
         wm.addView(p, lp)
         pill = p
         updatePill()
     }
 
-    /** Sit in the status-bar row: right of a centred punch-hole, beside a corner one, else top-centre. */
+    /** Sit in the status-bar row or user's custom saved position. Defaults safely on the right side. */
     private fun placeBesideCamera(lp: WindowManager.LayoutParams, h: Int) {
         lp.gravity = Gravity.TOP or Gravity.START
         val width = resources.displayMetrics.widthPixels
+        val prefs = getSharedPreferences("snapy_pill", Context.MODE_PRIVATE)
+        if (prefs.contains("pill_x") && prefs.contains("pill_y")) {
+            lp.x = prefs.getInt("pill_x", 0).coerceIn(0, width - dp(80f))
+            lp.y = prefs.getInt("pill_y", 0).coerceIn(0, resources.displayMetrics.heightPixels - h)
+            return
+        }
+
         var y = dp(4f)
-        var x = width / 2 - dp(56f)
         if (Build.VERSION.SDK_INT >= 30) {
             val insets = wm.currentWindowMetrics.windowInsets
-            val cut = insets.displayCutout
             val bar = insets.getInsets(WindowInsets.Type.statusBars()).top
             if (bar > 0) y = ((bar - h) / 2).coerceAtLeast(0)
-            val r = cut?.boundingRects?.firstOrNull { it.top < bar + dp(8f) }
-            if (r != null) {
-                y = (r.centerY() - h / 2).coerceAtLeast(0)
-                x = if (r.centerX() > width * 0.3 && r.centerX() < width * 0.7) r.right + dp(8f)   // centred hole
-                else if (r.centerX() <= width * 0.3) r.right + dp(8f)                               // left corner
-                else r.left - dp(130f)                                                              // right corner
-            }
         }
-        lp.x = x.coerceIn(0, width - dp(130f))
+        // Place on the top right side to guarantee it never collides with center Dynamic Islands / hotspot capsules
+        lp.x = (width - dp(145f)).coerceAtLeast(dp(10f))
         lp.y = y
     }
 
