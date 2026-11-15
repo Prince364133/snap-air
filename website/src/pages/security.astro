@@ -1,0 +1,39 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Icon from '../components/Icon.astro';
+import { SITE, RELEASE } from '../config';
+
+const items = [
+  { icon: 'cpu', c: 'i-blue', t: 'Runs on your PC', d: 'Speech recognition, the AI model, memory and screen understanding run locally. There is no Snapy server holding your conversations.' },
+  { icon: 'lock', c: 'i-purple', t: 'Keys are encrypted', d: 'API keys you add are encrypted with Windows Data Protection (DPAPI), readable only by your Windows account, and never shown in full again.' },
+  { icon: 'shield', c: 'i-green', t: 'Asks before it’s final', d: 'Screen actions that send, delete, buy, pay, submit or post need you to say so explicitly. Multi-step tasks are capped at eight steps.' },
+  { icon: 'user', c: 'i-orange', t: 'No admin rights', d: 'Snapy installs and runs as your normal Windows user. It can’t press Ctrl+Alt+Delete or bypass Windows security prompts.' },
+  { icon: 'eye', c: 'i-pink', t: 'Secrets stay out of memory', d: 'Passwords, API keys and similar secrets are filtered before anything is saved. Activity tracking never records keystrokes or screen contents.' },
+  { icon: 'window', c: 'i-teal', t: 'Local-only connections', d: 'The app talks to its own engine and AI runtime on your machine (127.0.0.1). Outside connections happen only for downloads and the cloud features you turn on.' },
+];
+---
+<Base title="Security — How Snapy Protects Your PC and Data" description="How Snapy keeps your PC and data safe: on-device processing, encrypted API keys, confirmation before irreversible actions, no admin rights, and how to report a security issue." crumbs={[{ name: 'Security', href: '/security/' }]}>
+  <PageHero eyebrow="Security" title="An assistant you can trust with your PC." lead="Snapy can use your computer, so we designed it to do only what you ask, keep your data on your device, and stop before anything you can’t undo." />
+
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap">
+      <div class="grid grid-3">
+        {items.map((p) => <div class="card reveal"><div class={`icon ${p.c}`}><Icon name={p.icon} /></div><h2 class="h3">{p.t}</h2><p>{p.d}</p></div>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap narrow">
+      <h2 style="margin-bottom:16px">Verify your download</h2>
+      <p class="muted">Only download Snapy from <a href="/download/">{SITE.domain}/download</a>. To confirm the installer hasn’t been changed, run this in PowerShell and compare the result:</p>
+      <p style="margin-top:14px"><code>Get-FileHash .\{RELEASE.file}</code></p>
+      <p class="fine" style="margin-top:8px;word-break:break-all">Expected SHA-256 for {RELEASE.version}: <code>{RELEASE.sha256}</code></p>
+
+      <h2 style="margin:48px 0 16px">Report a vulnerability</h2>
+      <p class="muted">Found a security issue? Email <a href={`mailto:${SITE.email.security}`}>{SITE.email.security}</a> with steps to reproduce. Please give us reasonable time to fix it before sharing details publicly. We will acknowledge your report and keep you updated.</p>
+    </div>
+  </section>
+</Base>
+<style>.h3 { font-size: 22px; margin-bottom: 8px; }</style>

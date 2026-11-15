@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://snappy.live/sitemap-index.xml
+Sitemap: https://snapy.live/sitemap-index.xml

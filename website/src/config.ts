@@ -1,8 +1,8 @@
 // One place for everything that changes between releases or deployments.
 export const SITE = {
   name: 'Snapy',
-  domain: 'snappy.live',
-  url: 'https://snappy.live',
+  domain: 'snapy.live',
+  url: 'https://snapy.live',
   tagline: 'The private AI assistant for Windows',
   description:
     'Snapy is a private AI assistant for Windows. Talk to it in English, Hindi or Hinglish to control your PC, click and type on screen, take meeting notes, set reminders and plan your day — with the AI running on your own laptop.',
@@ -10,10 +10,10 @@ export const SITE = {
   company: 'Snapy',
   jurisdiction: 'India',
   email: {
-    support: 'support@snappy.live',
-    privacy: 'privacy@snappy.live',
-    security: 'security@snappy.live',
-    legal: 'legal@snappy.live',
+    support: 'support@snapy.live',
+    privacy: 'privacy@snapy.live',
+    security: 'security@snapy.live',
+    legal: 'legal@snapy.live',
   },
   legalUpdated: '15 November 2026',
 };

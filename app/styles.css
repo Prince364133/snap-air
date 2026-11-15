@@ -340,6 +340,20 @@ li:hover .row-actions, .note:hover .row-actions, .mem:hover .row-actions { opaci
 .ai-status-dot.dot-orange { background: var(--orange); box-shadow: 0 0 6px rgba(255, 159, 10, .6); }
 .ai-status-dot.dot-green { background: var(--green); box-shadow: 0 0 6px rgba(48, 209, 88, .6); }
 .ai-status-dot.dot-red { background: var(--red); box-shadow: 0 0 6px rgba(255, 59, 48, .6); }
+.island.holding-shutdown {
+    box-shadow: 0 0 0 2px var(--red), 0 0 16px rgba(255, 59, 48, .5) !important;
+    transform: translateX(-50%) scale(0.97);
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+.island.holding-shutdown #island-status {
+    color: var(--red) !important;
+    font-weight: 600;
+}
+.island.shut-down {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+    transition: opacity .25s ease, transform .25s ease;
+}
 .island-btns { display: flex; gap: 2px; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--hair); }
 .ib { width: 28px; height: 28px; border-radius: 8px; border: none; background: transparent; color: var(--text-2);
       display: grid; place-items: center; cursor: pointer; transition: background .15s, color .15s; }

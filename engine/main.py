@@ -699,6 +699,12 @@ async def ws_handler(ws):
                 toast("Activity history cleared", True, "privacy")
             elif t == "dismiss_briefing":
                 assistant.pending = None
+            elif t in ("shutdown", "quit"):
+                print("[Engine] Shutdown requested by client")
+                def _do_exit():
+                    time.sleep(0.15)
+                    os._exit(0)
+                threading.Thread(target=_do_exit, daemon=True).start()
             # onboarding & models
             elif t == "scan_system":
                 bg(lambda: send_all({"type": "scan", **system_scan.scan(agent.apps)}))

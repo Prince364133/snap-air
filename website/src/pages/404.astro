@@ -1,0 +1,17 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Page not found" description="This page doesn’t exist. Find Snapy features, downloads and help from here." noindex>
+  <section style="min-height:60vh;display:grid;place-items:center">
+    <div class="wrap center">
+      <span class="orb" style="--size:72px;margin:0 auto 28px" aria-hidden="true"></span>
+      <h1>Snapy couldn’t find that page.</h1>
+      <p class="lead" style="margin:16px auto 32px;max-width:560px">It may have moved, or the link has a typo. Try one of these instead.</p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="btn btn-primary" href="/">Go home</a>
+        <a class="btn btn-ghost" href="/download/">Download</a>
+        <a class="btn btn-ghost" href="/support/">Get help</a>
+      </div>
+    </div>
+  </section>
+</Base>

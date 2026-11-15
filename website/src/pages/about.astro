@@ -1,0 +1,36 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHero from '../components/PageHero.astro';
+import Icon from '../components/Icon.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { SITE } from '../config';
+
+const values = [
+  { icon: 'lock', c: 'i-blue', t: 'Private by default', d: 'Your voice, your day and your screen are yours. The AI comes to your laptop — your data doesn’t go to ours.' },
+  { icon: 'globe', c: 'i-orange', t: 'Made for how India talks', d: 'Hinglish isn’t an edge case. Snapy is built for people who switch between English and Hindi mid-sentence.' },
+  { icon: 'bolt', c: 'i-green', t: 'Useful, not a demo', d: 'Every feature has to save real time on a real workday — reminders that fire, notes you can act on, clicks that land.' },
+  { icon: 'cpu', c: 'i-purple', t: 'Respect the hardware', d: 'Snapy only installs AI your PC can run smoothly. An assistant that slows your laptop down isn’t helping.' },
+];
+---
+<Base title="About Snapy — The Private AI Assistant for Windows" description="Snapy is a private, on-device AI assistant for Windows, made in India. Learn why we built it and the principles behind it." crumbs={[{ name: 'About', href: '/about/' }]}>
+  <PageHero eyebrow="About" title="We think your computer should listen to you." lead="Snapy started with a simple frustration: AI assistants live in a browser tab, forget everything, and can’t actually do anything on your PC. So we built one that lives on your laptop, remembers what matters, and uses your computer the way you do." />
+
+  <section class="section-tight" style="padding-top:0">
+    <div class="wrap">
+      <div class="grid grid-2">
+        {values.map((v) => <div class="card reveal"><div class={`icon ${v.c}`}><Icon name={v.icon} /></div><h2 class="h3">{v.t}</h2><p>{v.d}</p></div>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt section-tight">
+    <div class="wrap narrow center">
+      <span class="orb" style="--size:64px;margin:0 auto 24px" aria-hidden="true"></span>
+      <h2 style="font-size:clamp(26px,3.4vw,36px)">Made in India, for everyone who works on a PC.</h2>
+      <p class="lead" style="margin-top:16px">Questions, ideas or partnership enquiries — we’d love to hear from you at <a href={`mailto:${SITE.email.support}`}>{SITE.email.support}</a>.</p>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+<style>.h3 { font-size: 22px; margin-bottom: 8px; }</style>

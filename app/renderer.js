@@ -231,9 +231,74 @@ function renderIsland() {
 // keep the recording timer ticking smoothly
 setInterval(() => { if (meeting.recording) { meeting.elapsed = (meeting.elapsed || 0) + 1; renderIsland(); } }, 1000);
 
-$('island').addEventListener('click', (e) => {
+// ------------------------------------------------- hold-to-shutdown (3s)
+let holdTimer = null;
+let holdStart = 0;
+let didHoldShutdown = false;
+
+function startHoldShutdown(e) {
+    if (e && e.button !== undefined && e.button !== 0) return;
+    if (e.target && e.target.closest('#island-focus')) return;
+    holdStart = Date.now();
+    didHoldShutdown = false;
+    clearInterval(holdTimer);
+    holdTimer = setInterval(() => {
+        const elapsed = Date.now() - holdStart;
+        if (elapsed >= 500) {
+            $('island').classList.add('holding-shutdown');
+            const remain = Math.max(1, Math.ceil((3000 - elapsed) / 1000));
+            $('island-status').textContent = `Shutting down in ${remain}s…`;
+        }
+        if (elapsed >= 3000) {
+            clearInterval(holdTimer);
+            holdTimer = null;
+            didHoldShutdown = true;
+            $('island').classList.remove('holding-shutdown');
+            $('island').classList.add('shut-down');
+            $('island-status').textContent = 'Shutting down Snapy…';
+            shutdownSnapy();
+        }
+    }, 50);
+}
+
+function cancelHoldShutdown() {
+    if (holdTimer) {
+        clearInterval(holdTimer);
+        holdTimer = null;
+    }
+    if (!didHoldShutdown && $('island').classList.contains('holding-shutdown')) {
+        $('island').classList.remove('holding-shutdown');
+        renderIsland();
+    }
+}
+
+function shutdownSnapy() {
+    try { send({ type: 'shutdown' }); } catch (e) {}
+    setTimeout(() => {
+        try { ipcRenderer.send('quit'); } catch (e) {}
+        try { window.close(); } catch (e) {}
+    }, 200);
+}
+
+const islandEl = $('island');
+islandEl.addEventListener('mousedown', startHoldShutdown);
+islandEl.addEventListener('mouseup', cancelHoldShutdown);
+islandEl.addEventListener('mouseleave', cancelHoldShutdown);
+window.addEventListener('mouseup', cancelHoldShutdown);
+
+islandEl.addEventListener('touchstart', (e) => startHoldShutdown(e.touches ? e.touches[0] : e), { passive: true });
+islandEl.addEventListener('touchend', cancelHoldShutdown);
+islandEl.addEventListener('touchcancel', cancelHoldShutdown);
+
+islandEl.addEventListener('click', (e) => {
+    if (didHoldShutdown) {
+        didHoldShutdown = false;
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+    }
     if (e.target.id === 'island-orb') { talk(); return; }
-    if (e.target.closest('.island-btns') || e.target.closest('#island-focus')) return;
+    if (e.target.closest('#island-focus')) return;
     toggleDrawer();
 });
 function talk() {
