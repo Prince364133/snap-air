@@ -19,7 +19,7 @@ import 'signed_rules.dart';
 class RcPrefs {
   static const defaults = <String, dynamic>{
     'chip_enabled': true,
-    'chip_style': 'orb',            // orb = the accessibility pill · island = camera-centred chip with ring
+    'chip_style': 'island',         // island = camera-centred halo ring & dropped capsule strip
     'chip_size': 'normal',          // small | normal | large
     'chip_x': -1,                   // -1 = automatic (centred on the camera)
     'chip_y': -1,

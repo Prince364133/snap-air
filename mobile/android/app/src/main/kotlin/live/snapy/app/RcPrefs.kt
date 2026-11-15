@@ -69,7 +69,7 @@ class RcPrefs(ctx: Context) {
     companion object {
         val DEFAULTS: Map<String, Any> = linkedMapOf(
             "chip_enabled" to true,
-            "chip_style" to "orb",              // "orb" = the accessibility pill (default), "island" = camera-centred chip
+            "chip_style" to "island",           // camera punch-hole halo & dropped capsule strip
             "chip_size" to "normal",
             "chip_x" to -1,
             "chip_y" to -1,

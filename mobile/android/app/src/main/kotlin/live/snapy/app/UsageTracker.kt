@@ -34,7 +34,8 @@ class UsageTracker(private val ctx: Context) {
         if (!hasAccess()) return Today(0, emptyMap(), emptyMap())
         val start = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(start, now)
+        val events = try { usm.queryEvents(start, now) } catch (t: Throwable) { null }
+        if (events == null) return Today(0, emptyMap(), emptyMap())
         val e = UsageEvents.Event()
         val perApp = HashMap<String, Long>()
         val opens = HashMap<String, Int>()
@@ -47,23 +48,27 @@ class UsageTracker(private val ctx: Context) {
             fgPkg = null
         }
 
-        while (events.hasNextEvent()) {
-            events.getNextEvent(e)
-            when (e.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    if (fgPkg != e.packageName) {
-                        close(e.timeStamp)
-                        fgPkg = e.packageName
-                        fgSince = e.timeStamp
-                        if (e.packageName !in launchers) opens[e.packageName] = (opens[e.packageName] ?: 0) + 1
+        try {
+            while (events.hasNextEvent()) {
+                events.getNextEvent(e)
+                when (e.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        if (fgPkg != e.packageName) {
+                            close(e.timeStamp)
+                            fgPkg = e.packageName
+                            fgSince = e.timeStamp
+                            if (e.packageName !in launchers) opens[e.packageName] = (opens[e.packageName] ?: 0) + 1
+                        }
                     }
+                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED ->
+                        if (e.packageName == fgPkg) close(e.timeStamp)
+                    UsageEvents.Event.SCREEN_NON_INTERACTIVE, UsageEvents.Event.KEYGUARD_SHOWN -> close(e.timeStamp)
                 }
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED ->
-                    if (e.packageName == fgPkg) close(e.timeStamp)
-                UsageEvents.Event.SCREEN_NON_INTERACTIVE, UsageEvents.Event.KEYGUARD_SHOWN -> close(e.timeStamp)
             }
+            close(now)                              // the app open right now counts until now
+        } catch (t: Throwable) {
+            android.util.Log.e("UsageTracker", "Error reading usage events", t)
         }
-        close(now)                              // the app open right now counts until now
         return Today(perApp.values.sum(), perApp, opens)
     }
 
@@ -71,12 +76,17 @@ class UsageTracker(private val ctx: Context) {
     fun foreground(): String? {
         if (!hasAccess()) return null
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - 10 * 60_000, now)
+        val events = try { usm.queryEvents(now - 10 * 60_000, now) } catch (t: Throwable) { null }
+        if (events == null) return null
         val e = UsageEvents.Event()
         var pkg: String? = null
-        while (events.hasNextEvent()) {
-            events.getNextEvent(e)
-            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) pkg = e.packageName
+        try {
+            while (events.hasNextEvent()) {
+                events.getNextEvent(e)
+                if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) pkg = e.packageName
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("UsageTracker", "Error reading foreground events", t)
         }
         return pkg?.takeIf { it !in launchers } ?: pkg?.let { "" }
     }

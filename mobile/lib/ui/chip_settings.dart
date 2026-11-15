@@ -215,7 +215,7 @@ class _ChipSettingsPageState extends State<ChipSettingsPage> {
           _nav(tr('rc.report'), Icons.insights_outlined, const ReportPage()),
           _nav(tr('rcset.battery'), Icons.battery_charging_full_outlined, const BatteryGuidePage()),
           _nav(tr('rcset.privacy'), Icons.receipt_long_outlined, const PrivacyReceiptsPage()),
-          _nav(tr('rcset.permissions'), Icons.verified_user_outlined, const PermissionFlow()),
+          _nav(tr('rcset.permissions'), Icons.verified_user_outlined, const OnboardingFlow(isInitialSetup: false)),
           if (!simple) sw('counter_reports', tr('rcset.reports'), tr('rcset.reports_sub')),
         ]),
         const SizedBox(height: 24),

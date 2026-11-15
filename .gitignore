@@ -32,3 +32,6 @@ __pycache__/
 # PyInstaller output
 engine/build/
 engine/dist/
+
+*.apk
+app-release.apk

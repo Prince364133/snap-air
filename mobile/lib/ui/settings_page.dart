@@ -374,7 +374,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           perm(tr('settings.notifications'), 'notifications', SnapyCore.requestNotifications),
           perm(tr('settings.contacts'), 'contacts', () => SnapyCore.requestPermission('contacts')),
           perm(tr('settings.calls'), 'calls', () => SnapyCore.requestPermission('calls')),
-          nav(tr('settings.perm_guide'), Icons.verified_user_outlined, const PermissionFlow()),
+          nav(tr('settings.perm_guide'), Icons.verified_user_outlined, const OnboardingFlow(isInitialSetup: false)),
           nav(tr('rcset.battery'), Icons.battery_charging_full_outlined, const BatteryGuidePage()),
         ]),
         group(tr('settings.laptop'), [

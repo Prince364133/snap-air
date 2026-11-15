@@ -123,7 +123,7 @@ class _Setup extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
         child: FilledButton(
           onPressed: () async {
-            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionFlow()));
+            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnboardingFlow(isInitialSetup: false)));
             onDone();
           },
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
@@ -185,7 +185,7 @@ class _Dashboard extends StatelessWidget {
           dense: true,
           leading: Icon(Icons.play_circle_outline, color: c.accent),
           title: Text(tr('rc.counter_off')),
-          onTap: () => _push(context, const PermissionFlow()),
+          onTap: () => _push(context, const OnboardingFlow(isInitialSetup: false)),
         ),
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

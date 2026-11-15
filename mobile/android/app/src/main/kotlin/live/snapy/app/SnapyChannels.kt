@@ -75,13 +75,25 @@ object SnapyChannels {
                     result.success(true)
                 }
                 "openOverlaySettings" -> {
+                    var opened = false
                     try {
                         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.packageName))
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         activity.startActivity(intent)
-                    } catch (_: Exception) {
-                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        activity.startActivity(intent)
+                        opened = true
+                    } catch (_: Exception) {}
+                    if (!opened) {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            activity.startActivity(intent)
+                            opened = true
+                        } catch (_: Exception) {}
+                    }
+                    if (!opened) {
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            activity.startActivity(intent)
+                        } catch (_: Exception) {}
                     }
                     result.success(true)
                 }
@@ -107,13 +119,32 @@ object SnapyChannels {
                     result.success(SnapyAccessibilityService.instance != null || ChipService.startIfWanted(activity.applicationContext))
                 }
                 "today" -> Thread {
-                    val t = usage.today()
-                    val rc = SnapyAccessibilityService.instance?.todayJson() ?: RealCountStore(activity).today()
-                    val perApp = JSONObject()
-                    t.perApp.entries.sortedByDescending { it.value }.take(30).forEach { perApp.put(it.key, it.value) }
-                    val out = JSONObject().put("screen_ms", t.totalMs).put("per_app_ms", perApp)
-                        .put("opens", JSONObject(t.opens as Map<*, *>)).put("realcount", rc)
-                    activity.runOnUiThread { result.success(out.toString()) }
+                    try {
+                        val t = usage.today()
+                        val rc = SnapyAccessibilityService.instance?.todayJson() ?: RealCountStore(activity).today()
+                        val perApp = JSONObject()
+                        t.perApp.entries.sortedByDescending { it.value }.take(30).forEach { perApp.put(it.key, it.value) }
+                        val opensObj = JSONObject()
+                        t.opens.forEach { (k, v) -> opensObj.put(k, v) }
+                        val out = JSONObject()
+                            .put("screen_ms", t.totalMs)
+                            .put("per_app_ms", perApp)
+                            .put("opens", opensObj)
+                            .put("realcount", rc)
+                        activity.runOnUiThread {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                result.success(out.toString())
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.e("SnapyChannels", "Error calculating today usage", t)
+                        activity.runOnUiThread {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                val empty = JSONObject().put("screen_ms", 0L).put("per_app_ms", JSONObject()).put("opens", JSONObject()).put("realcount", JSONObject())
+                                result.success(empty.toString())
+                            }
+                        }
+                    }
                 }.start()
                 "closeSheet" -> {
                     if (activity is SheetActivity) {

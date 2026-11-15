@@ -476,7 +476,8 @@ class ChipOverlay(
             windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
         p.gravity = Gravity.TOP or Gravity.START
@@ -542,33 +543,35 @@ class ChipOverlay(
     fun place(rules: RealCountRules) {
         val r = root ?: return
         val p = lp ?: return
-        val cutout = getCutout()
+        try {
+            val cutout = getCutout()
 
-        val haloSize = if (cutout.hasCutout) {
-            cutout.size + dp(6f) // 3dp glowing halo around punch-hole lens
-        } else {
-            dp(26f)
-        }
-
-        cameraHalo?.apply {
-            if (cutout.hasCutout) {
-                isHaloRing = true
-                cutoutRadiusPx = cutout.size / 2f
+            val haloSize = if (cutout.hasCutout) {
+                cutout.size + dp(6f) // 3dp glowing halo around punch-hole lens
             } else {
-                isHaloRing = false
-                cutoutRadiusPx = 0f
+                dp(26f)
             }
-            layoutParams = LinearLayout.LayoutParams(haloSize, haloSize)
-        }
 
-        p.x = (cutout.cx - haloSize / 2).coerceAtLeast(0)
-        p.y = (cutout.cy - haloSize / 2).coerceAtLeast(0)
-        p.width = WindowManager.LayoutParams.WRAP_CONTENT
-        p.height = haloSize
+            cameraHalo?.apply {
+                if (cutout.hasCutout) {
+                    isHaloRing = true
+                    cutoutRadiusPx = cutout.size / 2f
+                } else {
+                    isHaloRing = false
+                    cutoutRadiusPx = 0f
+                }
+                layoutParams = LinearLayout.LayoutParams(haloSize, haloSize)
+            }
 
-        y = p.y
-        height = p.height
-        try { wm.updateViewLayout(r, p) } catch (_: Exception) { }
+            p.x = (cutout.cx - haloSize / 2).coerceAtLeast(0)
+            p.y = (cutout.cy - haloSize / 2).coerceAtLeast(0)
+            p.width = WindowManager.LayoutParams.WRAP_CONTENT
+            p.height = haloSize
+
+            y = p.y
+            height = p.height
+            wm.updateViewLayout(r, p)
+        } catch (_: Exception) { }
     }
 
     // ------------------------------------------------------------------ Social Badge
@@ -780,8 +783,7 @@ class ChipOverlay(
     }
 
     fun dismissCapsuleStrip() {
-        val overlay = capsuleOverlay ?: return
-        val strip = overlay.findViewById<View>(android.R.id.content) ?: overlay
+        val strip = capsuleOverlay ?: return
         strip.animate()
             .scaleX(0.25f)
             .scaleY(0.1f)
@@ -790,8 +792,8 @@ class ChipOverlay(
             .setDuration(180)
             .setInterpolator(AccelerateInterpolator(1.4f))
             .withEndAction {
-                try { wm.removeView(overlay) } catch (_: Exception) {}
-                if (capsuleOverlay == overlay) {
+                try { wm.removeView(strip) } catch (_: Exception) {}
+                if (capsuleOverlay == strip) {
                     capsuleOverlay = null
                     stripTitleText = null
                     stripTimeText = null
@@ -807,12 +809,6 @@ class ChipOverlay(
         val dm = ctx.resources.displayMetrics
         val capsuleW = minOf(dm.widthPixels - dp(24f), dp(320f))
 
-        // Full-screen transparent touch dismiss backdrop (NO cross icon!)
-        val overlay = FrameLayout(ctx).apply {
-            setBackgroundColor(0x00000000)
-            setOnClickListener { dismissCapsuleStrip() }
-        }
-
         // Horizontal obsidian capsule matching media_1794761463384_f466c5eb.png
         val stripRoot = LinearLayout(ctx).apply {
             id = android.R.id.content
@@ -825,7 +821,6 @@ class ChipOverlay(
                 setStroke(dp(1f), 0x24FFFFFF) // 1dp subtle hairline
             }
             elevation = dp(12f).toFloat()
-            setOnClickListener { /* consume click inside capsule */ }
         }
 
         // 1. Left Target: Snapy AI Section (Touch -> opens AI Bottom Sheet)
@@ -935,24 +930,37 @@ class ChipOverlay(
         val cutout = getCutout()
         val topY = if (cutout.hasCutout) cutout.bounds.bottom + dp(8f) else dp(44f)
 
-        overlay.addView(stripRoot, FrameLayout.LayoutParams(
+        val p = WindowManager.LayoutParams(
             capsuleW,
-            dp(44f)
+            dp(44f),
+            windowType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            topMargin = topY
-        })
+            y = topY
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            p.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
 
-        val p = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
+        stripRoot.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                dismissCapsuleStrip()
+                return@setOnTouchListener false
+            }
+            false
+        }
 
-        wm.addView(overlay, p)
-        capsuleOverlay = overlay
+        try {
+            wm.addView(stripRoot, p)
+            capsuleOverlay = stripRoot
+        } catch (_: Throwable) {
+            return
+        }
 
         // Fluid spring drop and expand from camera
         stripRoot.pivotX = capsuleW / 2f
