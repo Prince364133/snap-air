@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../i18n/i18n.dart';
+import 'main_scaffold.dart';
 import 'orb.dart';
 
 /// One permission step: why we ask, what happens without it, how to grant it.
@@ -277,7 +278,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
     } catch (_) {}
 
     if (mounted) {
-      Navigator.of(context).maybePop();
+      if (widget.isInitialSetup) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)),
+          (route) => false,
+        );
+      } else {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)),
+          );
+        }
+      }
     }
   }
 

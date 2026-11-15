@@ -42,8 +42,15 @@ class SnapyCore {
   /// "Hey Snapy" in the background (opt-in).
   static Future<bool> setWakeWord(bool on) async => (await _ch.invokeMethod<bool>('setWakeWord', {'on': on})) ?? false;
 
-  static Future<Map<String, dynamic>> _json(String method, [Map<String, dynamic>? args]) async =>
-      Map<String, dynamic>.from(jsonDecode((await _ch.invokeMethod<String>(method, args)) ?? '{}') as Map);
+  static Future<Map<String, dynamic>> _json(String method, [Map<String, dynamic>? args]) async {
+    try {
+      final raw = await _ch.invokeMethod<String>(method, args);
+      if (raw == null || raw.trim().isEmpty || raw.trim() == 'null') return <String, dynamic>{};
+      final dec = jsonDecode(raw);
+      if (dec is Map) return Map<String, dynamic>.from(dec);
+    } catch (_) {}
+    return <String, dynamic>{};
+  }
 
   static Future<Map<String, dynamic>> brainStatus() => _json('brainStatus');
   static Future<Map<String, dynamic>> setApiKey(String provider, String key) =>
@@ -64,8 +71,17 @@ class SnapyCore {
   static Future<void> closeSheet() => _ch.invokeMethod('closeSheet');
 
   /// Today's screen time, per-app time, opens and reels/shorts counts.
-  static Future<Today> today() async =>
-      Today.fromJson(jsonDecode((await _ch.invokeMethod<String>('today')) ?? '{}') as Map<String, dynamic>);
+  static Future<Today> today() async {
+    try {
+      final raw = await _ch.invokeMethod<String>('today');
+      if (raw != null && raw.trim().isNotEmpty && raw.trim() != 'null') {
+        final dec = jsonDecode(raw);
+        if (dec is Map<String, dynamic>) return Today.fromJson(dec);
+        if (dec is Map) return Today.fromJson(Map<String, dynamic>.from(dec));
+      }
+    } catch (_) {}
+    return Today(0, const {}, const {}, const {});
+  }
 
   /// Shared product data (core/rules, merged), e.g. config('android.social_apps').
   static Future<dynamic> config(String path) async =>

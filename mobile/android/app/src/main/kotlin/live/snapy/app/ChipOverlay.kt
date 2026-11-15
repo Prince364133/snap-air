@@ -547,7 +547,7 @@ class ChipOverlay(
             val cutout = getCutout()
 
             val haloSize = if (cutout.hasCutout) {
-                cutout.size + dp(6f) // 3dp glowing halo around punch-hole lens
+                minOf(cutout.size, dp(34f)) + dp(6f) // bounded halo around punch-hole lens
             } else {
                 dp(26f)
             }
@@ -555,7 +555,7 @@ class ChipOverlay(
             cameraHalo?.apply {
                 if (cutout.hasCutout) {
                     isHaloRing = true
-                    cutoutRadiusPx = cutout.size / 2f
+                    cutoutRadiusPx = minOf(cutout.size / 2f, dp(17f).toFloat())
                 } else {
                     isHaloRing = false
                     cutoutRadiusPx = 0f
