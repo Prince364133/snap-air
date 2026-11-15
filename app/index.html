@@ -3,51 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snap Motion OS</title>
+    <title>Snap Air HUD</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Virtual Cursor -->
-    <div id="virtual-cursor" class="virtual-cursor"></div>
+    <!-- Gesture cursor ring -->
+    <div id="cursor-ring" class="cursor-ring hidden"></div>
 
-    <!-- Status HUD -->
-    <div id="status-hud" class="glass-panel hud">
-        <div class="hud-item">
-            <span class="hud-label">FPS</span>
-            <span id="fps-display" class="hud-value">0</span>
-        </div>
-        <div class="hud-item">
-            <span class="hud-label">Gesture</span>
-            <span id="gesture-display" class="hud-value active-text">NONE</span>
-        </div>
-        <div class="hud-item">
-            <span class="hud-label">AI Status</span>
-            <span id="ai-status" class="hud-value">Listening...</span>
-        </div>
+    <!-- ============ Island ============ -->
+    <div id="island" class="island interactive" role="button" aria-label="Snap status — click to open">
+        <canvas id="island-orb" class="orb-canvas" width="26" height="26" title="Click to talk"></canvas>
+        <span id="island-status" class="island-status">Starting…</span>
+        <span id="island-rec" class="pill-ind rec hidden" title="Recording meeting notes"><i></i>REC <b id="rec-time">0:00</b></span>
+        <span id="island-cam" class="pill-ind cam hidden" title="Camera on (gestures)">●</span>
+        <span id="island-local" class="pill-ind local" title="Everything runs on this laptop">Local</span>
+        <span class="island-chevron">›</span>
     </div>
 
-    <!-- Smart Notes Panel (Hidden by Default) -->
-    <div id="notes-panel" class="glass-panel widget hidden">
-        <h2>Smart Notes</h2>
-        <div class="note-list">
-            <div class="note-item">
-                <h4>Project Ideas</h4>
-                <p>AI presentation controller concept...</p>
-            </div>
-            <div class="note-item">
-                <h4>Meeting at 3PM</h4>
-                <p>Discuss the new startup architecture.</p>
+    <!-- ============ Greeting card ============ -->
+    <section id="greeting" class="greeting card-surface interactive hidden" aria-live="polite">
+        <canvas id="greeting-orb" class="orb-canvas" width="56" height="56"></canvas>
+        <div class="greeting-body">
+            <h2 id="greeting-title"></h2>
+            <div id="greeting-lines" class="greeting-lines"></div>
+            <div id="greeting-weather" class="chip-row"></div>
+            <ol id="greeting-plan" class="plan-list"></ol>
+            <div class="row gap8">
+                <button id="greeting-go" class="btn primary">Start my day</button>
+                <button id="greeting-later" class="btn">Not now</button>
             </div>
         </div>
-        <button id="close-notes-btn" class="glass-btn">Close</button>
+    </section>
+
+    <!-- ============ Banners ============ -->
+    <div id="banners" class="banners"></div>
+
+    <!-- ============ Drawer ============ -->
+    <aside id="drawer" class="drawer interactive" aria-hidden="true">
+        <header class="drawer-head">
+            <canvas id="drawer-orb" class="orb-canvas" width="30" height="30"></canvas>
+            <div class="drawer-title">
+                <h1>Snap</h1>
+                <span id="drawer-sub" class="caption">On-device · nothing leaves this laptop</span>
+            </div>
+            <button id="drawer-close" class="icon-btn" title="Close (Esc)">✕</button>
+        </header>
+        <nav class="segmented" id="tabs" role="tablist">
+            <button data-tab="assistant" class="active">Assistant</button>
+            <button data-tab="today">Today</button>
+            <button data-tab="notes">Notes</button>
+            <button data-tab="memory">Memory</button>
+            <button data-tab="activity">Activity</button>
+            <button data-tab="settings" title="Settings">⚙︎</button>
+        </nav>
+
+        <!-- Assistant -->
+        <section class="tab-panel active" data-panel="assistant">
+            <div id="chat" class="chat"></div>
+            <div id="chat-empty" class="empty-state">
+                <canvas id="empty-orb" class="orb-canvas" width="72" height="72"></canvas>
+                <h3 id="empty-hello">Hi! What can I do for you?</h3>
+                <p class="caption">Say <b>“Snap, …”</b>, press <b>Ctrl+Alt+Space</b>, or type below.</p>
+                <div class="chip-row center" id="suggestions"></div>
+            </div>
+            <footer class="composer">
+                <input id="chat-input" type="text" placeholder="Ask Snap anything…" autocomplete="off" spellcheck="false">
+                <button id="chat-mic" class="round-btn" title="Talk (Ctrl+Alt+Space)">🎙</button>
+                <button id="chat-send" class="round-btn primary" title="Send">↑</button>
+            </footer>
+        </section>
+
+        <!-- Today -->
+        <section class="tab-panel" data-panel="today">
+            <div class="scroll">
+                <div id="today-briefing"></div>
+                <div class="card">
+                    <div class="card-head"><h3>Meeting notes</h3><span id="meeting-status" class="caption"></span></div>
+                    <p id="meeting-live" class="live-text caption">Capture what's said in a call — I'll write the summary and action items.</p>
+                    <button id="meeting-btn" class="btn primary wide">Start taking notes</button>
+                    <p class="fine">Audio is never saved — only the transcript and notes. Let participants know.</p>
+                </div>
+                <div class="card">
+                    <div class="card-head"><h3>Tasks</h3><span id="tasks-count" class="caption"></span></div>
+                    <div class="add-row">
+                        <input id="task-input" type="text" placeholder="Add a task — “call Arun at 4”, “in 20 minutes stretch”">
+                        <button id="task-add" class="btn">Add</button>
+                    </div>
+                    <ul id="task-list" class="list"></ul>
+                </div>
+                <div class="card">
+                    <div class="card-head"><h3>Today at a glance</h3></div>
+                    <div id="glance" class="glance"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Notes -->
+        <section class="tab-panel" data-panel="notes">
+            <div class="scroll">
+                <div class="add-row">
+                    <input id="note-input" type="text" placeholder="Quick note…">
+                    <button id="note-add" class="btn">Save</button>
+                </div>
+                <input id="note-search" class="search" type="search" placeholder="Search notes">
+                <div id="notes-list"></div>
+            </div>
+        </section>
+
+        <!-- Memory -->
+        <section class="tab-panel" data-panel="memory">
+            <div class="scroll">
+                <p class="caption intro">Everything Snap knows about you. It lives in a file on this laptop — edit or delete anything.</p>
+                <div class="group-title">Profile</div>
+                <div id="profile-form" class="grouped"></div>
+                <div class="group-title row between"><span>Memories</span><span id="mem-count" class="caption"></span></div>
+                <div class="add-row">
+                    <input id="mem-input" type="text" placeholder="Teach Snap something — “I prefer Slack over email”">
+                    <button id="mem-add" class="btn">Add</button>
+                </div>
+                <div id="mem-list"></div>
+                <div class="grouped">
+                    <label class="g-row"><span>Learn from our conversations</span><input type="checkbox" class="switch" data-setting="memory_learning"></label>
+                    <div class="g-row"><span>Export everything</span><button id="mem-export" class="btn small">Export</button></div>
+                    <div class="g-row"><span class="danger-text">Forget everything about me</span><button id="mem-forget" class="btn small danger">Forget</button></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity -->
+        <section class="tab-panel" data-panel="activity">
+            <div class="scroll">
+                <div id="act-stats" class="stats"></div>
+                <div class="card"><div class="card-head"><h3>Timeline</h3><span id="act-range" class="caption"></span></div><div id="act-timeline" class="timeline"></div></div>
+                <div class="card"><div class="card-head"><h3>Apps</h3></div><div id="act-apps"></div></div>
+                <div class="card" id="act-projects-card"><div class="card-head"><h3>Projects & sites</h3></div><div id="act-projects"></div></div>
+                <div class="card"><div class="card-head"><h3>Your routine</h3></div><div id="act-routine" class="caption"></div></div>
+                <div class="grouped">
+                    <label class="g-row"><span>Learn my routine (app usage)</span><input type="checkbox" class="switch" data-setting="activity_tracking"></label>
+                    <div class="g-row"><span>What's recorded</span>
+                        <select data-setting="activity_privacy" class="select">
+                            <option value="standard">App, project & site names</option>
+                            <option value="all">Also window titles</option>
+                        </select></div>
+                    <div class="g-row"><span>Keep history for</span>
+                        <select data-setting="activity_retention_days" class="select" data-num="1">
+                            <option value="7">7 days</option><option value="30">30 days</option>
+                            <option value="90">90 days</option><option value="365">1 year</option>
+                        </select></div>
+                </div>
+                <p class="fine">Never recorded: keystrokes, screen contents, URLs, private/incognito windows, password managers.</p>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section class="tab-panel" data-panel="settings">
+            <div class="scroll" id="settings-root"></div>
+        </section>
+    </aside>
+
+    <!-- ============ Onboarding ============ -->
+    <div id="onboarding" class="sheet-backdrop interactive hidden">
+        <div class="sheet">
+            <div class="steps" id="ob-steps"></div>
+            <div id="ob-body"></div>
+            <footer class="sheet-foot">
+                <button id="ob-back" class="btn">Back</button>
+                <div class="spacer"></div>
+                <button id="ob-next" class="btn primary">Continue</button>
+            </footer>
+        </div>
     </div>
 
-    <!-- AI Notification Toast -->
-    <div id="ai-toast" class="glass-panel toast hidden">
-        <p id="ai-toast-text">Voice command recognized: "Open Notes"</p>
+    <!-- Confirm dialog -->
+    <div id="confirm" class="sheet-backdrop interactive hidden">
+        <div class="sheet small">
+            <h3 id="confirm-title"></h3>
+            <p id="confirm-text" class="caption"></p>
+            <footer class="sheet-foot"><div class="spacer"></div>
+                <button id="confirm-no" class="btn">Cancel</button>
+                <button id="confirm-yes" class="btn danger-solid">Confirm</button>
+            </footer>
+        </div>
     </div>
 
+    <div id="toast" class="toast hidden"><span id="toast-icon"></span><span id="toast-text"></span></div>
+
+    <script src="orb.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

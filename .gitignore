@@ -14,3 +14,10 @@ coverage/
 dist/
 build/
 .next/
+
+.venv/
+*.task
+__pycache__/
+*.pyc
+*.pyo
+*.lnk

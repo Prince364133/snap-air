@@ -1,94 +1,820 @@
+/* Snap Air HUD renderer */
 const { ipcRenderer } = require('electron');
 
-const cursor = document.getElementById('virtual-cursor');
-const fpsDisplay = document.getElementById('fps-display');
-const gestureDisplay = document.getElementById('gesture-display');
-const notesPanel = document.getElementById('notes-panel');
-const closeNotesBtn = document.getElementById('close-notes-btn');
-const aiToast = document.getElementById('ai-toast');
-const aiToastText = document.getElementById('ai-toast-text');
+// ------------------------------------------------------------------ utils
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+function h(tag, attrs = {}, ...children) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+        if (k === 'class') e.className = v;
+        else if (k === 'html') e.innerHTML = v;
+        else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+        else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
+    return e;
+}
+function fmtDur(sec) {
+    sec = Math.round(sec || 0);
+    const hh = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60);
+    if (hh) return `${hh}h ${String(mm).padStart(2, '0')}m`;
+    return mm ? `${mm}m` : `${sec}s`;
+}
+const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function dueText(iso) {
+    if (!iso) return '';
+    const d = new Date(iso), now = new Date();
+    const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+    if (d.toDateString() === now.toDateString()) return (d < now ? 'Overdue · ' : 'Today ') + t;
+    if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow ' + t;
+    return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + t;
+}
+function dayLabel(ts) {
+    const d = new Date(ts * 1000), now = new Date();
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === now.toDateString()) return 'Today';
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' });
+}
+const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#bf5af2', '#ff375f', '#64d2ff', '#ffd60a', '#8e8e93'];
 
-let isNotesOpen = false;
+// ------------------------------------------------------------------ state
+let socket = null, connected = false;
+let S = {}, profile = {}, memories = [], notes = [], tasks = [], catalogue = [], activity = null, routine = {};
+let models = {}, meeting = {}, eng = {}, briefing = null, scan = null, dataDir = '';
+let lastTranscript = { text: '', t: 0 };
+let flashUntil = 0;
 
-// We connect to the local Python WebSocket Server
-function connectWebSocket() {
-    const ws = new WebSocket('ws://localhost:8765');
+function send(obj) {
+    if (socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify(obj)); return true; }
+    return false;
+}
 
-    ws.onopen = () => {
-        console.log('Connected to Snap Motion OS Engine');
-    };
-
-    ws.onmessage = (event) => {
-        const state = JSON.parse(event.data);
-        updateUI(state);
-    };
-
-    ws.onclose = () => {
-        console.log('Disconnected. Retrying in 2 seconds...');
-        setTimeout(connectWebSocket, 2000);
+function connect() {
+    const port = new URLSearchParams(location.search).get('port') || '8765';
+    socket = new WebSocket(`ws://localhost:${port}`);
+    socket.onopen = () => { connected = true; renderIsland(); };
+    socket.onclose = () => { connected = false; renderIsland(); setTimeout(connect, 1500); };
+    socket.onerror = () => {};
+    socket.onmessage = (ev) => {
+        let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+        const fn = HANDLERS[d.type];
+        if (fn) { try { fn(d); } catch (e) { console.error(d.type, e); } }
     };
 }
 
-// Map screen coordinates (Assume standard 1920x1080 for math, but we use percentages or exact px mapped by python)
-function updateUI(state) {
-    const { gesture, x, y, fps } = state;
+const HANDLERS = {
+    hello(d) {
+        S = d.settings; profile = d.profile; memories = d.memories || []; notes = d.notes || []; tasks = d.tasks || [];
+        catalogue = d.catalogue || []; activity = d.activity; routine = d.routine || {}; meeting = d.meeting || {};
+        dataDir = d.data_dir || '';
+        models = d;
+        ipcRenderer.send('set-login-item', !!S.start_at_login);
+        renderAll();
+        if (d.onboarding_needed) openOnboarding();
+    },
+    state_update(d) { eng = d; renderIsland(); renderCursor(); updateMeters(); },
+    settings(d) { S = d.settings; bindSettings(); if (activeTab === 'settings') renderSettings(); renderSuggestions(); },
+    memory(d) { profile = d.profile; memories = d.memories; renderMemory(); },
+    tasks(d) { tasks = d.tasks; renderTasks(); renderGlance(); },
+    notes(d) { notes = d.notes; renderNotes(); renderGlance(); },
+    note_added(d) { notes.unshift(d.note); renderNotes(); renderGlance(); },
+    today(d) { tasks = d.tasks; activity = d.activity; meeting = d.meeting; renderTasks(); renderGlance(); renderMeeting(); },
+    activity(d) { activity = d.summary; routine = d.routine || routine; renderActivity(); renderGlance(); },
+    models(d) { models = d; if (activeTab === 'settings') renderModelSection(); if (obOpen) renderObStep(); },
+    meeting(d) { meeting = d; renderMeeting(); renderIsland(); },
+    chat_message(d) { renderMessage(d); },
+    assistant_state(d) { if (d.state === 'thinking') showThinking(); else hideThinking(); },
+    transcript(d) { lastTranscript = { text: d.text, t: Date.now() }; renderIsland(); },
+    toast(d) { showToast(d.message, d.ok !== false); },
+    banner(d) { showBanner(d); },
+    briefing(d) { briefing = d; renderBriefingCard(); if (d.show) showGreeting(d); },
+    wrapup(d) { showBanner({ kind: 'info', title: 'Your day', text: d.text }); },
+    memory_learned(d) { showToast('Learned: ' + d.items.join('; '), true); },
+    scan(d) { scan = d; if (obOpen) renderObStep(); },
+    onboarding_done() { closeOnboarding(); },
+    action_log() {},
+    gesture_event(d) { if (['click', 'double_click', 'right_click'].includes(d.event)) flashUntil = Date.now() + 250; },
+    ui_action(d) {
+        if (d.action === 'open_settings') { openDrawer('settings'); if (d.focus) highlightSetting(d.focus); }
+        else if (d.action === 'open_drawer') openDrawer(d.tab === 'help' ? 'settings' : d.tab || 'assistant');
+        else if (d.action === 'close_panels') closeDrawer();
+        else if (d.action === 'toggle_hud') document.body.classList.toggle('hud-hidden');
+    },
+};
 
-    // Update HUD
-    fpsDisplay.textContent = fps;
-    gestureDisplay.textContent = gesture;
+// ------------------------------------------------------------------- orbs
+const orbs = {
+    island: new Orb($('island-orb')), drawer: new Orb($('drawer-orb')),
+    empty: new Orb($('empty-orb')), greeting: new Orb($('greeting-orb')),
+};
+function orbState() {
+    if (!connected) return ['off', 0];
+    if (eng.assistant === 'speaking') return ['speaking', Math.min(1, (eng.speak_level || 0) * 7)];
+    if (eng.assistant === 'thinking') return ['thinking', 0.3];
+    if (eng.voice_armed || /Hearing|Listening/.test(eng.voice_status || '')) return ['listening', Math.min(1, Math.sqrt(eng.mic_level || 0) * 4)];
+    return ['idle', 0];
+}
 
-    // Update Virtual Cursor
-    if (gesture !== "NONE") {
-        cursor.style.display = 'block';
-        
-        // Since python sends raw coordinates from camera (0-640, 0-480), we scale them to window.
-        // BUT wait, Python PyAutoGUI is ALREADY moving the real mouse.
-        // For UI feedback, we can just hide the UI cursor and rely on Windows mouse, 
-        // OR we can map it to show our glowing dot instead of the Windows cursor.
-        // For now, let's pulse the UI based on gesture to show it's working.
-        
-        if (gesture === "PINCH_INDEX") {
-            cursor.classList.add('pinch');
-            document.body.style.background = 'rgba(0, 242, 254, 0.05)'; // Subtle flash
-            setTimeout(() => document.body.style.background = 'transparent', 200);
+// ----------------------------------------------------------------- island
+function renderIsland() {
+    const [st, lvl] = orbState();
+    for (const o of Object.values(orbs)) { o.setState(st); o.setLevel(lvl); o.setRecording(!!meeting.recording); }
+    let text;
+    if (!connected) text = 'Starting Snap…';
+    else if (Date.now() - lastTranscript.t < 2500 && lastTranscript.text) text = `“${lastTranscript.text}”`;
+    else if (eng.assistant === 'speaking') text = 'Speaking…';
+    else if (eng.assistant === 'thinking') text = 'Thinking…';
+    else if (eng.voice_armed || /Hearing/.test(eng.voice_status || '')) text = 'Listening…';
+    else if (/Transcrib/.test(eng.voice_status || '')) text = '…';
+    else if (/Loading|failed|unavailable/i.test(eng.voice_status || '')) text = eng.voice_status;
+    else if (meeting.recording) text = 'Taking meeting notes';
+    else if (eng.voice_mode === 'push') text = 'Press Ctrl+Alt+Space to talk';
+    else text = 'Say “Snap…”';
+    $('island-status').textContent = text;
+    $('island-rec').classList.toggle('hidden', !meeting.recording);
+    $('island-cam').classList.toggle('hidden', eng.camera !== 'ok');
+    if (meeting.recording && meeting.elapsed !== undefined) {
+        const e = eng.recording ? Math.max(meeting.elapsed, 0) : 0;
+        $('rec-time').textContent = `${Math.floor(e / 60)}:${String(e % 60).padStart(2, '0')}`;
+    }
+    $('chat-mic').classList.toggle('live', !!eng.voice_armed);
+}
+// keep the recording timer ticking smoothly
+setInterval(() => { if (meeting.recording) { meeting.elapsed = (meeting.elapsed || 0) + 1; renderIsland(); } }, 1000);
+
+$('island').addEventListener('click', (e) => {
+    if (e.target.id === 'island-orb') { talk(); return; }
+    toggleDrawer();
+});
+function talk() {
+    if (eng.assistant === 'speaking' || eng.assistant === 'thinking') send({ type: 'interrupt' });
+    else if (eng.voice_armed) send({ type: 'cancel_listen' });
+    else send({ type: 'push_to_talk', seconds: 7 });
+}
+
+// ------------------------------------------------- click-through handling
+let capturing = null;
+function setCapture(on) {
+    if (on !== capturing) { capturing = on; ipcRenderer.send('set-ignore-mouse-events', !on); }
+}
+document.addEventListener('mousemove', (e) => setCapture(!!e.target.closest('.interactive')));
+document.addEventListener('mouseleave', () => setCapture(false));
+setCapture(false);
+
+// ----------------------------------------------------------------- drawer
+let activeTab = 'assistant';
+function openDrawer(tab) {
+    $('drawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+    $('drawer').setAttribute('aria-hidden', 'false');
+    if (tab) selectTab(tab);
+    if (activeTab === 'assistant') setTimeout(() => $('chat-input').focus(), 120);
+}
+function closeDrawer() {
+    $('drawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    $('drawer').setAttribute('aria-hidden', 'true');
+    ipcRenderer.send('release-focus');
+    capturing = false;   // main process just made the window click-through
+}
+function toggleDrawer(tab) { $('drawer').classList.contains('open') && (!tab || tab === activeTab) ? closeDrawer() : openDrawer(tab); }
+$('drawer-close').onclick = closeDrawer;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !obOpen) closeDrawer(); });
+
+function selectTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
+    if (tab === 'today') send({ type: 'request', what: 'today' });
+    if (tab === 'activity') send({ type: 'request', what: 'activity' });
+    if (tab === 'settings') { send({ type: 'request', what: 'models' }); renderSettings(); }
+    if (tab === 'memory') renderMemory();
+    if (tab === 'notes') renderNotes();
+}
+document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => selectTab(b.dataset.tab)));
+
+// ------------------------------------------------------------------- chat
+const msgEls = {};
+let thinkingEl = null;
+function renderMessage(d) {
+    $('chat-empty').classList.add('hidden');
+    const chat = $('chat');
+    let e = msgEls[d.id];
+    if (!e) {
+        hideThinking();
+        if (d.command) {
+            e = h('div', { class: 'msg command' + (d.ok === false ? ' fail' : '') }, d.text);
         } else {
-            cursor.classList.remove('pinch');
+            e = h('div', { class: `msg ${d.role}` + (d.error ? ' error' : '') });
         }
+        msgEls[d.id] = e;
+        chat.append(e);
+        if (d.role === 'user' && d.source === 'voice') chat.append(h('div', { class: 'msg-meta right' }, '🎙 voice'));
+    }
+    if (!d.command) e.textContent = d.text;
+    e.classList.toggle('typing', d.final === false);
+    if (d.final && d.sources && d.sources.length) {
+        const src = h('div', { class: 'sources' }, ...d.sources.map((s) => h('a', { href: '#', title: s.url, onclick: (ev) => { ev.preventDefault(); ipcRenderer.send('open-external', s.url); } }, '↗ ' + s.title)));
+        e.append(src);
+    }
+    if (d.final && d.web) e.title = 'Used the internet';
+    if (d.final && d.open_tab && $('drawer').classList.contains('open') && activeTab === 'assistant') {
+        /* stay on chat; the info is in the reply */
+    }
+    chat.scrollTop = chat.scrollHeight;
+}
+function showThinking() {
+    const chat = $('chat');
+    const last = chat.lastElementChild;
+    if (thinkingEl || !last) return;
+    const afterUser = last.classList.contains('user') ||
+        (last.classList.contains('msg-meta') && last.previousElementSibling && last.previousElementSibling.classList.contains('user'));
+    if (!afterUser) return;
+    thinkingEl = h('div', { class: 'thinking-dots' }, h('i'), h('i'), h('i'));
+    chat.append(thinkingEl);
+    chat.scrollTop = chat.scrollHeight;
+}
+function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; } }
 
-        // Logic to trigger UI elements based on specific gesture holds
-        // E.g., Open Palm could toggle notes
-        if (gesture === "OPEN_PALM" && !isNotesOpen) {
-            openNotes();
-        }
+function sendChat(text) {
+    text = (text ?? $('chat-input').value).trim();
+    if (!text) return;
+    if (!send({ type: 'chat', text })) { showToast('Snap engine is starting…', false); return; }
+    $('chat-input').value = '';
+}
+$('chat-send').onclick = () => sendChat();
+$('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+$('chat-mic').onclick = talk;
+
+function renderSuggestions() {
+    const name = profile.preferred_name || profile.name;
+    const hr = new Date().getHours();
+    $('empty-hello').textContent = `Good ${hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening'}${name ? ', ' + name : ''}. What can I do?`;
+    const items = ['Start my day', "What's on today?", 'Take meeting notes', 'Remind me in 30 minutes to stretch', 'What did I do yesterday?'];
+    $('suggestions').replaceChildren(...items.map((t) => h('button', { class: 'chip', onclick: () => sendChat(t) }, t)));
+}
+
+// ------------------------------------------------------------------ today
+function renderBriefingCard() {
+    const box = $('today-briefing');
+    if (!briefing) { box.replaceChildren(); return; }
+    const b = briefing;
+    const w = b.weather ? h('span', { class: 'chip static' }, `${b.weather.temp}° ${b.weather.desc} · ${b.weather.city}`) : null;
+    box.replaceChildren(h('div', { class: 'card' },
+        h('div', { class: 'card-head' }, h('h3', {}, b.title), h('button', { class: 'mini', onclick: () => send({ type: 'request', what: 'briefing' }) }, 'Refresh')),
+        ...b.lines.map((l) => h('p', { class: 'caption', style: 'margin-bottom:4px' }, l)),
+        w ? h('div', { class: 'chip-row' }, w) : null,
+        b.plan && b.plan.length ? h('ol', { class: 'plan-list' }, ...b.plan.map((p) => h('li', {}, p.label))) : null,
+        b.plan && b.plan.length ? h('button', { class: 'btn primary wide', onclick: () => send({ type: 'start_my_day' }) }, 'Start my day') : null));
+}
+
+function renderMeeting() {
+    const btn = $('meeting-btn'), live = $('meeting-live');
+    if (meeting.recording) {
+        btn.textContent = 'Stop & write notes';
+        btn.classList.add('recording');
+        $('meeting-status').textContent = `● Recording · ${meeting.words || 0} words`;
+        live.textContent = meeting.live ? `“…${meeting.live.slice(-140)}”` : 'Listening to the call…';
+        live.classList.add('rec');
     } else {
-        cursor.style.display = 'none';
+        btn.textContent = 'Start taking notes';
+        btn.classList.remove('recording');
+        $('meeting-status').textContent = meeting.error ? '⚠ ' + meeting.error : '';
+        live.textContent = 'Capture what\'s said in a call — I\'ll write the summary, decisions and action items.';
+        live.classList.remove('rec');
     }
 }
+$('meeting-btn').onclick = () => send({ type: meeting.recording ? 'meeting_stop' : 'meeting_start' });
 
-function openNotes() {
-    isNotesOpen = true;
-    notesPanel.classList.remove('hidden');
-    // Tell electron to allow mouse events so we can click inside the notes panel
-    ipcRenderer.send('set-ignore-mouse-events', false);
-    showToast('Notes Panel Opened');
+function renderTasks() {
+    const list = $('task-list');
+    $('tasks-count').textContent = tasks.length ? `${tasks.length} open` : '';
+    if (!tasks.length) { list.replaceChildren(h('li', { class: 'empty' }, 'Nothing pending. Say “Snap, remind me at 5 to push the PR”.')); return; }
+    list.replaceChildren(...tasks.map((t) => {
+        const overdue = t.remind_at && new Date(t.remind_at) < new Date();
+        return h('li', {},
+            h('button', { class: 'check', title: 'Mark done', onclick: () => send({ type: 'task_update', id: t.id, done: true }) }),
+            h('div', { class: 'grow' }, h('div', { class: 'title' }, t.title),
+                t.remind_at ? h('div', { class: 'meta' + (overdue ? ' due' : '') }, '⏰ ' + dueText(t.remind_at)) : null,
+                t.source === 'meeting' ? h('div', { class: 'meta' }, 'From a meeting') : null),
+            h('div', { class: 'row-actions' },
+                t.remind_at ? h('button', { class: 'mini', onclick: () => send({ type: 'task_snooze', id: t.id, minutes: 30 }) }, '+30m') : null,
+                h('button', { class: 'mini', title: 'Delete', onclick: () => send({ type: 'task_delete', id: t.id }) }, '✕')));
+    }));
+}
+function addTask() { const v = $('task-input').value.trim(); if (v && send({ type: 'task_add', text: v })) $('task-input').value = ''; }
+$('task-add').onclick = addTask;
+$('task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
+
+function renderGlance() {
+    const a = activity || {};
+    const today = new Date().toDateString();
+    const nToday = notes.filter((n) => new Date(n.ts * 1000).toDateString() === today).length;
+    $('glance').replaceChildren(
+        h('div', { class: 'stat' }, h('b', {}, fmtDur(a.total_active || 0)), h('span', {}, 'active today')),
+        h('div', { class: 'stat' }, h('b', {}, a.first_active ? clock(a.first_active) : '—'), h('span', {}, 'started')),
+        h('div', { class: 'stat' }, h('b', {}, String(nToday)), h('span', {}, nToday === 1 ? 'note' : 'notes')));
 }
 
-function closeNotes() {
-    isNotesOpen = false;
-    notesPanel.classList.add('hidden');
-    // Tell electron to ignore mouse events again to pass through to OS
-    ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+// ------------------------------------------------------------------ notes
+function renderNotes() {
+    const q = $('note-search').value.trim().toLowerCase();
+    const list = notes.filter((n) => !q || JSON.stringify([n.text, n.title, n.summary, n.transcript]).toLowerCase().includes(q));
+    const box = $('notes-list');
+    if (!list.length) { box.replaceChildren(h('div', { class: 'empty' }, q ? 'No matching notes.' : 'No notes yet. Say “Snap, take note …” or start meeting notes.')); return; }
+    const out = [];
+    let lastDay = null;
+    for (const n of list) {
+        const dl = dayLabel(n.ts);
+        if (dl !== lastDay) { out.push(h('div', { class: 'day-label' }, dl)); lastDay = dl; }
+        const actions = h('div', { class: 'row-actions' },
+            h('button', { class: 'mini', title: 'Copy', onclick: () => { navigator.clipboard.writeText(noteAsText(n)); showToast('Copied'); } }, 'Copy'),
+            h('button', { class: 'mini', title: 'Delete', onclick: () => confirmDo('Delete this note?', 'This can\'t be undone.', () => send({ type: 'note_delete', id: n.id })) }, '✕'));
+        if (n.kind === 'meeting') {
+            out.push(h('div', { class: 'note meeting' }, actions,
+                h('div', { class: 'note-title' }, h('span', { class: 'badge' }, 'MEETING'), n.title || 'Meeting'),
+                h('div', { class: 'note-meta' }, `${clock(n.ts)} · ${fmtDur(n.duration || 0)}`),
+                n.summary && n.summary.length ? [h('h4', {}, 'Summary'), h('ul', {}, ...n.summary.map((s) => h('li', {}, s)))] : h('p', { class: 'caption' }, n.text),
+                n.decisions && n.decisions.length ? [h('h4', {}, 'Decisions'), h('ul', {}, ...n.decisions.map((s) => h('li', {}, s)))] : null,
+                n.actions && n.actions.length ? [h('h4', {}, 'Action items'), h('ul', {}, ...n.actions.map((a) => h('li', {}, `${a.task}${a.owner && a.owner !== 'unassigned' ? ' — ' + a.owner : ''}${a.due ? ' (' + a.due + ')' : ''}`)))] : null,
+                n.transcript ? h('details', {}, h('summary', {}, 'Transcript'), h('pre', {}, n.transcript)) : null));
+        } else {
+            out.push(h('div', { class: 'note' }, actions, h('div', { class: 'note-text' }, n.text), h('div', { class: 'note-meta' }, clock(n.ts))));
+        }
+    }
+    box.replaceChildren(...out);
+}
+function noteAsText(n) {
+    if (n.kind !== 'meeting') return n.text;
+    const L = [n.title || 'Meeting', ''];
+    if (n.summary) L.push('Summary:', ...n.summary.map((s) => '• ' + s), '');
+    if (n.decisions && n.decisions.length) L.push('Decisions:', ...n.decisions.map((s) => '• ' + s), '');
+    if (n.actions && n.actions.length) L.push('Action items:', ...n.actions.map((a) => `• ${a.task}${a.owner ? ' — ' + a.owner : ''}${a.due ? ' (' + a.due + ')' : ''}`));
+    return L.join('\n');
+}
+$('note-search').addEventListener('input', renderNotes);
+function addNote() { const v = $('note-input').value.trim(); if (v && send({ type: 'note_add', text: v })) $('note-input').value = ''; }
+$('note-add').onclick = addNote;
+$('note-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addNote(); });
+
+// ----------------------------------------------------------------- memory
+const PROFILE_FIELDS = [
+    ['preferred_name', 'What should I call you?', 'text'], ['role', 'What you do', 'text'], ['city', 'City (for weather)', 'text'],
+    ['work_start', 'Work starts', 'time'], ['work_end', 'Work ends', 'time'], ['languages', 'Languages', 'text'], ['editor', 'Main editor / IDE', 'text'],
+];
+function renderMemory() {
+    const form = $('profile-form');
+    if (!form.contains(document.activeElement)) {
+        form.replaceChildren(...PROFILE_FIELDS.map(([k, label, type]) => {
+            const val = Array.isArray(profile[k]) ? profile[k].join(', ') : (profile[k] || (k === 'preferred_name' ? profile.name || '' : ''));
+            const inp = h('input', { type, value: val, placeholder: '—' });
+            inp.addEventListener('change', () => {
+                let v = inp.value.trim();
+                if (k === 'languages') v = v.split(',').map((s) => s.trim()).filter(Boolean);
+                send({ type: 'profile_update', profile: { [k]: v } });
+            });
+            return h('div', { class: 'g-row' }, h('span', {}, label), inp);
+        }));
+    }
+    $('mem-count').textContent = memories.length ? `${memories.length} remembered` : '';
+    const box = $('mem-list');
+    if (!memories.length) { box.replaceChildren(h('div', { class: 'empty' }, 'Nothing yet. Tell me things like “remember that my standup is at 10”.')); return; }
+    const order = ['instruction', 'person', 'project', 'preference', 'routine', 'goal', 'fact', 'event'];
+    const groups = {};
+    for (const m of memories) (groups[m.category] = groups[m.category] || []).push(m);
+    const out = [];
+    for (const cat of order.concat(Object.keys(groups).filter((c) => !order.includes(c)))) {
+        if (!groups[cat]) continue;
+        out.push(h('div', { class: 'mem-cat' }, { instruction: 'How I should behave', person: 'People', project: 'Projects', preference: 'Preferences', routine: 'Routine', goal: 'Goals', fact: 'Facts', event: 'Events' }[cat] || cat));
+        for (const m of groups[cat].sort((a, b) => (b.pinned - a.pinned) || (b.importance - a.importance))) {
+            const text = h('div', { class: 'mem-text', title: `Learned ${new Date(m.created).toLocaleDateString()} · from ${m.source}` }, m.text);
+            const edit = () => {
+                text.contentEditable = 'true'; text.focus();
+                document.getSelection().selectAllChildren(text);
+                const done = () => { text.contentEditable = 'false'; const v = text.textContent.trim(); if (v && v !== m.text) send({ type: 'memory_update', id: m.id, text: v }); };
+                text.addEventListener('blur', done, { once: true });
+                text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
+            };
+            out.push(h('div', { class: 'mem' + (m.pinned ? ' pinned' : '') }, text,
+                h('span', { class: 'dots', title: `Importance ${m.importance}/5` }, '●'.repeat(m.importance)),
+                h('div', { class: 'row-actions' },
+                    h('button', { class: 'mini' + (m.pinned ? ' on' : ''), title: 'Always keep in mind', onclick: () => send({ type: 'memory_update', id: m.id, pinned: !m.pinned }) }, m.pinned ? 'Pinned' : 'Pin'),
+                    h('button', { class: 'mini', title: 'Edit', onclick: edit }, 'Edit'),
+                    h('button', { class: 'mini', title: 'Forget', onclick: () => send({ type: 'memory_delete', id: m.id }) }, '✕'))));
+        }
+    }
+    box.replaceChildren(...out);
+}
+function addMemory() { const v = $('mem-input').value.trim(); if (v && send({ type: 'memory_add', text: v })) $('mem-input').value = ''; }
+$('mem-add').onclick = addMemory;
+$('mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addMemory(); });
+$('mem-export').onclick = () => send({ type: 'export_data' });
+$('mem-forget').onclick = () => confirmDo('Forget everything about you?', 'Your profile and every memory will be deleted. Tasks, notes and activity stay.', () => send({ type: 'memory_forget_all' }));
+
+// --------------------------------------------------------------- activity
+function renderActivity() {
+    const a = activity;
+    if (!a) return;
+    $('act-stats').replaceChildren(
+        h('div', { class: 'stat' }, h('b', {}, fmtDur(a.total_active)), h('span', {}, 'active today')),
+        h('div', { class: 'stat' }, h('b', {}, fmtDur(a.focus_seconds)), h('span', {}, 'in focused blocks (25m+)')),
+        h('div', { class: 'stat' }, h('b', {}, a.first_active ? clock(a.first_active) : '—'), h('span', {}, 'first active')),
+        h('div', { class: 'stat' }, h('b', {}, String(a.switches || 0)), h('span', {}, 'app switches')));
+    // timeline
+    const tl = $('act-timeline');
+    const segs = a.timeline || [];
+    const appColor = {};
+    (a.top_apps || []).forEach((x, i) => (appColor[x.name] = COLORS[i % COLORS.length]));
+    if (segs.length) {
+        const start = segs[0][0], end = Math.max(segs[segs.length - 1][1], start + 1);
+        $('act-range').textContent = `${clock(start)} – ${clock(end)}`;
+        tl.replaceChildren(...segs.map(([s, e, name]) => h('i', { style: `left:${((s - start) / (end - start)) * 100}%;width:${((e - s) / (end - start)) * 100}%;background:${appColor[name] || '#8e8e93'}`, title: `${name} ${clock(s)}–${clock(e)}` })));
+    } else { tl.replaceChildren(); $('act-range').textContent = 'No activity yet today'; }
+    const maxApp = Math.max(1, ...(a.top_apps || []).map((x) => x.seconds));
+    $('act-apps').replaceChildren(...((a.top_apps || []).length ? a.top_apps.map((x, i) => h('div', { class: 'bar-row' },
+        h('span', {}, x.name), h('span', { class: 'dur' }, fmtDur(x.seconds)),
+        h('div', { class: 'bar' }, h('i', { style: `width:${(x.seconds / maxApp) * 100}%;background:${COLORS[i % COLORS.length]}` })))) : [h('div', { class: 'empty' }, 'I\'ll show your app time here as you work.')]));
+    const ps = [...(a.projects || []).map((p) => ({ ...p, kind: 'project' })), ...(a.sites || []).map((p) => ({ ...p, kind: 'site' }))];
+    const maxP = Math.max(1, ...ps.map((x) => x.seconds));
+    $('act-projects-card').classList.toggle('hidden', !ps.length);
+    $('act-projects').replaceChildren(...ps.map((x) => h('div', { class: 'bar-row' },
+        h('span', {}, (x.kind === 'project' ? '📁 ' : '🌐 ') + x.name), h('span', { class: 'dur' }, fmtDur(x.seconds)),
+        h('div', { class: 'bar' }, h('i', { style: `width:${(x.seconds / maxP) * 100}%;background:${x.kind === 'project' ? '#30d158' : '#64d2ff'}` })))));
+    const r = routine || {};
+    $('act-routine').replaceChildren(...(r.days_observed ? [
+        h('p', {}, `Observed for ${r.days_observed} day${r.days_observed > 1 ? 's' : ''}.`),
+        r.typical_start ? h('p', {}, `You usually start around ${r.typical_start}.`) : null,
+        r.usual_first_apps && r.usual_first_apps.length ? h('p', {}, 'First thing you open: ' + r.usual_first_apps.map((x) => x.name).join(', ') + '.') : null,
+        r.top_projects && r.top_projects.length ? h('p', {}, 'Main projects this week: ' + r.top_projects.join(', ') + '.') : null,
+    ] : [h('p', {}, 'I\'m still learning your routine. After a couple of days I\'ll know when you start and what you open first — and offer to set it up for you each morning.')]));
 }
 
-closeNotesBtn.addEventListener('click', closeNotes);
+// --------------------------------------------------------------- settings
+const LANGS = [['auto', 'Detect automatically'], ['en', 'English only (fastest)'], ['hi', 'Hindi'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['pt', 'Portuguese'], ['it', 'Italian'], ['ja', 'Japanese'], ['zh', 'Chinese'], ['ar', 'Arabic'], ['bn', 'Bengali'], ['ta', 'Tamil'], ['te', 'Telugu'], ['mr', 'Marathi']];
+const SETTINGS = [
+    ['General', [
+        { key: 'start_at_login', type: 'switch', label: 'Start Snap when I sign in' },
+        { key: 'daily_greeting', type: 'switch', label: 'Morning greeting & briefing', sub: 'Once a day, never during a call' },
+        { key: 'greeting_voice', type: 'switch', label: 'Speak the greeting out loud' },
+        { key: 'break_reminder_minutes', type: 'select', label: 'Break reminders', num: true, options: [[0, 'Off'], [30, 'Every 30 min'], [50, 'Every 50 min'], [90, 'Every 90 min']] },
+        { key: 'internet_tools', type: 'switch', label: 'Use the internet when I ask', sub: 'Web search and weather only — your data never leaves' },
+    ]],
+    ['Listening', [
+        { key: 'voice_mode', type: 'select', label: 'How I listen', options: [['wake', 'Wake word — “Snap, …”'], ['push', 'Only when I press Ctrl+Alt+Space'], ['always', 'Always (commands only)']] },
+        { key: 'wake_words', type: 'text', label: 'Wake words' },
+        { key: 'voice_language', type: 'select', label: 'Language I speak', options: LANGS },
+        { key: 'speech_quality', type: 'select', label: 'Speech recognition', options: [['fast', 'Fast'], ['balanced', 'Balanced'], ['accurate', 'Accurate (slower)']] },
+        { key: 'mic_sensitivity', type: 'range', label: 'Microphone sensitivity', min: 1, max: 10, step: 1, meter: true },
+        { key: 'follow_up_seconds', type: 'select', label: 'Keep listening after I answer', num: true, options: [[0, 'Off'], [5, '5 seconds'], [8, '8 seconds'], [12, '12 seconds']] },
+        { key: 'headphones', type: 'switch', label: 'I use headphones', sub: 'Lets you interrupt me by voice' },
+    ]],
+    ['Snap’s voice', [
+        { key: 'tts_enabled', type: 'switch', label: 'Speak replies' },
+        { key: 'tts_voice', type: 'select', label: 'Voice', options: () => (models.voices || [['af_heart', 'Heart']]) },
+        { key: 'tts_speed', type: 'range', label: 'Speed', min: 0.8, max: 1.3, step: 0.05 },
+        { key: 'speak_typed_replies', type: 'switch', label: 'Also speak when I type' },
+        { key: 'speak_confirmations', type: 'switch', label: 'Confirm quick commands out loud' },
+        { key: 'tts_preview', type: 'action', label: 'Hear how I sound', button: 'Preview', action: 'tts_test' },
+    ]],
+    ['AI brain', 'models'],
+    ['Gestures', [
+        { key: 'gestures_enabled', type: 'switch', label: 'Hand gestures (uses the camera)', sub: 'Point to move, pinch to click, two fingers to scroll' },
+        { key: 'show_camera_preview', type: 'switch', label: 'Small camera preview' },
+        { key: 'pointer_smoothing', type: 'range', label: 'Pointer smoothing', min: 1, max: 10, step: 1 },
+        { key: 'control_area', type: 'range', label: 'Pointer speed', min: 1, max: 10, step: 1 },
+        { key: 'pinch_sensitivity', type: 'range', label: 'Pinch sensitivity', min: 1, max: 10, step: 1 },
+        { key: 'scroll_style', type: 'select', label: 'Two-finger scroll', options: [['joystick', 'Joystick (hold to keep scrolling)'], ['drag', 'Touchpad']] },
+        { key: 'scroll_sensitivity', type: 'range', label: 'Scroll speed', min: 1, max: 10, step: 1 },
+        { key: 'palm_hold_action', type: 'select', label: 'Hold open palm', options: [['none', 'Nothing'], ['listen', 'Listen for a command'], ['play pause', 'Play / pause'], ['show desktop', 'Show desktop']] },
+        { key: 'fist_action', type: 'select', label: 'Fist', options: [['clutch', 'Freeze pointer'], ['play pause', 'Play / pause'], ['none', 'Nothing']] },
+    ]],
+    ['Workspace', [
+        { key: 'project_dir', type: 'folder', label: 'Main project folder', sub: 'Used by “start my day” and “run project”' },
+        { key: 'project_run_command', type: 'text', label: 'Run command', placeholder: 'auto-detect' },
+    ]],
+    ['Privacy & data', 'privacy'],
+    ['Help', 'help'],
+];
 
-function showToast(message) {
-    aiToastText.textContent = message;
-    aiToast.classList.remove('hidden');
+function settingControl(it) {
+    const v = S[it.key];
+    if (it.type === 'action') return h('button', { class: 'btn small', onclick: () => send({ type: it.action }) }, it.button || 'Go');
+    if (it.type === 'switch') {
+        const c = h('input', { type: 'checkbox', class: 'switch' });
+        c.checked = !!v;
+        c.onchange = () => { updateSetting(it.key, c.checked); if (it.key === 'start_at_login') ipcRenderer.send('set-login-item', c.checked); };
+        return c;
+    }
+    if (it.type === 'select') {
+        const opts = typeof it.options === 'function' ? it.options() : it.options;
+        const s = h('select', { class: 'select' }, ...opts.map(([ov, ol]) => { const o = h('option', { value: ov }, ol); if (String(ov) === String(v)) o.selected = true; return o; }));
+        s.onchange = () => updateSetting(it.key, it.num ? +s.value : s.value);
+        return s;
+    }
+    if (it.type === 'range') {
+        const r = h('input', { type: 'range', min: it.min, max: it.max, step: it.step, value: v });
+        const lab = h('span', { class: 'caption', style: 'min-width:34px;text-align:right' }, String(v));
+        r.oninput = () => { lab.textContent = r.value; updateSetting(it.key, +r.value, true); };
+        return h('div', { class: 'row', style: 'gap:10px;flex:0 1 210px' }, r, lab);
+    }
+    if (it.type === 'folder') {
+        const inp = h('input', { type: 'text', value: v || '', placeholder: 'Choose a folder' });
+        inp.onchange = () => updateSetting(it.key, inp.value);
+        const b = h('button', { class: 'btn small', onclick: async () => { const p = await ipcRenderer.invoke('pick-folder'); if (p) { inp.value = p; updateSetting(it.key, p); } } }, 'Browse…');
+        return h('div', { class: 'row', style: 'gap:6px;flex:0 1 230px' }, inp, b);
+    }
+    const inp = h('input', { type: 'text', value: Array.isArray(v) ? v.join(', ') : (v || ''), placeholder: it.placeholder || '' });
+    inp.onchange = () => updateSetting(it.key, inp.value);
+    return inp;
+}
+
+let pending = {}, pendingT = null;
+function updateSetting(key, value, debounce) {
+    S[key] = value; pending[key] = value;
+    clearTimeout(pendingT);
+    pendingT = setTimeout(() => { send({ type: 'update_settings', settings: pending }); pending = {}; }, debounce ? 250 : 0);
+}
+
+function renderSettings() {
+    const root = $('settings-root');
+    if (root.contains(document.activeElement) && document.activeElement.type === 'text') return;
+    const out = [];
+    for (const [title, items] of SETTINGS) {
+        out.push(h('div', { class: 'group-title' }, title));
+        if (items === 'models') { out.push(h('div', { id: 'model-section' })); continue; }
+        if (items === 'privacy') { out.push(privacySection()); continue; }
+        if (items === 'help') { out.push(helpSection()); continue; }
+        out.push(h('div', { class: 'grouped' }, ...items.map((it) => {
+            const row = h('div', { class: 'g-row', 'data-key': it.key }, h('span', {}, it.label, it.sub ? h('span', { class: 'sub' }, it.sub) : null), settingControl(it));
+            if (it.meter) return h('div', { class: 'g-row col', 'data-key': it.key }, row, h('div', { class: 'meter' }, h('i', { id: 'mic-meter' })));
+            return row;
+        })));
+    }
+    root.replaceChildren(...out);
+    renderModelSection();
+}
+
+function renderModelSection() {
+    const box = $('model-section');
+    if (!box) return;
+    const m = models || {};
+    const installed = m.installed || [];
+    const has = (n) => installed.some((x) => x === n || x === n + ':latest');
+    let status, dot;
+    if (!m.ollama_installed) { status = 'Ollama isn’t installed — it runs the AI on your laptop (free).'; dot = 'bad'; }
+    else if (!m.server) { status = 'Starting the AI engine…'; dot = 'busy'; }
+    else if (m.pulling && m.pulling.status !== 'error') { status = `Downloading ${m.pulling.name}… ${Math.round(m.pulling.pct || 0)}%`; dot = 'busy'; }
+    else if (m.ready) { status = `Ready · ${m.current}`; dot = 'ok'; }
+    else { status = `${m.current} isn't downloaded yet`; dot = 'bad'; }
+    const cards = (m.recommended || []).map((r) => {
+        const isCur = r.name === m.current;
+        const action = has(r.name) ? (isCur ? h('span', { class: 'caption' }, 'In use') : h('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); send({ type: 'model_select', name: r.name }); } }, 'Use'))
+            : h('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); send({ type: 'model_pull', name: r.name }); } }, `Download ${r.size}`);
+        return h('div', { class: 'model-card' + (isCur ? ' current' : '') }, h('div', { class: 'm-title' }, h('span', {}, r.label), action),
+            h('div', { class: 'm-note' }, `${r.note} Needs ${r.ram}.`));
+    });
+    box.replaceChildren(h('div', { class: 'grouped' },
+        h('div', { class: 'g-row' }, h('span', {}, h('span', { class: 'status-dot ' + dot }), status),
+            !m.ollama_installed ? h('button', { class: 'btn small primary', onclick: () => ipcRenderer.send('open-external', 'https://ollama.com/download') }, 'Get Ollama') : null),
+        m.pulling && m.pulling.status !== 'error' ? h('div', { class: 'g-row col' }, h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` }))) : null,
+        h('div', { class: 'g-row col' }, ...cards),
+        h('div', { class: 'g-row' }, h('span', {}, 'Free memory when idle', h('span', { class: 'sub' }, 'Unloads the AI from RAM after this long')),
+            settingControl({ key: 'llm_keep_alive', type: 'select', options: [['5m', '5 minutes'], ['15m', '15 minutes'], ['1h', '1 hour'], ['-1', 'Never']] })),
+        h('div', { class: 'g-row' }, h('span', {}, 'Speech', h('span', { class: 'sub' }, `Recognition: Whisper ${m.whisper || ''} · Voice: ${m.tts_engine === 'kokoro' ? 'Kokoro (natural)' : 'Windows'}`)))));
+}
+
+function privacySection() {
+    return h('div', { class: 'grouped' },
+        h('div', { class: 'g-row' }, h('span', {}, 'Everything stays on this laptop', h('span', { class: 'sub' }, dataDir || '%APPDATA%\\SnapAir')), h('button', { class: 'btn small', onclick: () => send({ type: 'open_data_folder' }) }, 'Open folder')),
+        h('div', { class: 'g-row' }, h('span', {}, 'Export my data (JSON)'), h('button', { class: 'btn small', onclick: () => send({ type: 'export_data' }) }, 'Export')),
+        h('div', { class: 'g-row' }, h('span', { class: 'danger-text' }, 'Delete all my data', h('span', { class: 'sub' }, 'Memories, notes, tasks, activity and conversations')),
+            h('button', { class: 'btn small danger', onclick: () => confirmDo('Delete all your data?', 'Snap will forget everything: memories, notes, tasks, activity history and conversations. This can\'t be undone.', () => send({ type: 'delete_all_data' })) }, 'Delete')));
+}
+
+function helpSection() {
+    const keys = [['Ctrl+Alt+Space', 'Talk to Snap'], ['Ctrl+Alt+K', 'Open the assistant'], ['Ctrl+Alt+N', 'Start/stop meeting notes'], ['Ctrl+Alt+G', 'Pause hand gestures'], ['Ctrl+Alt+S', 'Settings'], ['Ctrl+Alt+H', 'Hide Snap']];
+    return h('div', { class: 'grouped' },
+        ...keys.map(([k, d]) => h('div', { class: 'g-row' }, h('span', {}, d), h('span', { class: 'kbd' }, k))),
+        h('div', { class: 'g-row col' }, h('div', { class: 'help-cat' }, 'Try saying'),
+            h('div', { class: 'help-items' }, '“Snap, start my day” · “remind me at 5 to push the PR” · “take meeting notes” · “what notes did we create today?” · “remember that my manager is Arun” · “how much time on YouTube today?” · “switch to Chrome” · “play lofi on YouTube” · “wrap up my day”')),
+        ...catalogue.map(([cat, items]) => h('div', { class: 'g-row col' }, h('div', { class: 'help-cat' }, cat), h('div', { class: 'help-items' }, items.map((i) => `“${i}”`).join(' · ')))));
+}
+
+function highlightSetting(key) {
     setTimeout(() => {
-        aiToast.classList.add('hidden');
-    }, 3000);
+        const row = document.querySelector(`[data-key="${key}"]`);
+        if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); row.classList.add('highlight'); setTimeout(() => row.classList.remove('highlight'), 2500); }
+    }, 150);
 }
 
-// Initialize
-connectWebSocket();
+// static [data-setting] controls (memory & activity tabs)
+function bindSettings() {
+    document.querySelectorAll('[data-setting]').forEach((el) => {
+        const k = el.dataset.setting;
+        if (el.type === 'checkbox') el.checked = !!S[k]; else el.value = String(S[k] ?? '');
+        if (!el._bound) {
+            el._bound = true;
+            el.addEventListener('change', () => updateSetting(k, el.type === 'checkbox' ? el.checked : (el.dataset.num ? +el.value : el.value)));
+        }
+    });
+}
+function updateMeters() {
+    const m = $('mic-meter');
+    if (m) m.style.width = `${Math.min(100, Math.sqrt(eng.mic_level || 0) * 400)}%`;
+}
+
+// ---------------------------------------------------------------- banners
+const BANNER_STYLE = { reminder: ['⏰', '#ff9f0a'], call: ['📞', '#30d158'], break: ['☕', '#64d2ff'], wrapup: ['🌙', '#5e5ce6'], info: ['✦', '#0a84ff'] };
+function showBanner(b) {
+    const [icon, color] = BANNER_STYLE[b.kind] || BANNER_STYLE.info;
+    const close = () => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); };
+    const actions = [];
+    if (b.kind === 'reminder' && b.task) {
+        actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'task_update', id: b.task.id, done: true }); close(); } }, 'Done'),
+            h('button', { class: 'btn small', onclick: () => { send({ type: 'task_snooze', id: b.task.id, minutes: 10 }); close(); } }, 'Snooze 10m'));
+        ipcRenderer.send('notify', { title: 'Snap reminder', body: b.text });
+    } else if (b.kind === 'call') {
+        actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'meeting_start' }); close(); } }, 'Take notes'),
+            h('button', { class: 'btn small', onclick: close }, 'No thanks'));
+    } else if (b.kind === 'wrapup') {
+        actions.push(h('button', { class: 'btn small primary', onclick: () => { send({ type: 'chat', text: 'wrap up my day' }); openDrawer('assistant'); close(); } }, 'Show summary'),
+            h('button', { class: 'btn small', onclick: close }, 'Later'));
+    } else {
+        actions.push(h('button', { class: 'btn small', onclick: close }, 'OK'));
+    }
+    const el = h('div', { class: 'banner interactive' },
+        h('div', { class: 'banner-head' }, h('div', { class: 'banner-icon', style: `background:${color}` }, icon), h('div', { class: 'banner-title' }, b.title), h('button', { class: 'icon-btn', style: 'width:22px;height:22px', onclick: close }, '✕')),
+        h('div', { class: 'banner-text' }, b.text), h('div', { class: 'banner-actions' }, ...actions));
+    $('banners').prepend(el);
+    if (b.kind !== 'reminder' && b.kind !== 'call') setTimeout(close, 20000);
+}
+
+// --------------------------------------------------------------- greeting
+let greetTimer = null;
+function showGreeting(b) {
+    $('greeting-title').textContent = b.title;
+    $('greeting-lines').replaceChildren(...b.lines.map((l) => h('p', {}, l)), h('p', {}, b.question));
+    $('greeting-weather').replaceChildren(...(b.weather ? [h('span', { class: 'chip static' }, `${b.weather.temp}° · ${b.weather.desc}`)] : []));
+    $('greeting-plan').replaceChildren(...(b.plan || []).map((p) => h('li', {}, p.label)));
+    $('greeting-go').classList.toggle('hidden', !(b.plan && b.plan.length));
+    $('greeting-later').textContent = b.plan && b.plan.length ? 'Not now' : 'Thanks';
+    $('greeting').classList.remove('hidden');
+    clearTimeout(greetTimer);
+    greetTimer = setTimeout(hideGreeting, 90000);
+}
+function hideGreeting() { $('greeting').classList.add('hidden'); }
+$('greeting-go').onclick = () => { send({ type: 'start_my_day' }); hideGreeting(); };
+$('greeting-later').onclick = () => { send({ type: 'dismiss_briefing' }); hideGreeting(); };
+
+// ------------------------------------------------------------- onboarding
+let obOpen = false, obStep = 0;
+const ob = { name: '', role: '', work_start: '09:00', work_end: '18:00', city: '', languages: ['English'],
+             voice: true, activity: true, gestures: false, login: true, greeting_voice: false, editor: '', projects: {}, main: '' };
+const OB_STEPS = ['welcome', 'about', 'language', 'permissions', 'setup', 'brain', 'done'];
+function openOnboarding() {
+    obOpen = true; obStep = 0;
+    ob.name = profile.name || '';
+    $('onboarding').classList.remove('hidden');
+    send({ type: 'scan_system' });
+    renderObStep();
+}
+function closeOnboarding() { obOpen = false; $('onboarding').classList.add('hidden'); }
+function chipGroup(options, selected, multi, onChange) {
+    return h('div', { class: 'chip-row' }, ...options.map((o) => h('button', {
+        class: 'chip' + ((multi ? selected.includes(o) : selected === o) ? ' selected' : ''),
+        onclick: () => { onChange(o); renderObStep(); },
+    }, o)));
+}
+function obField(label, input) { return h('div', { class: 'field' }, h('label', {}, label), input); }
+function obInput(key, placeholder, type = 'text') {
+    const i = h('input', { type, value: ob[key] || '', placeholder });
+    i.addEventListener('input', () => (ob[key] = i.value));
+    return i;
+}
+function perm(icon, color, title, text, key) {
+    const c = h('input', { type: 'checkbox', class: 'switch' }); c.checked = !!ob[key];
+    c.onchange = () => (ob[key] = c.checked);
+    return h('div', { class: 'perm' }, h('div', { class: 'p-icon', style: `background:${color}` }, icon), h('div', { class: 'p-body' }, h('b', {}, title), h('span', { class: 'caption' }, text)), c);
+}
+let obOrb = null;
+function renderObStep() {
+    const step = OB_STEPS[obStep];
+    $('ob-steps').replaceChildren(...OB_STEPS.map((_, i) => h('i', { class: i === obStep ? 'on' : '' })));
+    $('ob-back').classList.toggle('hidden', obStep === 0);
+    $('ob-next').textContent = step === 'done' ? 'Start using Snap' : step === 'welcome' ? 'Get started' : 'Continue';
+    const body = $('ob-body');
+    if (step === 'welcome') {
+        const c = h('canvas', { width: 96, height: 96, class: 'orb-canvas' });
+        body.replaceChildren(h('div', { class: 'ob-hero' }, c, h('h2', {}, 'Hi, I’m Snap.'),
+            h('p', { class: 'lead' }, 'Your personal assistant for this laptop. I can greet you in the morning, open your work, take your meeting notes, remember what matters to you and keep your reminders — just by talking.'),
+            h('p', { class: 'caption' }, '🔒 Everything I hear and learn stays on this computer. No account, no cloud.')));
+        obOrb = new Orb(c);
+    } else if (step === 'about') {
+        body.replaceChildren(h('h2', {}, 'A little about you'), h('p', { class: 'lead' }, 'So I can personalise things. You can change this anytime in Memory.'),
+            obField('What should I call you?', obInput('name', 'Your name')),
+            obField('What do you do?', chipGroup(['Developer', 'Designer', 'Student', 'Manager', 'Writer', 'Other'], ob.role, false, (o) => (ob.role = o))),
+            h('div', { class: 'two' }, obField('Work usually starts', obInput('work_start', '09:00', 'time')), obField('and ends', obInput('work_end', '18:00', 'time'))),
+            obField('City (optional — for weather in your briefing)', obInput('city', 'e.g. Bengaluru')));
+    } else if (step === 'language') {
+        body.replaceChildren(h('h2', {}, 'Which languages do you speak?'), h('p', { class: 'lead' }, 'Talk to me in any of them — I’ll reply in the same language. Mixing Hindi and English is fine.'),
+            chipGroup(['English', 'Hindi', 'Hinglish', 'Spanish', 'French', 'German', 'Portuguese', 'Japanese', 'Chinese', 'Arabic', 'Tamil', 'Bengali'], ob.languages, true,
+                (o) => { ob.languages = ob.languages.includes(o) ? ob.languages.filter((x) => x !== o) : [...ob.languages, o]; if (!ob.languages.length) ob.languages = ['English']; }),
+            h('p', { class: 'fine' }, 'English-only is fastest. With more languages I detect what you’re speaking each time.'));
+    } else if (step === 'permissions') {
+        body.replaceChildren(h('h2', {}, 'What should I help with?'), h('p', { class: 'lead' }, 'Turn things on now or later in Settings.'),
+            perm('🎙', '#0a84ff', 'Listen for “Snap”', 'I only act when you start with my name. Audio is processed on this laptop and never stored.', 'voice'),
+            perm('📈', '#30d158', 'Learn my routine', 'I note which apps and projects you use and when — never keystrokes, screen contents or private windows — so I can set up your day.', 'activity'),
+            perm('🚀', '#ff9f0a', 'Start when I sign in', 'So I can greet you and get your work ready each morning.', 'login'),
+            perm('🗣', '#bf5af2', 'Speak my morning greeting', 'Otherwise I show it as a quiet card.', 'greeting_voice'),
+            perm('✋', '#ff375f', 'Hand gestures', 'Control the mouse with your hand using the camera. Great for accessibility.', 'gestures'));
+    } else if (step === 'setup') {
+        const editors = (scan && scan.apps && scan.apps.editors) || [];
+        if (!ob.editor && editors.length) ob.editor = editors[0];
+        const projects = (scan && scan.projects) || [];
+        if (!ob.main && projects.length) ob.main = projects[0].path;
+        body.replaceChildren(h('h2', {}, 'Your setup'), h('p', { class: 'lead' }, scan ? `I looked around (locally): ${scan.apps.app_count} apps installed.` : 'Looking at your apps and projects…'),
+            editors.length ? obField('Which editor do you use most?', chipGroup(editors, ob.editor, false, (o) => (ob.editor = o))) : null,
+            projects.length ? obField('Your main project (I can open & run it for you)', h('div', { class: 'scan-list' }, ...projects.slice(0, 12).map((p) => {
+                const r = h('input', { type: 'radio', name: 'mainproj' }); r.checked = ob.main === p.path; r.onchange = () => (ob.main = p.path);
+                return h('label', {}, r, h('div', { style: 'min-width:0' }, h('div', {}, p.name + (p.kind.length ? ` · ${p.kind.join(', ')}` : '')), h('div', { class: 'path' }, p.path)));
+            }))) : (scan ? h('p', { class: 'caption' }, 'No code projects found — you can pick a folder later in Settings.') : null));
+    } else if (step === 'brain') {
+        const m = models || {};
+        let inner;
+        if (!m.ollama_installed) inner = [h('p', { class: 'lead' }, 'My AI brain runs on Ollama, a free app that keeps the model on your laptop.'), h('button', { class: 'btn primary', onclick: () => ipcRenderer.send('open-external', 'https://ollama.com/download') }, 'Download Ollama'), h('p', { class: 'fine' }, 'Commands, reminders, notes and meeting transcripts work without it.')];
+        else if (m.ready) inner = [h('p', { class: 'lead' }, `✓ Ready — ${m.current} is installed and runs fully offline.`)];
+        else if (m.pulling && m.pulling.status !== 'error') inner = [h('p', { class: 'lead' }, `Downloading ${m.pulling.name}… you can continue meanwhile.`), h('div', { class: 'progress' }, h('i', { style: `width:${m.pulling.pct || 0}%` })), h('p', { class: 'fine' }, `${Math.round(m.pulling.pct || 0)}%`)];
+        else inner = [h('p', { class: 'lead' }, 'I need to download my AI model once (about 1.4 GB). After that I work fully offline.'), h('button', { class: 'btn primary', onclick: () => send({ type: 'model_pull', name: m.current || 'qwen3:1.7b' }) }, 'Download now')];
+        body.replaceChildren(h('h2', {}, 'My AI brain'), ...inner);
+    } else if (step === 'done') {
+        body.replaceChildren(h('div', { class: 'ob-hero' }, h('h2', {}, `You're all set${ob.name ? ', ' + ob.name : ''}!`),
+            h('p', { class: 'lead' }, 'Try one of these:'),
+            h('div', { class: 'chip-row center' }, ...['“Snap, start my day”', '“Snap, remind me at 5 to push the PR”', '“Snap, take meeting notes”', '“Snap, remember that I prefer Slack”'].map((t) => h('span', { class: 'chip static' }, t))),
+            h('p', { class: 'caption', style: 'margin-top:12px' }, 'Click the pill at the top of your screen any time to open Snap.')));
+    }
+}
+$('ob-back').onclick = () => { if (obStep > 0) { obStep--; renderObStep(); } };
+$('ob-next').onclick = () => {
+    if (obStep < OB_STEPS.length - 1) { obStep++; renderObStep(); return; }
+    const projects = ((scan && scan.projects) || []).slice(0, 15).map((p) => ({ name: p.name, path: p.path }));
+    const onlyEnglish = ob.languages.length === 1 && ob.languages[0] === 'English';
+    send({ type: 'onboarding_complete', scan,
+        profile: { name: ob.name, preferred_name: ob.name, role: ob.role, work_start: ob.work_start, work_end: ob.work_end, city: ob.city,
+                   languages: ob.languages, editor: ob.editor, projects },
+        settings: { voice_mode: ob.voice ? 'wake' : 'push', activity_tracking: ob.activity, gestures_enabled: ob.gestures,
+                    start_at_login: ob.login, greeting_voice: ob.greeting_voice, voice_language: onlyEnglish ? 'en' : 'auto',
+                    project_dir: ob.main || '' } });
+    ipcRenderer.send('set-login-item', ob.login);
+    closeOnboarding();
+    openDrawer('assistant');
+};
+
+// ------------------------------------------------------------ confirm/toast
+function confirmDo(title, text, fn) {
+    $('confirm-title').textContent = title; $('confirm-text').textContent = text;
+    $('confirm').classList.remove('hidden');
+    $('confirm-yes').onclick = () => { $('confirm').classList.add('hidden'); fn(); };
+    $('confirm-no').onclick = () => $('confirm').classList.add('hidden');
+}
+let toastT = null;
+function showToast(msg, ok = true) {
+    if (!msg) return;
+    $('toast-text').textContent = msg; $('toast-icon').textContent = ok ? '✓' : '!';
+    $('toast').classList.toggle('error', !ok); $('toast').classList.remove('hidden');
+    clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.add('hidden'), ok ? 2600 : 4500);
+}
+
+// ------------------------------------------------------------ cursor ring
+function renderCursor() {
+    const ring = $('cursor-ring');
+    if (eng.hand_visible && !eng.gestures_paused && S.pointer_enabled !== false && eng.camera === 'ok') {
+        const dpr = window.devicePixelRatio || 1;
+        ring.style.left = `${eng.cursor[0] / dpr - window.screenX}px`;
+        ring.style.top = `${eng.cursor[1] / dpr - window.screenY}px`;
+        ring.className = 'cursor-ring' + (eng.dragging ? ' drag' : '') + (eng.gesture === 'SCROLL' ? ' scroll' : '') +
+            (eng.gesture === 'PINCH_INDEX' && !eng.dragging ? ' pinch' : '') + (eng.gesture === 'FIST' ? ' frozen' : '') + (Date.now() < flashUntil ? ' flash' : '');
+    } else ring.classList.add('hidden');
+}
+
+// ----------------------------------------------------------------- hotkeys
+ipcRenderer.on('hotkey', (_e, name) => {
+    if (name === 'push_to_talk') talk();
+    else if (name === 'command') { openDrawer('assistant'); setTimeout(() => $('chat-input').focus(), 150); }
+    else if (name === 'toggle_gestures') send({ type: 'toggle_gestures' });
+    else if (name === 'settings') toggleDrawer('settings');
+    else if (name === 'toggle_hud') document.body.classList.toggle('hud-hidden');
+    else if (name === 'meeting') send({ type: meeting.recording ? 'meeting_stop' : 'meeting_start' });
+});
+
+// ------------------------------------------------------------------ boot
+function renderAll() {
+    bindSettings(); renderIsland(); renderSuggestions(); renderTasks(); renderNotes(); renderMemory();
+    renderMeeting(); renderGlance(); renderActivity(); renderBriefingCard();
+    if (activeTab === 'settings') renderSettings();
+}
+connect();
+renderIsland();
+renderSuggestions();

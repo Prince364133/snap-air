@@ -1,127 +1,701 @@
-import cv2
+"""Snap Air engine.
+
+camera -> gestures -> mouse            (optional, off until enabled)
+microphone -> voice -> assistant       (commands, personal intents, local LLM)
+activity tracker / scheduler           (routine learning, reminders, greeting, nudges)
+WebSocket ws://localhost:8765          (the Electron HUD)
+"""
 import asyncio
-import websockets
+import datetime as dt
 import json
+import os
+import re
+import shutil
+import sys
 import threading
-import pyautogui
+import time
 
-from src.vision.hand_tracker import HandTracker
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+import cv2
+import websockets
+
+from src import storage
+from src.config import Settings
+from src.ai.agent_controller import AgentController
+from src.brain.assistant import Assistant
+from src.brain.briefing import Briefing
+from src.brain.llm import LLM
+from src.brain.memory import MemoryStore
+from src.core.gesture_controller import GestureController
 from src.core.gesture_recognizer import GestureRecognizer
+from src.life import system_scan
+from src.life.activity import ActivityTracker
+from src.life.meeting import MeetingRecorder
+from src.life.notes import NoteStore
+from src.life.tasks import TaskStore, human_time
 from src.os_control.mouse_controller import MouseController
+from src.voice.tts import Speaker, ENGLISH_VOICES
+from src.voice.voice_listener import VoiceListener
+from src.web import tools as webtools
 
-# Global state for WebSocket broadcasting
-current_state = {
-    "gesture": "NONE",
-    "x": 0,
-    "y": 0,
-    "fps": 0
+PREVIEW_TITLE = "Snap Air - Camera"
+PORT = int(os.environ.get("SNAP_AIR_PORT", "8765"))
+
+settings = Settings()
+clients = set()
+ws_loop = None
+
+state = {
+    "gesture": "NONE", "fps": 0, "cursor": [0, 0], "dragging": False, "gestures_paused": False,
+    "hand_visible": False, "camera": "off", "voice_status": "Loading speech model…",
+    "voice_mode": settings["voice_mode"], "voice_armed": False, "mic_level": 0.0,
+    "assistant": "idle", "speak_level": 0.0, "in_call": None, "recording": False,
 }
 
-clients = set()
 
-async def ws_handler(websocket):
-    clients.add(websocket)
+# ----------------------------------------------------------------- messaging
+def send_all(payload):
+    if ws_loop and clients:
+        msg = json.dumps(payload, default=str)
+        for c in list(clients):
+            asyncio.run_coroutine_threadsafe(_safe_send(c, msg), ws_loop)
+
+
+async def _safe_send(c, msg):
     try:
-        async for message in websocket:
-            # Handle incoming UI messages (e.g., settings updates)
-            data = json.loads(message)
-            print(f"Received from UI: {data}")
+        await c.send(msg)
+    except Exception:
+        pass
+
+
+def toast(message, ok=True, source=""):
+    if message:
+        print(f"[{source or 'Snap'}] {message}")
+        send_all({"type": "toast", "message": message, "ok": ok, "source": source})
+
+
+# -------------------------------------------------------------- components
+llm = LLM(settings)
+memory = MemoryStore(llm=llm, settings=settings)
+tasks = TaskStore()
+notes = NoteStore()
+agent = AgentController(settings=settings)
+
+
+def whisper_model_name():
+    lang = settings["voice_language"]
+    q = settings["speech_quality"]
+    if lang == "en":
+        return {"fast": "tiny.en", "balanced": "tiny.en", "accurate": "small.en"}.get(q, "tiny.en")
+    return {"fast": "tiny", "balanced": "base", "accurate": "small"}.get(q, "base")
+
+
+voice = VoiceListener(model_name=whisper_model_name(), sensitivity=settings["mic_sensitivity"],
+                      language=settings["voice_language"])
+
+
+def _on_speak_level(level):
+    state["speak_level"] = round(level, 4)
+
+
+def _on_speaking(on):
+    state["assistant"] = "speaking" if on else ("thinking" if assistant.working else "idle")
+
+
+speaker = Speaker(settings, on_level=_on_speak_level, on_state=_on_speaking)
+# don't transcribe Snap's own voice coming out of the laptop speakers
+voice.suppress_fn = lambda: (not settings["headphones"]) and (speaker.speaking or time.time() - speaker.last_spoke < 0.4)
+
+
+def _transcribe_meeting(audio):
+    if voice.model is None:
+        return ""
+    segs, _ = voice.model.transcribe(audio, language=voice.language, beam_size=1, temperature=0.0,
+                                     without_timestamps=True, condition_on_previous_text=False, vad_filter=True)
+    return " ".join(s.text.strip() for s in segs).strip()
+
+
+def _on_meeting(st):
+    state["recording"] = st["recording"]
+    send_all({"type": "meeting", **st})
+
+
+meeting = MeetingRecorder(transcribe_fn=_transcribe_meeting, llm=llm, notes=notes, tasks=tasks, memory=memory,
+                          on_update=_on_meeting)
+
+session_started = threading.Event()
+
+
+def _on_session_start(now, gap):
+    session_started.set()
+
+
+def _on_break_due(minutes):
+    send_all({"type": "banner", "kind": "break", "title": "Time for a short break?",
+              "text": f"You've been at it for {minutes} minutes. Stand up, stretch, rest your eyes."})
+
+
+_last_call_offer = {"app": None, "t": 0}
+
+
+def _on_call_change(app):
+    state["in_call"] = app
+    if app and not meeting.recording and (app != _last_call_offer["app"] or time.time() - _last_call_offer["t"] > 1800):
+        _last_call_offer.update(app=app, t=time.time())
+        send_all({"type": "banner", "kind": "call", "title": f"In a call on {app}?",
+                  "text": "Want me to take notes? Let everyone know you're recording.", "app": app})
+
+
+activity = ActivityTracker(settings=settings, on_session_start=_on_session_start, on_break_due=_on_break_due,
+                           on_call_change=_on_call_change)
+briefing = Briefing(memory, tasks, notes, activity, settings=settings, weather_fn=webtools.weather, agent=agent)
+assistant = Assistant(settings, agent, memory, tasks, notes, activity, briefing, meeting, llm, speaker,
+                      emit=lambda p: (_track_assistant(p), send_all(p)), web=webtools)
+assistant.on_follow_up = lambda seconds: voice.arm(seconds)
+
+
+def _track_assistant(p):
+    if p.get("type") == "assistant_state":
+        state["assistant"] = "speaking" if speaker.speaking and p["state"] == "idle" else p["state"]
+
+
+memory.on_change = lambda: send_all({"type": "memory", "profile": memory.profile, "memories": memory.memories})
+gestures = None
+
+
+# ------------------------------------------------------------ agent wiring
+def set_gestures_paused(paused):
+    state["gestures_paused"] = paused
+    if gestures:
+        gestures.set_paused(paused)
+
+
+def on_agent_note(text):
+    note = notes.add(text)
+    memory.journal_add("note", text)
+    send_all({"type": "note_added", "note": note})
+
+
+def on_ui(action, **data):
+    if action == "open_notes":
+        action, data = "open_drawer", {"tab": "notes"}
+    elif action == "open_guide":
+        action, data = "open_drawer", {"tab": "help"}
+    send_all({"type": "ui_action", "action": action, **data})
+
+
+agent.set_callbacks(notes_callback=on_agent_note, ui_callback=on_ui, gesture_callback=set_gestures_paused,
+                    voice_callback=lambda mode: settings.update({"voice_mode": mode}))
+
+
+# ------------------------------------------------------------------- voice
+WAKE_PREFIX = re.compile(r"^\W*(?:(?:hey|hi|ok|okay|uh|um)\W+)?snap(?:\W*air)?\W*", re.I)
+
+
+def on_voice_status(s):
+    state["voice_status"] = s
+
+
+def on_transcript(text, armed, lang="en"):
+    mode = settings["voice_mode"]
+    send_all({"type": "transcript", "text": text, "lang": lang})
+    heard_wake, rest = agent.strip_wake_word(text)
+    clean = WAKE_PREFIX.sub("", text).strip() if heard_wake else text.strip()
+    if armed:
+        voice.disarm()
+        if agent.normalize(clean) in ("", "you", "thank you", "bye"):
+            state["voice_status"] = "Ready"
+            return
+        llm_prewarm()
+        assistant.handle(clean, "voice", lang)
+    elif heard_wake:
+        if not rest:
+            voice.arm(6)                       # "Snap" ... (pause) ... "what's on today?"
+            llm_prewarm()
+            state["voice_status"] = "Listening…"
+            return
+        llm_prewarm()
+        assistant.handle(clean, "voice", lang)
+    elif mode == "always":
+        r = agent.execute_intent(text)        # commands only; never chats back at overheard speech
+        if r.action not in ("ignored", "unknown"):
+            toast(r.message, r.ok, "voice")
+    state["voice_status"] = "Ready"
+
+
+voice.set_callbacks(on_transcript=on_transcript, on_status=on_voice_status)
+
+
+def apply_voice_mode():
+    state["voice_mode"] = settings["voice_mode"]
+    voice.enabled = settings["voice_mode"] in ("wake", "always")
+
+
+_prewarm_t = [0.0]
+
+
+def llm_prewarm():
+    """Load the model into RAM when the user starts talking (hides the load time)."""
+    if time.time() - _prewarm_t[0] < 120:
+        return
+    _prewarm_t[0] = time.time()
+
+    def go():
+        try:
+            if llm.ready():
+                # warm the model AND its prompt cache with the real instructions
+                from src.brain.assistant import SYSTEM, ACTION_SCHEMA
+                list(llm.stream([{"role": "system", "content": SYSTEM}, {"role": "user", "content": "hi"}],
+                                schema=ACTION_SCHEMA, max_tokens=1))
+        except Exception:
+            pass
+    threading.Thread(target=go, daemon=True).start()
+
+
+# ---------------------------------------------------------------- settings
+def on_settings_changed(changed):
+    if gestures:
+        gestures.apply_settings(settings.as_dict())
+    if "voice_mode" in changed:
+        apply_voice_mode()
+    if "mic_sensitivity" in changed:
+        voice.set_sensitivity(changed["mic_sensitivity"])
+    if "voice_language" in changed or "speech_quality" in changed:
+        voice.set_language(settings["voice_language"])
+        voice.set_model(whisper_model_name())
+    if "tts_enabled" in changed and not changed["tts_enabled"]:
+        speaker.interrupt()
+    if "llm_model" in changed and not llm.has_model(changed["llm_model"]):
+        threading.Thread(target=pull_model, args=(changed["llm_model"],), daemon=True).start()
+    send_all({"type": "settings", "settings": settings.as_dict()})
+
+
+settings.on_change(on_settings_changed)
+
+
+def models_payload():
+    st = llm.status()
+    st["voices"] = ENGLISH_VOICES
+    st["tts_engine"] = speaker.engine
+    st["whisper"] = whisper_model_name()
+    return {"type": "models", **st}
+
+
+def pull_model(name):
+    llm.ensure_server()
+    ok = llm.pull(name, on_progress=lambda p: send_all(models_payload()))
+    send_all(models_payload())
+    toast(f"{name} is ready" if ok else f"Couldn't download {name}: {llm.last_error}", ok, "model")
+
+
+# ------------------------------------------------------------------- data
+def today_payload():
+    return {"type": "today", "tasks": tasks.open_tasks(), "activity": activity.summary(),
+            "notes_today": notes.on_day(storage.today()), "meeting": meeting.state()}
+
+
+def full_hello():
+    return {
+        "type": "hello", "settings": settings.as_dict(), "profile": memory.profile, "memories": memory.memories,
+        "notes": notes.items, "tasks": tasks.open_tasks(), "catalogue": AgentController.catalogue(),
+        "activity": activity.summary(), "routine": memory.profile.get("routine", {}),
+        "meeting": meeting.state(), "onboarding_needed": not memory.profile.get("onboarded"),
+        "data_dir": storage.data_dir(), **{k: v for k, v in models_payload().items() if k != "type"},
+    }
+
+
+def delete_all_data():
+    memory.forget_all()
+    for t in list(tasks.items):
+        tasks.delete(t["id"])
+    for n in list(notes.items):
+        notes.delete(n["id"])
+    for sub in ("activity", os.path.join("memory", "journal"), os.path.join("memory", "conversations")):
+        p = os.path.join(storage.data_dir(), sub)
+        shutil.rmtree(p, ignore_errors=True)
+        os.makedirs(p, exist_ok=True)
+    activity.day, activity.data = None, None
+    toast("All personal data deleted", True, "privacy")
+
+
+def complete_onboarding(data):
+    profile = data.get("profile") or {}
+    profile["onboarded"] = True
+    memory.update_profile(profile)
+    settings.update(data.get("settings") or {})
+    scan = data.get("scan") or {}
+    apps = scan.get("apps") or {}
+    if profile.get("editor"):
+        memory.add(f"Main code editor is {profile['editor']}", "preference", 4, source="onboarding")
+    if apps.get("browsers"):
+        memory.add(f"Uses {apps['browsers'][0]} as web browser", "preference", 2, source="onboarding")
+    if apps.get("communication"):
+        memory.add("Uses " + ", ".join(apps["communication"][:3]) + " to communicate", "fact", 2, source="onboarding")
+    if profile.get("role"):
+        memory.add(f"Works as {profile['role']}", "fact", 4, source="onboarding")
+    if not llm.has_model():
+        threading.Thread(target=pull_model, args=(settings["llm_model"],), daemon=True).start()
+    send_all({"type": "onboarding_done"})
+    threading.Thread(target=greet_now, kwargs={"force": True}, daemon=True).start()
+
+
+# ----------------------------------------------------------- proactivity
+_greet_lock = threading.Lock()
+
+
+def greet_now(force=False):
+    if not _greet_lock.acquire(blocking=False):
+        return
+    try:
+        _greet(force)
     finally:
-        clients.remove(websocket)
+        _greet_lock.release()
+
+
+def _greet(force=False):
+    if not memory.profile.get("onboarded"):
+        return
+    if not force and not briefing.should_greet(in_call=state["in_call"]):
+        return
+    for _ in range(120):                      # wait for the HUD to be up
+        if clients:
+            break
+        time.sleep(0.5)
+    try:
+        briefing.reflect()
+    except Exception as e:
+        print("[Briefing] reflect failed:", e)
+    b = briefing.build()
+    briefing.mark_greeted()
+    if b["plan"]:
+        assistant.pending = {"kind": "plan", "plan": b["plan"]}
+    send_all({"type": "briefing", "show": True, **b})
+    memory.journal_add("greeting", " ".join([b["title"]] + b["lines"]))
+    if settings["greeting_voice"]:
+        speaker.say(briefing.spoken(b))
+
+
+def scheduler():
+    last_maint = None
+    wrapup_offered = None
+    while True:
+        now = dt.datetime.now()
+        try:
+            for t in tasks.due_reminders(now):
+                send_all({"type": "banner", "kind": "reminder", "title": "Reminder", "text": t["title"], "task": t})
+                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+                memory.journal_add("reminder", t["title"])
+                if settings["tts_enabled"]:
+                    speaker.say(f"Reminder: {t['title']}")
+            if session_started.is_set():
+                session_started.clear()
+                if briefing.should_greet(now, in_call=state["in_call"]):
+                    threading.Thread(target=greet_now, daemon=True).start()
+            if last_maint != now.date():
+                last_maint = now.date()
+                activity.prune(int(settings["activity_retention_days"]))
+                memory.prune()
+                threading.Thread(target=memory.ensure_vectors, daemon=True).start()
+            end = (memory.profile.get("work_end") or "18:00")
+            if wrapup_offered != now.date() and now.strftime("%H:%M") >= end and activity.data and \
+                    activity.data.get("last_active") and time.time() - activity.data["last_active"] < 600:
+                wrapup_offered = now.date()
+                send_all({"type": "banner", "kind": "wrapup", "title": "Wrapping up for today?",
+                          "text": "I can summarise what you did and what's left for tomorrow."})
+        except Exception as e:
+            print("[Scheduler]", e)
+        time.sleep(10)
+
+
+# --------------------------------------------------------------- websocket
+async def ws_handler(ws):
+    clients.add(ws)
+    print("[HUD] connected")
+    await ws.send(json.dumps(full_hello(), default=str))
+    loop = asyncio.get_running_loop()
+
+    def bg(fn, *a):
+        loop.run_in_executor(None, fn, *a)
+
+    try:
+        async for message in ws:
+            try:
+                d = json.loads(message)
+            except ValueError:
+                continue
+            t = d.get("type")
+            if t in ("chat", "execute_command"):
+                text = (d.get("text") or d.get("command") or "").strip()
+                if text:
+                    llm_prewarm()
+                    assistant.handle(text, "typed")
+            elif t == "interrupt":
+                assistant.interrupt()
+            elif t == "tts_test":
+                speaker.interrupt()
+                name = memory.profile.get("preferred_name") or memory.profile.get("name") or ""
+                speaker.say(f"Hi{' ' + name if name else ''}! This is how I sound. I'm ready when you are.")
+            elif t == "push_to_talk":
+                assistant.interrupt()
+                voice.arm(float(d.get("seconds", 7)))
+                llm_prewarm()
+            elif t == "cancel_listen":
+                voice.disarm()
+                state["voice_status"] = "Ready"
+            elif t == "toggle_gestures":
+                if not settings["gestures_enabled"]:
+                    settings.update({"gestures_enabled": True})
+                    toast("Gestures on — camera starting", True, "gestures")
+                else:
+                    set_gestures_paused(not state["gestures_paused"])
+                    toast("Gestures paused" if state["gestures_paused"] else "Gestures resumed", True, "gestures")
+            elif t == "update_settings":
+                settings.update(d.get("settings", {}))
+            elif t == "request":
+                what = d.get("what")
+                if what == "today":
+                    await ws.send(json.dumps(today_payload(), default=str))
+                elif what == "activity":
+                    await ws.send(json.dumps({"type": "activity", "summary": activity.summary(d.get("day")),
+                                              "routine": memory.profile.get("routine", {})}, default=str))
+                elif what == "models":
+                    await ws.send(json.dumps(models_payload(), default=str))
+                elif what == "briefing":
+                    bg(lambda: send_all({"type": "briefing", "show": True, **briefing.build()}))
+                elif what == "wrapup":
+                    bg(lambda: send_all({"type": "wrapup", **briefing.wrap_up()}))
+            # tasks
+            elif t == "task_add" and d.get("text"):
+                task = tasks.add_from_text(d["text"], source="typed")
+                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+                toast(f"Added “{task['title']}”" + (f" — {human_time(task['remind_at'])}" if task["remind_at"] else ""))
+            elif t == "task_update":
+                tasks.update(d.get("id"), **{k: v for k, v in d.items() if k in ("title", "done", "remind_at")})
+                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+            elif t == "task_delete":
+                tasks.delete(d.get("id"))
+                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+            elif t == "task_snooze":
+                tasks.snooze(d.get("id"), int(d.get("minutes", 10)))
+                send_all({"type": "tasks", "tasks": tasks.open_tasks()})
+            # notes
+            elif t in ("note_add", "add_note") and d.get("text"):
+                on_agent_note(d["text"].strip())
+            elif t in ("note_delete", "delete_note"):
+                notes.delete(d.get("id"))
+                send_all({"type": "notes", "notes": notes.items})
+            # memory & profile
+            elif t == "memory_add" and d.get("text"):
+                memory.add(d["text"], d.get("category", "fact"), int(d.get("importance", 4)), source="manual")
+            elif t == "memory_update":
+                memory.update(d.get("id"), **{k: v for k, v in d.items() if k in ("text", "importance", "category", "pinned")})
+            elif t == "memory_delete":
+                memory.delete(d.get("id"))
+            elif t == "memory_forget_all":
+                memory.forget_all()
+            elif t == "profile_update":
+                memory.update_profile(d.get("profile", {}))
+            elif t == "export_data":
+                p = storage.path(f"export-{storage.today()}.json")
+                storage.write_json(p, {**memory.export(), "tasks": tasks.items, "notes": notes.items})
+                os.startfile(os.path.dirname(p))
+            elif t == "open_data_folder":
+                os.startfile(storage.data_dir())
+            elif t == "delete_all_data":
+                bg(delete_all_data)
+            # meeting
+            elif t == "meeting_start" and not meeting.recording:
+                meeting.start(d.get("title"))
+                toast("Taking meeting notes", True, "meeting")
+            elif t == "meeting_stop" and meeting.recording:
+                bg(assistant._finish_meeting, "en", False)
+            # routine
+            elif t == "start_my_day":
+                assistant.pending = None
+                assistant.handle("start my day", "typed")
+            elif t == "dismiss_briefing":
+                assistant.pending = None
+            # onboarding & models
+            elif t == "scan_system":
+                bg(lambda: send_all({"type": "scan", **system_scan.scan(agent.apps)}))
+            elif t == "onboarding_complete":
+                bg(complete_onboarding, d)
+            elif t == "model_pull" and d.get("name"):
+                bg(pull_model, d["name"])
+            elif t == "model_select" and d.get("name"):
+                settings.update({"llm_model": d["name"]})
+    except websockets.ConnectionClosed:
+        pass
+    finally:
+        clients.discard(ws)
+
 
 async def broadcast_state():
+    last, tick = None, 0
     while True:
         if clients:
-            message = json.dumps(current_state)
-            websockets.broadcast(clients, message)
-        await asyncio.sleep(1/30) # 30 FPS broadcast rate
+            state["voice_armed"] = voice.armed
+            state["mic_level"] = round(voice.level, 4)
+            state["recording"] = meeting.recording
+            if assistant.working and not speaker.speaking:
+                state["assistant"] = "thinking"
+            elif not assistant.working and not speaker.speaking and state["assistant"] != "idle":
+                state["assistant"] = "idle"
+            msg = json.dumps({"type": "state_update", **state})
+            if msg != last:
+                websockets.broadcast(clients, msg)
+                last = msg
+            tick += 1
+            if tick % 150 == 0:          # every ~5 s
+                websockets.broadcast(clients, json.dumps(models_payload(), default=str))
+        await asyncio.sleep(1 / 30)
+
 
 async def run_server():
-    async with websockets.serve(ws_handler, "localhost", 8765):
-        await broadcast_state()
+    global ws_loop
+    ws_loop = asyncio.get_running_loop()
+    try:
+        async with websockets.serve(ws_handler, "localhost", PORT, max_size=8 * 1024 * 1024):
+            print(f"[HUD] WebSocket server on ws://localhost:{PORT}")
+            await broadcast_state()
+    except OSError as e:
+        print("[HUD] Could not start WebSocket server (is another engine running?):", e)
+        os._exit(1)
 
-def start_ws_server():
-    print("Starting WebSocket server on ws://localhost:8765")
-    asyncio.run(run_server())
 
-def main_cv_loop():
-    global current_state
-    
-    # Initialize Camera
-    cap = cv2.VideoCapture(0)
-    # Set resolution
-    wCam, hCam = 640, 480
-    cap.set(3, wCam)
-    cap.set(4, hCam)
-    
-    # Initialize screen size
-    wScr, hScr = pyautogui.size()
-    
-    # Initialize Modules
-    tracker = HandTracker(detection_con=0.7, max_hands=1)
-    recognizer = GestureRecognizer()
-    mouse = MouseController(wScr, hScr)
-    
-    import time
-    pTime = 0
-    
-    print("Starting Computer Vision Engine...")
-    
+# ------------------------------------------------------------------ camera
+def open_camera(index):
+    backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+    cap = cv2.VideoCapture(index, backend)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    return cap if cap.isOpened() else None
+
+
+def on_gesture_event(name, data=None):
+    send_all({"type": "gesture_event", "event": name, "data": data})
+    if name in ("palm_hold", "fist") and data:
+        if data == "listen":
+            assistant.interrupt()
+            voice.arm(7)
+            llm_prewarm()
+            toast("Listening — say a command", True, "gesture")
+        else:
+            assistant.handle(data, "gesture")
+
+
+def camera_loop():
+    global gestures
+    from src.vision.hand_tracker import HandTracker
+
+    mouse = MouseController()
+    sw, sh = mouse.screen_size()
+    tracker = None
+    recognizer = GestureRecognizer(settings["pinch_sensitivity"])
+    gestures = GestureController(mouse, sw, sh, settings.as_dict(), on_event=on_gesture_event)
+    settings.on_change(lambda c: recognizer.set_pinch_sensitivity(settings["pinch_sensitivity"])
+                       if "pinch_sensitivity" in c else None)
+    cap, cam_index, preview_open, fails = None, None, False, 0
+    last_hand, p_time = time.time(), time.time()
+
     while True:
-        success, img = cap.read()
-        if not success:
+        if not settings["gestures_enabled"]:
+            if cap is not None:
+                cap.release()
+                cap = None
+                gestures.hand_lost()
+            if preview_open:
+                cv2.destroyWindow(PREVIEW_TITLE)
+                cv2.waitKey(1)
+                preview_open = False
+            state.update(camera="off", hand_visible=False, gesture="NONE")
+            time.sleep(0.5)
             continue
-            
-        img = tracker.find_hands(img)
-        lm_list = tracker.find_position(img, draw=False)
-        
-        gesture = "NONE"
-        cx, cy = 0, 0
-        
-        if len(lm_list) != 0:
-            gesture = recognizer.detect_gesture(lm_list)
-            
-            # Use Index finger tip (ID 8) for cursor location
-            cx, cy = lm_list[8][1], lm_list[8][2]
-            
-            # Map gesture to OS Actions
-            if gesture == "POINTING":
-                # Move cursor
-                mouse.move(cx, cy, wCam, hCam)
-                
-            elif gesture == "PINCH_INDEX":
-                # Click (with a simple debouncing mechanism in reality)
-                mouse.click()
-                # Pause slightly to avoid multiple clicks
-                time.sleep(0.2)
-        
-        # Calculate FPS
-        cTime = time.time()
-        fps = 1 / (cTime - pTime) if (cTime - pTime) > 0 else 0
-        pTime = cTime
-        
-        # Update global state for UI
-        current_state["gesture"] = gesture
-        current_state["x"] = cx
-        current_state["y"] = cy
-        current_state["fps"] = int(fps)
-        
-        # Draw info on frame (for local debugging)
-        cv2.putText(img, f'FPS: {int(fps)}', (20, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-        cv2.putText(img, f'Gesture: {gesture}', (20, 100), cv2.FONT_HERSHEY_PLAIN, 3, (0, 255, 0), 3)
-        
-        # Show Image
-        cv2.imshow("Snap Motion OS - Debug View", img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if tracker is None:
+            tracker = HandTracker(max_hands=1)
+        if cap is None or settings["camera_index"] != cam_index:
+            if cap is not None:
+                cap.release()
+            cam_index = settings["camera_index"]
+            cap = open_camera(cam_index)
+            if cap is None:
+                state["camera"] = "unavailable"
+                time.sleep(2)
+                continue
+        ok, img = cap.read()
+        if not ok:
+            fails += 1
+            if fails > 30:
+                state["camera"] = "unavailable"
+                cap.release()
+                cap, fails = None, 0
+            time.sleep(0.03)
+            continue
+        fails = 0
+        state["camera"] = "ok"
+        img = cv2.flip(img, 1)
+        h, w = img.shape[:2]
+        show = settings["show_camera_preview"]
+        img = tracker.find_hands(img, draw=show)
+        lm = tracker.find_position(img)
+        if lm and len(lm) >= 21:
+            last_hand = time.time()
+            gestures.update(recognizer.detect_gesture(lm), lm, w, h)
+        else:
+            recognizer.detect_gesture([])
+            gestures.hand_lost()
+        now = time.time()
+        fps = 1 / max(1e-3, now - p_time)
+        p_time = now
+        state.update({"gesture": gestures.pose, "fps": int(state["fps"] * 0.8 + fps * 0.2),
+                      "cursor": list(gestures.cursor), "dragging": gestures.dragging,
+                      "hand_visible": bool(lm), "gestures_paused": gestures.paused})
+        if show:
+            l, t, r, b = gestures.control_box()
+            cv2.rectangle(img, (int(l * w), int(t * h)), (int(r * w), int(b * h)), (255, 0, 255), 2)
+            label = "PAUSED" if gestures.paused else gestures.pose + (" (DRAG)" if gestures.dragging else "")
+            cv2.putText(img, label, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            cv2.imshow(PREVIEW_TITLE, cv2.resize(img, (320, 240)))
+            if not preview_open:
+                cv2.setWindowProperty(PREVIEW_TITLE, cv2.WND_PROP_TOPMOST, 1)
+                preview_open = True
+            cv2.waitKey(1)
+            if cv2.getWindowProperty(PREVIEW_TITLE, cv2.WND_PROP_VISIBLE) < 1:
+                settings.update({"show_camera_preview": False})
+        elif preview_open:
+            cv2.destroyWindow(PREVIEW_TITLE)
+            cv2.waitKey(1)
+            preview_open = False
+        if now - last_hand > settings["idle_sleep_seconds"]:
+            time.sleep(0.15)
 
-    cap.release()
-    cv2.destroyAllWindows()
+
+def startup():
+    # the greeting itself is triggered by the activity tracker's session start
+    llm.ensure_server()
+    send_all(models_payload())
+
 
 if __name__ == "__main__":
-    # Start WebSocket server in a separate thread
-    ws_thread = threading.Thread(target=start_ws_server, daemon=True)
-    ws_thread.start()
-    
-    # Run the CV loop on the main thread (OpenCV requires this)
-    main_cv_loop()
+    apply_voice_mode()
+    voice.start()
+    activity.start()
+    threading.Thread(target=lambda: asyncio.run(run_server()), daemon=True).start()
+    threading.Thread(target=scheduler, daemon=True).start()
+    threading.Thread(target=startup, daemon=True).start()
+    try:
+        camera_loop()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if gestures:
+            gestures.release_all()
+        activity.stop()
+        voice.stop()

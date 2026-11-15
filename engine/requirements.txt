@@ -1,5 +1,12 @@
 mediapipe>=0.10.30
 opencv-python
-pyautogui
-websockets
 numpy
+pyautogui
+pyperclip
+websockets>=12
+sounddevice
+soundcard>=0.4.6        # meeting notes: system-audio (WASAPI loopback) capture
+faster-whisper>=1.0
+kokoro-onnx>=0.6.1      # natural offline voice (model auto-downloads, ~120 MB)
+requests
+# AI brain: install Ollama (https://ollama.com) — Snap downloads the model from Settings/onboarding
