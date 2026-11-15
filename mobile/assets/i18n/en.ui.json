@@ -576,6 +576,16 @@
     "done_title": "You’re all set, {name}!",
     "done_title_anon": "You’re all set!",
     "done_sub": "{assistant} is ready. Change anything later in Profile.",
-    "go": "Let’s go"
+    "go": "Let’s go",
+    "restricted_title": "One quick unlock first",
+    "restricted_body": [
+      "Snapy was installed as an APK, so Android asks for a one-time unlock before you can turn on the Reel counter:",
+      "1. Tap “Open App info”.",
+      "2. Tap ⋮ (top right).",
+      "3. Choose “Allow restricted settings”.",
+      "4. Come back here and tap “Agree and continue” again."
+    ],
+    "go_settings": "Go to Settings",
+    "step_of": "{n}/{total}"
   }
 }

@@ -177,6 +177,20 @@ class RealCountController(
     }
 
     // ------------------------------------------------------------------ events from the host
+    private fun isShortVideoApp(pkg: String): Boolean {
+        val p = pkg.lowercase()
+        return p.contains("instagram") ||
+               p.contains("youtube") ||
+               p.contains("facebook") ||
+               p.contains("tiktok") ||
+               p.contains("musically") ||
+               p.contains("snapchat") ||
+               p.contains("reddit") ||
+               p.contains("moj") ||
+               p.contains("josh") ||
+               (socialApps[pkg]?.opt("short_video") != null)
+    }
+
     fun onWindow(pkg: String, cls: String) {
         if (pkg == ctx.packageName || pkg == "com.android.systemui" || pkg == imePkg) return     // keyboard isn't an app switch
         if (pkg == currentPkg) { if (cls.isNotEmpty()) currentClass = cls; return }
@@ -187,15 +201,20 @@ class RealCountController(
         val app = socialApps[pkg]
         inAppSince = if (app != null && !app.isNull("short_video")) now else 0L
         game = isGame(pkg)
-        val isSocial = app != null && !app.isNull("short_video")
+        val isSocial = isShortVideoApp(pkg)
 
         // 1. Live dynamic color palette extraction from launcher icon (zero hardcoding)
         val palette = AppPaletteExtractor.extract(ctx, pkg)
         chip.setDynamicPalette(palette)
 
-        // 2. Default to app feed mode (showing app icon + screen time)
-        val currentAppMs = appMs[pkg] ?: 0L
-        chip.setAppFeedMode(pkg, currentAppMs)
+        // 2. Set Reel counter mode for short video apps or screen time for utility apps
+        if (isSocial) {
+            val totalReels = store.totalReels()
+            chip.setReelFeedMode(pkg, totalReels)
+        } else {
+            val currentAppMs = appMs[pkg] ?: 0L
+            chip.setAppFeedMode(pkg, currentAppMs)
+        }
 
         if (app != null) {
             opens.open(pkg, now)
@@ -204,6 +223,8 @@ class RealCountController(
         applyVisibility()
         render()
     }
+
+    fun hidePublic() = main.post { chip.remove() }
 
     fun setAppPalette(colors: IntArray?) = chip.setDynamicPalette(colors)
     fun setReelFeedMode(pkg: String, reels: Int) = chip.setReelFeedMode(pkg, reels)

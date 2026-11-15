@@ -45,6 +45,11 @@ function h(tag, attrs = {}, ...children) {
     for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
     return e;
 }
+// meeting transcript: [{t, who, text}] (core/schemas/note), or one string in notes from older versions
+function transcriptText(v) {
+    if (!Array.isArray(v)) return v || '';
+    return v.map((s) => { const t = Math.round(s.t || 0); return '[' + String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0') + '] ' + (s.who || '') + ': ' + (s.text || ''); }).join(String.fromCharCode(10));
+}
 function fmtDur(sec) {
     sec = Math.round(sec || 0);
     const hh = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60);
@@ -548,7 +553,7 @@ function renderNoteDetail(n) {
                 ...list('Summary', n.summary), ...list('Key points', n.key_points), ...list('Decisions', n.decisions),
                 n.actions && n.actions.length ? [h('h4', {}, 'Action items'), ...n.actions.map((a) => actionRow(n, a))] : [],
                 n.bookmarks && n.bookmarks.length ? [h('h4', {}, 'Bookmarks'), h('ul', {}, ...n.bookmarks.map((b) => h('li', {}, `${Math.floor(b.t / 60)}:${String(b.t % 60).padStart(2, '0')} — ${b.label}`)))] : []),
-            h('div', {}, h('h4', {}, 'Transcript'), h('pre', { class: 'transcript' }, n.transcript || '—')));
+            h('div', {}, h('h4', {}, 'Transcript'), h('pre', { class: 'transcript' }, transcriptText(n.transcript) || '—')));
     } else {
         detailContent = h('div', { style: 'margin: 14px 0;' },
             h('pre', { class: 'transcript', style: 'max-height: none;' }, n.text || '—'));

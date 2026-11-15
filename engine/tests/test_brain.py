@@ -284,8 +284,11 @@ class AssistantTests(unittest.TestCase):
         note = self.a.notes.items[0]
         self.assertEqual(note["kind"], "meeting")
         self.assertEqual(note["title"], "API sync")
-        self.assertIn("Rahul will update the README", note["transcript"])
-        self.assertIn("You: Rahul will update the README", note["transcript"])   # mic = "You"
+        from src.life.notes import transcript_text
+        self.assertIsInstance(note["transcript"], list)                        # core/schemas/note shape
+        self.assertIn("You", [s["who"] for s in note["transcript"]])           # mic = "You"
+        self.assertIn("You: Rahul will update the README", transcript_text(note["transcript"]))
+        self.assertEqual(transcript_text("legacy text"), "legacy text")         # old notes stay readable
         # action items wait for review instead of silently becoming tasks
         self.assertEqual(self.a.tasks.open_tasks(), [])
         self.assertTrue(note["review_pending"])

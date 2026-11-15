@@ -286,7 +286,8 @@ class MeetingRecorder:
             note = self.notes.add(" ".join(summary[:2]) or "Meeting notes", kind="meeting", title=title,
                                   summary=summary, key_points=result.get("key_points") or [],
                                   decisions=result.get("decisions") or [], actions=actions,
-                                  bookmarks=self.bookmarks, transcript=transcript, duration=duration,
+                                  bookmarks=self.bookmarks, duration=duration,
+                                  transcript=[{"t": s["t"], "who": s["who"], "text": s["text"]} for s in self.segments],
                                   started=started.isoformat(timespec="minutes"), ai_summary=used_ai,
                                   review_pending=bool(actions))
         if self.memory is not None:

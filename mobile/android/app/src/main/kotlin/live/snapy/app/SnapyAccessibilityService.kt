@@ -140,8 +140,8 @@ class SnapyAccessibilityService : AccessibilityService() {
                 volDownTime = 0L
             }
         }
-        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2200L)) {
-            if (now - lastVolTrigger > 3000L) {
+        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2000L)) {
+            if (now - lastVolTrigger > 2500L) {
                 lastVolTrigger = now
                 volUpTime = 0L
                 volDownTime = 0L
@@ -159,7 +159,20 @@ class SnapyAccessibilityService : AccessibilityService() {
                         vib?.vibrate(120)
                     }
                 } catch (_: Exception) {}
-                openSheet()
+
+                // Toggle Snapy Power ON / OFF
+                val currentEnabled = prefs.bool("chip_enabled", true)
+                val newState = !currentEnabled
+                prefs.update(JSONObject().put("chip_enabled", newState))
+                if (newState) {
+                    showPillPublic()
+                    RealCountController.active?.reload()
+                    Toast.makeText(this, "Snapy Powered ON · Camera halo active", Toast.LENGTH_SHORT).show()
+                } else {
+                    hidePillPublic()
+                    RealCountController.active?.reload()
+                    Toast.makeText(this, "Snapy Powered OFF · Camera halo paused", Toast.LENGTH_SHORT).show()
+                }
             }
             return true
         }
@@ -211,8 +224,23 @@ class SnapyAccessibilityService : AccessibilityService() {
     }
 
     fun showPillPublic() = main.post { rc?.reload() }
+    fun hidePillPublic() = main.post { rc?.hidePublic() }
 
     private var appSessionStart = 0L
+
+    private fun isShortVideoApp(pkg: String): Boolean {
+        val p = pkg.lowercase()
+        return p.contains("instagram") ||
+               p.contains("youtube") ||
+               p.contains("facebook") ||
+               p.contains("tiktok") ||
+               p.contains("musically") ||
+               p.contains("snapchat") ||
+               p.contains("reddit") ||
+               p.contains("moj") ||
+               p.contains("josh") ||
+               (socialApps[pkg]?.opt("short_video") != null)
+    }
 
     private fun onWindow(pkg: String) {
         if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
@@ -245,30 +273,12 @@ class SnapyAccessibilityService : AccessibilityService() {
     }
 
     private fun onScroll(pkg: String, e: AccessibilityEvent) {
-        val app = socialApps[pkg] ?: return
-        if (app.isNull("short_video")) return
-        val screenH = resources.displayMetrics.heightPixels
-        // Only full-screen vertical feeds (the reels/shorts pager), not comment lists or tabs
-        val src = e.source
-        if (src != null) {
-            val r = Rect()
-            src.getBoundsInScreen(r)
-            if (r.height() < screenH * 0.45) return
-        }
+        if (!isShortVideoApp(pkg)) return
         val now = System.currentTimeMillis()
-        val pageChanged = when {
-            e.fromIndex >= 0 && e.toIndex >= 0 && e.itemCount > 1 -> {
-                val prev = lastIndex[pkg]
-                lastIndex[pkg] = e.fromIndex
-                prev != null && prev != e.fromIndex
-            }
-            Build.VERSION.SDK_INT >= 28 -> abs(e.scrollDeltaY) >= 20
-            else -> true
-        }
-        if (!pageChanged) return
         val last = lastReelAt[pkg] ?: 0L
-        if (now - last < minDwellMs) return                      // a flick past, not a watch
-        if (rc?.shouldCount(pkg, src?.viewIdResourceName ?: "") == false) return   // creator mode / paused counting
+        if (now - last < 500L) return                      // at least 500ms dwell between swipes
+        if (rc?.shouldCount(pkg, e.source?.viewIdResourceName ?: "") == false) return
+
         lastReelAt[pkg] = now
         if (reelTimeFrom == 0L) reelTimeFrom = now
         store.addReel(pkg)
@@ -281,7 +291,7 @@ class SnapyAccessibilityService : AccessibilityService() {
         val currentReels = store.reels(pkg)
         if (lockEnabled && limit > 0 && currentReels >= limit) {
             performGlobalAction(GLOBAL_ACTION_BACK)
-            val label = app.optString("label", pkg)
+            val label = socialApps[pkg]?.optString("label") ?: pkg
             main.post {
                 Toast.makeText(this@SnapyAccessibilityService, "🚫 $label reels locked for today ($currentReels/$limit reached). Stay focused!", Toast.LENGTH_LONG).show()
             }

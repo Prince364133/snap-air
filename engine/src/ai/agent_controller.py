@@ -748,6 +748,13 @@ class AgentController:
         def _(m, orig):
             if re.match(r"(a )?note\b", m.group(1)):
                 return None   # "write a note ..." is a note, not typing
+            if m.group(0).startswith("write"):
+                # "write me a poem about rain" is a request for the AI, not text to type: the
+                # shared core rule (intents phone "type.text") decides, same as on the phone
+                from src.brain.phone_intents import parse as phone_parse
+                hit = phone_parse(m.group(0))
+                if not hit or hit.get("kind") != "type":
+                    return None
             text = self.payload(orig, r"^\W*(?:type|write|dictate)\W+(.+)$") or m.group(1)
             o.type_text(text)
             return Result(True, f"Typed \"{text[:40]}\"", "type")

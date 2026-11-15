@@ -562,10 +562,16 @@ class ChipOverlay(
 
         // 1. Camera Touch Area & Punch-Hole Halo Ring
         val haloBox = FrameLayout(ctx).apply {
-            val sz = dp(32f)
-            layoutParams = LinearLayout.LayoutParams(sz, sz)
+            val w = dp(64f)
+            val h = dp(42f)
+            layoutParams = LinearLayout.LayoutParams(w, h)
             clipChildren = false
             clipToPadding = false
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                toggleCapsuleStrip()
+            }
         }
         haloContainer = haloBox
 
@@ -621,10 +627,11 @@ class ChipOverlay(
         socialBadge = badge
         r.addView(badge)
 
+        attachGestures(r)
         attachGestures(haloBox)
 
         val p = WindowManager.LayoutParams(
-            dp(54f),
+            dp(64f),
             WindowManager.LayoutParams.WRAP_CONTENT,
             windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -753,8 +760,9 @@ class ChipOverlay(
                     layoutParams = FrameLayout.LayoutParams(haloSize, haloSize, Gravity.CENTER)
                 }
 
-                val touchW = maxOf(haloSize, dp(48f))
-                haloContainer?.layoutParams = LinearLayout.LayoutParams(touchW, haloSize)
+                val touchW = maxOf(haloSize + dp(32f), dp(64f))
+                val touchH = maxOf(haloSize + dp(14f), dp(42f))
+                haloContainer?.layoutParams = LinearLayout.LayoutParams(touchW, touchH)
                 p.x = (cutout.cx - touchW / 2).coerceIn(0, (dm.widthPixels - touchW).coerceAtLeast(0))
                 p.y = (cutout.cy - haloSize / 2).coerceAtLeast(0)
             }
@@ -1040,18 +1048,18 @@ class ChipOverlay(
         val dm = ctx.resources.displayMetrics
         val capsuleW = minOf(dm.widthPixels - dp(24f), dp(320f))
 
-        // Horizontal obsidian capsule
+        // Horizontal obsidian/graphite capsule
         val stripRoot = LinearLayout(ctx).apply {
             id = android.R.id.content
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8f), dp(4f), dp(10f), dp(4f))
             background = GradientDrawable().apply {
-                cornerRadius = dp(22f).toFloat()
-                setColor(0xF212131A.toInt()) // Deep obsidian glass
-                setStroke(dp(1f), 0x24FFFFFF) // 1dp subtle hairline
+                cornerRadius = dp(20f).toFloat()
+                setColor(0xF61C1D24.toInt()) // Sleek matte black & greyish texture
+                setStroke(dp(1.2f), 0x444A5060.toInt()) // Subtle dark graphite border
             }
-            elevation = dp(12f).toFloat()
+            elevation = dp(10f).toFloat()
         }
 
         // 1. Left Target: Snapy AI Living Orb (Touch -> opens AI Bottom Sheet)
@@ -1202,8 +1210,8 @@ class ChipOverlay(
         val topY = if (cutout.hasCutout) cutout.cy + (cutout.size / 2) + dp(6f) else dp(44f)
 
         val p = WindowManager.LayoutParams(
-            capsuleW,
-            dp(44f),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(42f),
             windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -1233,12 +1241,11 @@ class ChipOverlay(
             return
         }
 
-        // Fluid spring drop and expand from camera
-        stripRoot.pivotX = capsuleW / 2f
+        // Fluid spring drop and expand centered below camera
         stripRoot.pivotY = 0f
-        stripRoot.scaleX = 0.25f
-        stripRoot.scaleY = 0.1f
-        stripRoot.translationY = -dp(18f).toFloat()
+        stripRoot.scaleX = 0.5f
+        stripRoot.scaleY = 0.2f
+        stripRoot.translationY = -dp(14f).toFloat()
         stripRoot.alpha = 0f
 
         stripRoot.animate()
@@ -1246,60 +1253,32 @@ class ChipOverlay(
             .scaleY(1.0f)
             .translationY(0f)
             .alpha(1.0f)
-            .setDuration(260)
+            .setDuration(220)
             .setInterpolator(DecelerateInterpolator(2.0f))
             .start()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun attachGestures(v: View) {
-        val slop = ViewConfiguration.get(ctx).scaledTouchSlop
         val longMs = ViewConfiguration.getLongPressTimeout().toLong()
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
-        var dragging = false; var longFired = false
-        var vt: VelocityTracker? = null
+        var longFired = false
         val longPress = Runnable { longFired = true; cb.onLongPress() }
         v.setOnTouchListener { _, e ->
-            val p = lp ?: return@setOnTouchListener false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y
-                    dragging = false; longFired = false
-                    vt?.recycle(); vt = VelocityTracker.obtain().also { it.addMovement(e) }
+                    longFired = false
                     main.postDelayed(longPress, longMs)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    vt?.addMovement(e)
-                    val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!dragging && (abs(dx) > slop * 2.5f || abs(dy) > slop * 2.5f)) { dragging = true; main.removeCallbacks(longPress) }
-                    if (dragging && !longFired) {
-                        p.x = (startX + dx).toInt().coerceAtLeast(0); p.y = (startY + dy).toInt().coerceAtLeast(0)
-                        try { wm.updateViewLayout(v, p) } catch (_: Exception) { }
-                    }
                 }
                 MotionEvent.ACTION_UP -> {
                     main.removeCallbacks(longPress)
-                    val t = vt; vt = null
-                    t?.addMovement(e); t?.computeCurrentVelocity(1000)
-                    val vy = t?.yVelocity ?: 0f
-                    t?.recycle()
-                    val dy = e.rawY - downY; val dx = e.rawX - downX
-                    val dpPerS = vy / ctx.resources.displayMetrics.density
-                    when {
-                        longFired -> {}
-                        dragging && dpPerS > 900 && dy > 0 && abs(dx) < dy -> {
-                            p.x = startX; p.y = startY
-                            try { wm.updateViewLayout(v, p) } catch (_: Exception) { }
-                            cb.onSwipeDown()
-                        }
-                        dragging -> { prefs.update(org.json.JSONObject().put("chip_x", p.x).put("chip_y", p.y)); y = p.y }
-                        else -> {
-                            cameraHalo?.nextPalette()
-                            toggleCapsuleStrip()
-                        }
+                    if (!longFired) {
+                        cameraHalo?.nextPalette()
+                        toggleCapsuleStrip()
                     }
                 }
-                MotionEvent.ACTION_CANCEL -> { main.removeCallbacks(longPress); vt?.recycle(); vt = null }
+                MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(longPress)
+                }
             }
             true
         }

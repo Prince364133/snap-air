@@ -272,9 +272,18 @@ The AI answers `{say, tool, args}` (`say` first so speech can start while stream
 
 JSON Schema draft 2020-12: `memory_fact`, `task`, `note`, `activity_day`, `attention_day`,
 `settings_profile`. Every record has `schema_version` (integer = the schema's `x-schema-version`).
-Records with `x-synced: true` also carry `id`, `updated` (ISO local time), `device`, `deleted`
+Records with `x-synced: true` also carry `id`, `updated` (ISO-8601 in UTC with an explicit
+offset, e.g. `2026-11-16T04:30:00+00:00`; never naive local time, so devices in different
+time zones or across a DST change compare correctly), `device`, `deleted`
 (tombstone; deletions are kept so they sync). Merge rule: newer `updated` wins; on a tie the
 lexically greater `device`. Runtimes must accept and preserve unknown fields.
+
+Shapes both runtimes store (and must read): a meeting note's `transcript` is an array of
+`{t, who, text}` segments (`t` = seconds from the start). Notes written before 2026-11 by the
+Windows engine hold one string there; readers accept both (`src/life/notes.transcript_text`,
+the HUD's `transcriptText`). A memory's `category` is always one of the schema's enum values:
+intent rules that extract memories use those values only (`Works as …` / `Works at …` are
+`fact`), and an unknown category is stored as `fact`.
 
 ## 8. Strings (`i18n/`)
 

@@ -8,6 +8,19 @@ import uuid
 from src import storage
 
 
+def transcript_text(value):
+    """A meeting note's transcript as readable lines. The stored shape is the schema's
+    (core/schemas/note: [{"t", "who", "text"}]); notes written before 2026-11 hold one string."""
+    if isinstance(value, str):
+        return value
+    lines = []
+    for s in value or []:
+        if isinstance(s, dict):
+            m, sec = divmod(int(s.get("t") or 0), 60)
+            lines.append(f"[{m:02d}:{sec:02d}] {s.get('who', '')}: {s.get('text', '')}")
+    return "\n".join(lines)
+
+
 class NoteStore:
     def __init__(self, file=None):
         self.file = file or storage.path("notes.json")

@@ -922,6 +922,71 @@
    "expect": {
     "action": null
    }
+  },
+  {
+   "id": "phone_intents.085",
+   "input": "write me a poem about rain",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.086",
+   "input": "write a story about a dragon",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.087",
+   "input": "write an email to my boss about leave",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.088",
+   "input": "write us a song",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": null
+   }
+  },
+  {
+   "id": "phone_intents.089",
+   "input": "write hello in the search box",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "hello in the search box"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.090",
+   "input": "type a quick note",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "a quick note"
+    }
+   }
+  },
+  {
+   "id": "phone_intents.091",
+   "input": "write Rahul is late",
+   "now": "2026-11-16T10:00:00",
+   "expect": {
+    "action": {
+     "kind": "type",
+     "text": "Rahul is late"
+    }
+   }
   }
  ]
 }

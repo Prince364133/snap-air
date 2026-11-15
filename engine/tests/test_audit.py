@@ -338,5 +338,45 @@ class AiCommandConfirmTests(unittest.TestCase):
         self.assertIsNone(a.pending)                                # everyday commands still just run
 
 
+# ---------------------------------------------------------------- C-01..C-04 shared core data
+class CoreDataTests(unittest.TestCase):
+    def test_memory_rule_categories_are_in_the_schema_enum(self):
+        from src import core_loader as core
+        enum = set(core.schema("memory_fact")["properties"]["category"]["enum"])
+        idx = core.read_json("intents/index.json")
+        bad = []
+        for f in idx["files"]:
+            for domain, entries in core.read_json(f"intents/{f}").items():
+                for e in entries if isinstance(entries, list) else []:
+                    if isinstance(e, dict) and "category" in e and e["category"] not in enum:
+                        bad.append((f, domain, e.get("id"), e["category"]))
+        self.assertEqual(bad, [])
+
+    def test_desktop_write_leaves_creative_requests_to_the_ai(self):
+        from src.ai.agent_controller import AgentController
+        from tests.test_agent import FakeApps, FakeOS
+        fos = FakeOS()
+        a = AgentController(settings={}, os_actions=fos, app_index=FakeApps())
+        for t in ("write me a poem about rain", "write a story about a dragon"):
+            fos.calls.clear()
+            self.assertNotEqual(a.execute_intent(t).action, "type", t)
+            self.assertFalse([c for c in fos.calls if c and c[0] == "type"], t)
+        self.assertEqual(a.execute_intent("write hello world").action, "type")
+        self.assertEqual(a.execute_intent("type a quick note for later").action, "type")
+
+    def test_meeting_note_transcript_matches_schema(self):
+        from src.life.meeting import MeetingRecorder
+        from src.life.notes import NoteStore, transcript_text
+        notes = NoteStore(os.path.join(tempfile.mkdtemp(dir=_env.ROOT), "notes.json"))
+        m = MeetingRecorder(notes=notes)
+        m.capture_devices = False
+        m.start("Standup", sources=("mic",))
+        m.add_text("mic", "We ship the API on Friday.")
+        out = m.stop(wait=False)
+        tr = out["note"]["transcript"]
+        self.assertEqual(tr, [{"t": tr[0]["t"], "who": "You", "text": "We ship the API on Friday."}])
+        self.assertIn("You: We ship the API on Friday.", transcript_text(tr))
+
+
 if __name__ == "__main__":
     unittest.main()

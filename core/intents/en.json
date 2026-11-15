@@ -26,7 +26,7 @@
       {"id": "torch.state_first", "order": 150, "intent": "torch", "pattern": "^(?:turn |switch )?(?<state>on|off) (?:the )?(?:torch|flash ?light)$"},
       {"id": "torch.state_last", "order": 160, "intent": "torch", "pattern": "^(?:turn |switch )?(?:the )?(?:torch|flash ?light) (?<state>on|off|jalao|band karo|band)$"},
       {"id": "panel.open", "order": 170, "intent": "panel", "pattern": "^(?:turn |switch )?(?:on |off )?(?:the )?(?<panel>wi-?fi|wifi|internet|mobile data|data|bluetooth|nfc|volume)(?: on| off)?$"},
-      {"id": "type.text", "order": 180, "intent": "type", "pattern": "^(?:type|write|likho)\\s+(?<text>.+)$"},
+      {"id": "type.text", "order": 180, "intent": "type", "pattern": "^(?:type|likho|write(?=\\s+(?!(?:me|us|him|her|them|a|an|some|my|about)\\b)|\\s.*\\b(?:in|into)\\s+(?:the\\s+)?[\\w ]{0,30}?(?:field|box|bar)\\b))\\s+(?<text>.+)$"},
       {"id": "tap.target", "order": 190, "intent": "tap", "pattern": "^(?:tap|click|press|select|open)(?: on)?(?: the)? (?<target>.+?)(?: on (?:the )?screen)?$"}
     ],
     "phone_tap_open_ok": [

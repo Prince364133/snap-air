@@ -180,7 +180,8 @@ class CoreFormatTests(unittest.TestCase):
         core.reload()
         core.config_tree()                               # raises on a leaf defined in two fragments
         from src import appdata
-        base = json.load(open(appdata._base_file(), encoding="utf-8"))
+        with open(appdata._base_file(), encoding="utf-8") as f:
+            base = json.load(f)
         self.assertEqual(appdata._overlaps(base, core.config_tree()), [])
 
     def test_legacy_appdata_paths(self):
