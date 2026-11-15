@@ -74,6 +74,9 @@ class FakeResp:
     def __exit__(self, *a):
         return False
 
+    def close(self):
+        pass
+
 
 class CloudTests(unittest.TestCase):
     def setUp(self):
@@ -103,7 +106,7 @@ class CloudTests(unittest.TestCase):
         out = "".join(cl.stream([{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}], schema={}))
         self.assertEqual(json.loads(out)["say"], "Hello there!")
         url, kw = self.calls[0]
-        self.assertIn("gemini-2.5-flash:streamGenerateContent", url)
+        self.assertIn(f"{C.PROVIDERS['gemini']['model']}:streamGenerateContent", url)   # default from app.json
         self.assertEqual(kw["headers"]["x-goog-api-key"], "AIzaTESTKEY1234567")
         self.assertEqual(kw["json"]["generationConfig"]["responseMimeType"], "application/json")
         self.assertIn("sys", kw["json"]["systemInstruction"]["parts"][0]["text"])

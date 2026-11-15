@@ -174,5 +174,135 @@ class PullCancelTests(unittest.TestCase):
         self.assertIsNone(llm.last_error)
 
 
+def cloud_for(provider, key="sk-test", **settings):
+    c = CloudLLM({"cloud_provider": provider, **settings})
+    c._online = (9e18, True)
+    return c, mock.patch.object(cloud_mod.secrets_store, "get_key", return_value=key)
+
+
+def capture_posts(responses):
+    """Fake requests.post returning `responses` in order; records (url, body) of each call."""
+    calls = []
+
+    def post(url, json=None, headers=None, **k):
+        calls.append((url, json))
+        return responses[min(len(calls) - 1, len(responses) - 1)]
+    return calls, mock.patch.object(cloud_mod.requests, "post", side_effect=post)
+
+
+OK_OPENAI = FakeResp(body={"choices": [{"message": {"content": "OK"}}]})
+
+
+class ProviderTableTests(unittest.TestCase):
+    def test_every_provider_has_label_url_and_models(self):
+        for name, p in cloud_mod.PROVIDERS.items():
+            self.assertTrue(p.get("label") and p.get("base_url"), name)
+            if not p.get("custom"):
+                self.assertTrue(p["models"] and all(m.get("id") for m in p["models"]), name)
+                self.assertEqual(p["model"], p["models"][0]["id"], name)
+
+    def test_openai_reasoning_model_settings(self):
+        c, keyp = cloud_for("openai")
+        calls, postp = capture_posts([OK_OPENAI])
+        with keyp, postp:
+            c.chat_text([{"role": "user", "content": "hi"}], max_tokens=50, temperature=0.4)
+        body = calls[0][1]
+        self.assertEqual(body["model"], "gpt-6-luna")
+        self.assertEqual(body["max_completion_tokens"], 50)
+        self.assertNotIn("max_tokens", body)
+        self.assertNotIn("temperature", body)
+        self.assertEqual(body["reasoning_effort"], "none")
+
+    def test_gemini_uses_base_url_and_no_temperature(self):
+        c, keyp = cloud_for("gemini")
+        ok = FakeResp(body={"candidates": [{"content": {"parts": [{"text": "OK"}]}}]})
+        calls, postp = capture_posts([ok])
+        with keyp, postp:
+            self.assertEqual(c.chat_text([{"role": "user", "content": "hi"}], temperature=0.4), "OK")
+        url, body = calls[0]
+        self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
+        self.assertNotIn("temperature", body["generationConfig"])
+
+    def test_custom_endpoint_needs_a_model(self):
+        c, keyp = cloud_for("compatible", cloud_base_url="http://gpu.local:8000/v1/")
+        with keyp:
+            self.assertFalse(c.configured())
+            c.settings["cloud_model"] = "llama-3.1-8b"
+            self.assertTrue(c.configured())
+            self.assertEqual(c.base_url, "http://gpu.local:8000/v1")
+
+
+class ModelFallbackTests(unittest.TestCase):
+    def test_retired_model_moves_to_next_and_sticks(self):
+        c, keyp = cloud_for("openai")
+        gone = FakeResp(404, {"error": {"message": "The model `gpt-6-luna` does not exist or you do not have access to it."}})
+        calls, postp = capture_posts([gone, OK_OPENAI, OK_OPENAI])
+        with keyp, postp:
+            self.assertEqual(c.chat_text([{"role": "user", "content": "hi"}], temperature=0.4), "OK")
+            self.assertEqual([b["model"] for _, b in calls], ["gpt-6-luna", "gpt-4o-mini"])
+            fallback = calls[1][1]
+            self.assertEqual(fallback["max_tokens"], 300)          # its own settings, not luna's
+            self.assertEqual(fallback["temperature"], 0.4)
+            self.assertNotIn("reasoning_effort", fallback)
+            self.assertEqual(c.model, "gpt-4o-mini")
+            c.chat_text([{"role": "user", "content": "again"}])
+            self.assertEqual(calls[-1][1]["model"], "gpt-4o-mini")  # no retry of the dead model
+
+    def test_last_model_gone_raises_and_other_400s_do_not_switch(self):
+        c, keyp = cloud_for("anthropic")                           # only one model listed
+        gone = FakeResp(404, {"error": {"type": "not_found_error", "message": "model: claude-haiku-5-5"}})
+        with keyp, capture_posts([gone])[1]:
+            with self.assertRaises(RuntimeError):
+                c.test()
+        c2, keyp2 = cloud_for("openai")
+        bad = FakeResp(400, {"error": {"message": "messages: field required"}})
+        calls, postp = capture_posts([bad])
+        with keyp2, postp:
+            with self.assertRaises(RuntimeError):
+                c2.test()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(c2.model, "gpt-6-luna")
+
+
+class CancelScopeTests(unittest.TestCase):
+    """Each Cancel button stops only its own job (main.cancel_job)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib
+        import sys
+        os.environ.setdefault("SNAP_AIR_SETTINGS", os.path.join(tempfile.mkdtemp(), "settings_cancel.json"))
+        cls.main = sys.modules.get("main") or importlib.import_module("main")
+
+    def run_cancel(self, kind, pulling=True, install="running"):
+        m = self.main
+        m._cancel_ollama.clear()
+        m._ollama_install.update(status=install, pct=10)
+        with mock.patch.object(m.llm, "cancel_pull") as cp, mock.patch.object(m.setup, "cancel") as sc, \
+                mock.patch.object(m.llm, "pulling", {"name": "qwen3:1.7b"} if pulling else None), \
+                mock.patch.object(m, "toast"):
+            m.cancel_job(kind)
+        return cp.called, sc.called, m._cancel_ollama.is_set()
+
+    def tearDown(self):
+        self.main._cancel_ollama.clear()
+        self.main._ollama_install.update(status=None, pct=0)
+
+    def test_model_cancel_leaves_install_and_setup_alone(self):
+        self.assertEqual(self.run_cancel("cancel_pull"), (True, False, False))
+        self.assertEqual(self.main._ollama_install["status"], "running")
+
+    def test_install_cancel_leaves_model_download_alone(self):
+        self.assertEqual(self.run_cancel("cancel_install"), (False, False, True))
+        self.assertEqual(self.main._ollama_install["status"], "cancelled")
+
+    def test_setup_cancel_stops_everything_it_runs(self):
+        self.assertEqual(self.run_cancel("cancel_setup"), (True, True, True))
+
+    def test_running_installer_is_never_cancelled(self):
+        self.assertEqual(self.run_cancel("cancel_install", install="installing"), (False, False, False))
+        self.assertEqual(self.main._ollama_install["status"], "installing")
+
+
 if __name__ == "__main__":
     unittest.main()

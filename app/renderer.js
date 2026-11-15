@@ -899,15 +899,17 @@ function renderModelSection() {
     const pulling = m.pulling && m.pulling.status !== 'error';
     if (picked.name) {
         if (!picked.compatible) action = h('span', { class: 'caption danger-text' }, 'Not compatible');
-        else if (pulling && m.pulling.name === picked.name) action = h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel');
+        else if (pulling && m.pulling.name === picked.name) action = h('span', { class: 'caption' }, 'Downloading…');
         else if (has(picked.name)) action = picked.name === m.current ? h('span', { class: 'caption' }, 'In use')
             : h('button', { class: 'btn small primary', onclick: () => send({ type: 'model_select', name: picked.name }) }, 'Use');
         else action = h('button', { class: 'btn small primary', disabled: !m.ollama_installed || pulling,
             onclick: () => send({ type: 'model_pull', name: picked.name }) }, `Install ${picked.size}`);
     }
 
-    const cancelBtn = (pulling || oi.status === 'running')
-        ? h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel')
+    // one Cancel per running job, and it stops only that job
+    const cancelBtn = oi.status === 'running'
+        ? h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_install' }) }, 'Cancel')
+        : pulling ? h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, `Cancel ${m.pulling.name}`)
         : null;
 
     const localRows = [
@@ -917,9 +919,7 @@ function renderModelSection() {
                 ? h('button', { class: 'btn small primary', onclick: () => send({ type: 'install_ollama' }) }, 'Install (free)') : null)),
         pulling || oi.status === 'running'
             ? h('div', { class: 'g-row col' },
-                h('div', { class: 'progress' }, h('i', { style: `width:${(pulling && m.pulling.pct) || oi.pct || 0}%` })),
-                h('div', { class: 'row', style: 'justify-content:flex-end;margin-top:4px' },
-                    h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel installation')))
+                h('div', { class: 'progress' }, h('i', { style: `width:${(pulling && m.pulling.pct) || oi.pct || 0}%` })))
             : null,
         h('div', { class: 'g-row col' },
             h('div', { class: 'caption' }, `This PC: ${hw.ram_total || '?'} GB RAM (${hw.ram_free || '?'} GB free) · ${hw.cores || '?'} threads · ${hw.gpu_vram ? hw.gpu_vram + ' GB GPU' : 'no dedicated GPU'} → models up to ${cat.max_params ? Math.round(cat.max_params) + 'B' : '?'} run smoothly.`),
@@ -947,18 +947,8 @@ function renderModelSection() {
         autocomplete: 'off'
     });
 
-    const keyGuides = {
-        gemini: 'Get a free API key at aistudio.google.com',
-        openai: 'Get an API key at platform.openai.com',
-        anthropic: 'Get an API key at console.anthropic.com',
-        grok: 'Get an API key at console.x.ai',
-        groq: 'Get an ultra-fast free API key at console.groq.com',
-        mistral: 'Get an API key at console.mistral.ai',
-        deepseek: 'Get an API key at platform.deepseek.com',
-        openrouter: 'Get an API key at openrouter.ai/keys',
-        perplexity: 'Get an API key at perplexity.ai/settings/api',
-        compatible: 'Enter your custom endpoint API key'
-    };
+    const keyGuide = currentProvInfo.key_url ? `Get an API key at ${currentProvInfo.key_url}`
+        : (currentProvInfo.custom ? 'Enter the API key for your endpoint' : 'Paste your API key to activate.');
 
     const cloudRows = [
         h('div', { class: 'g-row' }, h('span', {}, 'Provider'), provSel),
@@ -967,8 +957,8 @@ function renderModelSection() {
             ' · Auto-selected for fastest sub-second responses and zero laptop load.'),
         cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Base URL'),
             settingControl({ key: 'cloud_base_url', type: 'text', placeholder: cl.base_url || 'https://…/v1' })) : null,
-        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Custom Model ID (optional)'),
-            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'e.g. mistral-small' })) : null,
+        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Model ID', h('span', { class: 'sub' }, 'Required for a custom endpoint')),
+            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'e.g. llama-3.1-8b-instruct' })) : null,
         h('div', { class: 'g-row col' },
             h('div', { class: 'row', style: 'gap:8px' }, keyIn,
                 h('button', { class: 'btn small primary', onclick: () => {
@@ -986,7 +976,7 @@ function renderModelSection() {
                 } }, 'Remove') : null),
             h('div', { class: 'm-note', style: 'margin-top:6px' },
                 (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? '🟢 Live Cloud brain is active.' : ''}`
-                    : (keyGuides[cl.provider] || 'Paste your API key to activate.')) + (cl.error ? '  ⚠ ' + cl.error : ''))),
+                    : keyGuide) + (cl.error ? '  ⚠ ' + cl.error : ''))),
         h('div', { class: 'g-row' }, h('span', {}, 'Let the cloud help learn memories', h('span', { class: 'sub' }, 'Off = memory learning stays on this PC')),
             settingControl({ key: 'cloud_for_memory', type: 'switch' })),
     ];
@@ -1166,7 +1156,7 @@ function renderSetup() {
     renderIsland();
 }
 $('setup-hide').onclick = () => { setupHidden = true; $('setup-sheet').classList.add('hidden'); };
-$('setup-cancel').onclick = () => send({ type: 'cancel_install' });
+$('setup-cancel').onclick = () => send({ type: 'cancel_setup' });
 $('setup-retry').onclick = () => { setupHidden = false; send({ type: 'setup_retry' }); };
 $('island-status').addEventListener('click', () => { if (SETUP && !SETUP.complete && (SETUP.items || []).length) { setupHidden = false; renderSetup(); } });
 const ob = { name: '', role: '', work_start: '09:00', work_end: '18:00', city: '', languages: ['English'],

@@ -13,72 +13,26 @@ import time
 
 import requests
 
-from src import secrets_store
+from src import appdata, secrets_store
 from src.brain.llm import LLM, ThinkFilter
 
-PROVIDERS = {
-    "gemini": {
-        "label": "Google Gemini",
-        "model": "gemini-2.5-flash",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta",
-        "desc": "Ultra-fast multimodal flagship from Google",
-    },
-    "openai": {
-        "label": "OpenAI (GPT-4o mini)",
-        "model": "gpt-4o-mini",
-        "base_url": "https://api.openai.com/v1",
-        "desc": "Fast, smart, and lightweight flagship from OpenAI",
-    },
-    "anthropic": {
-        "label": "Anthropic Claude (Haiku 5.5)",
-        "model": "claude-haiku-5-5",
-        "base_url": "https://api.anthropic.com/v1",
-        "desc": "Fast, low-cost Claude for everyday answers",
-    },
-    "grok": {
-        "label": "xAI Grok",
-        "model": "grok-2-mini",
-        "base_url": "https://api.x.ai/v1",
-        "desc": "Fast conversational intelligence from xAI",
-    },
-    "groq": {
-        "label": "Groq (Ultra-fast LPU)",
-        "model": "llama-3.3-70b-versatile",
-        "base_url": "https://api.groq.com/openai/v1",
-        "desc": "Near-instant response speed via Groq LPU",
-    },
-    "mistral": {
-        "label": "Mistral AI",
-        "model": "mistral-small-latest",
-        "base_url": "https://api.mistral.ai/v1",
-        "desc": "European high-efficiency reasoning model",
-    },
-    "deepseek": {
-        "label": "DeepSeek",
-        "model": "deepseek-chat",
-        "base_url": "https://api.deepseek.com/v1",
-        "desc": "Powerful DeepSeek-V3 intelligence",
-    },
-    "openrouter": {
-        "label": "OpenRouter",
-        "model": "auto",
-        "base_url": "https://openrouter.ai/api/v1",
-        "desc": "Unified gateway routing to the best available model",
-    },
-    "perplexity": {
-        "label": "Perplexity",
-        "model": "sonar",
-        "base_url": "https://api.perplexity.ai",
-        "desc": "Search-grounded online intelligence",
-    },
-    "compatible": {
-        "label": "Custom (OpenAI-compatible / self-hosted)",
-        "model": "gpt-4o-mini",
-        "base_url": "https://api.openai.com/v1",
-        "desc": "Custom server, vLLM, or self-hosted GPU endpoint",
-    },
-}
-ANTHROPIC_MIN_MAX_TOKENS = 1024
+
+
+def _load_providers():
+    """Provider table from src/data/app.json ("cloud.providers"); see the comment there.
+    Each model entry is normalised to a dict, and "model" is the first choice (shown in the UI)."""
+    out = {}
+    for name, p in (appdata.get("cloud.providers") or {}).items():
+        models = [m if isinstance(m, dict) else {"id": m} for m in p.get("models") or []]
+        out[name] = {**p, "models": models, "model": models[0]["id"] if models else ""}
+    return out
+
+
+PROVIDERS = _load_providers()
+
+# Phrases providers use when a model ID is retired or not available to this key
+_MODEL_GONE = re.compile(r"not[ _]found|does not exist|decommission|deprecat|retired|no longer|"
+                         r"unknown model|invalid model|model.{0,40}(not supported|unsupported|not available)", re.I)
 JSON_HINT = ('\nRespond with a JSON object whose keys appear in this order: "say", "tool", "args". '
              'No text outside the JSON.')
 
@@ -92,6 +46,7 @@ class CloudLLM:
         self.last_error = None
         self._online = (0.0, False)
         self._rejected = None                # (provider, key) the provider answered 401/403 for
+        self._model_idx = {}                 # provider -> index of the model in use (see _advance_model)
 
     def _s(self, k, d=""):
         v = self.settings.get(k) if self.settings else None
@@ -102,19 +57,40 @@ class CloudLLM:
         return self._s("cloud_provider", "gemini")
 
     @property
-    def model(self):
-        prov = self.provider
-        if prov == "compatible":
+    def _info(self):
+        return PROVIDERS.get(self.provider, {})
+
+    def _candidates(self):
+        """Models to try for this provider, best first. A custom endpoint uses the user's model."""
+        if self._info.get("custom"):
             custom = self._s("cloud_model", "")
-            if custom:
-                return custom
-        return PROVIDERS.get(prov, {}).get("model", "gemini-2.5-flash")
+            return [{"id": custom}] if custom else []
+        return self._info.get("models") or []
+
+    def _spec(self):
+        c = self._candidates()
+        if not c:
+            return {"id": ""}
+        return c[min(self._model_idx.get(self.provider, 0), len(c) - 1)]
+
+    def _advance_model(self):
+        """Move to the next model after the provider said the current one doesn't exist."""
+        c, i = self._candidates(), self._model_idx.get(self.provider, 0)
+        if i + 1 >= len(c):
+            return False
+        self._model_idx[self.provider] = i + 1
+        print(f"[Cloud] {c[i]['id']} unavailable on {self.provider}; using {c[i + 1]['id']}")
+        return True
+
+    @property
+    def model(self):
+        return self._spec()["id"]
 
     @property
     def base_url(self):
-        prov_base = PROVIDERS.get(self.provider, {}).get("base_url", "")
-        if self.provider == "compatible":
-            return self._s("cloud_base_url", prov_base or "https://api.openai.com/v1").rstrip("/")
+        prov_base = self._info.get("base_url", "")
+        if self._info.get("custom"):
+            return self._s("cloud_base_url", prov_base).rstrip("/")
         return prov_base.rstrip("/")
 
     def key(self):
@@ -132,7 +108,6 @@ class CloudLLM:
         if time.time() - t < 60:
             return ok
         try:
-            from src import appdata
             url = appdata.get("web.connectivity_check") or "https://www.google.com"
             requests.head(url, timeout=2)
             ok = True
@@ -149,86 +124,91 @@ class CloudLLM:
         return self.configured() and not self.key_rejected() and self.online()
 
     # ------------------------------------------------------------ requests
+    def _gen(self, max_tokens, temperature):
+        """Per-model generation settings from app.json: (spec, max_tokens, temperature or None)."""
+        spec = self._spec()
+        n = max(int(max_tokens), int(spec.get("min_max_tokens", 0)))
+        temp = temperature if spec.get("sampling", True) else None
+        return spec, n, temp
+
     def _openai_req(self, messages, json_mode, max_tokens, temperature, stream):
-        body = {"model": self.model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
-                "stream": stream}
-        if json_mode and self.provider in ("openai", "groq", "mistral", "deepseek", "openrouter", "compatible"):
+        spec, n, temp = self._gen(max_tokens, temperature)
+        body = {"model": spec["id"], "messages": messages, "stream": stream,
+                spec.get("token_param", "max_tokens"): n}
+        if temp is not None:
+            body["temperature"] = temp
+        if json_mode and self._info.get("json_mode"):
             body["response_format"] = {"type": "json_object"}
-        headers = {"Authorization": f"Bearer {self.key()}", "Content-Type": "application/json"}
-        if self.provider == "openrouter":
-            headers["HTTP-Referer"] = "https://github.com/snapy-ai/snapy"
-            headers["X-Title"] = "Snapy AI"
+        body.update(spec.get("extra") or {})
+        headers = {"Authorization": f"Bearer {self.key()}", "Content-Type": "application/json",
+                   **(self._info.get("headers") or {})}
         return requests.post(self.base_url + "/chat/completions", json=body, stream=stream, timeout=(6, 120),
                              headers=headers)
 
     def _anthropic_req(self, messages, json_mode, max_tokens, temperature, stream):
-        system_parts = [m["content"] for m in messages if m["role"] == "system"]
-        system_prompt = "\n\n".join(system_parts) if system_parts else ""
-        chat_msgs = []
-        for m in messages:
-            if m["role"] != "system":
-                chat_msgs.append({
-                    "role": "assistant" if m["role"] == "assistant" else "user",
-                    "content": m["content"]
-                })
-        if not chat_msgs:
-            chat_msgs = [{"role": "user", "content": "Hello"}]
-        # Claude Haiku 5.5 rejects non-default sampling params (so no temperature) and thinks by
-        # default; thinking counts toward max_tokens, so low effort + headroom keeps short replies whole.
-        body = {
-            "model": self.model,
-            "max_tokens": max(int(max_tokens), ANTHROPIC_MIN_MAX_TOKENS),
-            "output_config": {"effort": "low"},
-            "messages": chat_msgs,
-            "stream": stream,
-        }
+        spec, n, temp = self._gen(max_tokens, temperature)
+        system_prompt = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+        chat_msgs = [{"role": "assistant" if m["role"] == "assistant" else "user", "content": m["content"]}
+                     for m in messages if m["role"] != "system"] or [{"role": "user", "content": "Hello"}]
+        body = {"model": spec["id"], "max_tokens": n, "messages": chat_msgs, "stream": stream}
+        if temp is not None:
+            body["temperature"] = temp
         if system_prompt:
             body["system"] = system_prompt
-        headers = {
-            "x-api-key": self.key(),
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        url = (self.base_url or "https://api.anthropic.com/v1") + "/messages"
-        return requests.post(url, json=body, stream=stream, timeout=(6, 120), headers=headers)
+        body.update(spec.get("extra") or {})
+        headers = {"x-api-key": self.key(), "anthropic-version": "2023-06-01", "content-type": "application/json"}
+        return requests.post(self.base_url + "/messages", json=body, stream=stream, timeout=(6, 120), headers=headers)
 
     def _gemini_req(self, messages, json_mode, max_tokens, temperature, stream):
+        spec, n, temp = self._gen(max_tokens, temperature)
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
         contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]}
                     for m in messages if m["role"] != "system"]
-        body = {"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}}
+        gen = {"maxOutputTokens": n}
+        if temp is not None:
+            gen["temperature"] = temp
+        if json_mode:
+            gen["responseMimeType"] = "application/json"
+        gen.update(spec.get("extra") or {})
+        body = {"contents": contents, "generationConfig": gen}
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
-        if json_mode:
-            body["generationConfig"]["responseMimeType"] = "application/json"
         verb = "streamGenerateContent?alt=sse" if stream else "generateContent"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:{verb}"
+        url = f"{self.base_url}/models/{spec['id']}:{verb}"
         return requests.post(url, json=body, stream=stream, timeout=(6, 120),
                              headers={"x-goog-api-key": self.key(), "Content-Type": "application/json"})
+
+    @staticmethod
+    def _error_detail(r):
+        try:
+            d = r.json()
+        except ValueError:
+            return r.text[:200]
+        if isinstance(d, list) and d:              # Gemini can wrap errors in a list
+            d = d[0]
+        err = d.get("error") if isinstance(d, dict) else None
+        if isinstance(err, dict):
+            return err.get("message") or str(err)[:200]
+        return str(err or d)[:200]
 
     def _request(self, messages, json_mode, max_tokens, temperature, stream):
         if json_mode:
             messages = [dict(m) for m in messages]
             messages[0] = {**messages[0], "content": messages[0]["content"] + JSON_HINT}
-        if self.provider == "gemini":
-            fn = self._gemini_req
-        elif self.provider == "anthropic":
-            fn = self._anthropic_req
-        else:
-            fn = self._openai_req
-        r = fn(messages, json_mode, max_tokens, temperature, stream)
-        if r.status_code >= 400:
-            try:
-                detail = r.json()
-                detail = (detail.get("error") or {}).get("message") or str(detail)[:200]
-            except ValueError:
-                detail = r.text[:200]
-            self.last_error = f"{PROVIDERS.get(self.provider, {}).get('label', self.provider)}: {detail}"
+        fn = {"gemini": self._gemini_req, "anthropic": self._anthropic_req}.get(self.provider, self._openai_req)
+        while True:
+            r = fn(messages, json_mode, max_tokens, temperature, stream)
+            if r.status_code < 400:
+                self._rejected = None
+                return r
+            detail = self._error_detail(r)
+            r.close()
+            if r.status_code in (400, 404) and _MODEL_GONE.search(detail) and self._advance_model():
+                continue
+            self.last_error = f"{self._info.get('label', self.provider)}: {detail}"
             if r.status_code in (401, 403):
                 self._rejected = (self.provider, self.key())
             raise RuntimeError(self.last_error)
-        self._rejected = None
-        return r
 
     @staticmethod
     def _sse_texts(r, provider):

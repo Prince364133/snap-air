@@ -471,6 +471,23 @@ def pull_model(name):
     return ok
 
 
+def cancel_job(kind):
+    """Each Cancel button stops only its own job: a model download ("cancel_pull"), the AI
+    engine install ("cancel_install"), or first-run setup and whatever step it is on ("cancel_setup")."""
+    stop_pull = kind in ("cancel_pull", "cancel_setup")
+    stop_install = kind in ("cancel_install", "cancel_setup")
+    if kind == "cancel_setup":
+        setup.cancel()
+    if stop_pull and llm.pulling:
+        llm.cancel_pull()
+    if stop_install and _ollama_install.get("status") == "running":   # the installer itself can't be stopped
+        _cancel_ollama.set()
+        _ollama_install.update(status="cancelled", pct=0)
+    send_all(models_payload())
+    toast({"cancel_pull": "Model download cancelled", "cancel_install": "AI engine download cancelled",
+           "cancel_setup": "Setup cancelled"}[kind], True, "model")
+
+
 def refresh_brain_state():
     state["brain"] = "cloud" if brain.is_cloud else ("local" if llm.ready() else "none")
     send_all({"type": "state_update", **state})
@@ -935,14 +952,8 @@ async def ws_handler(ws):
                 bg(complete_onboarding, d)
             elif t == "set_api_key":
                 bg(save_api_key, d.get("provider") or cloud.provider, (d.get("key") or "").strip())
-            elif t in ("cancel_pull", "cancel_install"):
-                llm.cancel_pull()
-                _cancel_ollama.set()
-                setup.cancel()
-                if _ollama_install.get("status") == "running":      # the installer itself can't be stopped
-                    _ollama_install.update(status="cancelled", pct=0)
-                send_all(models_payload())
-                toast("Installation cancelled", True, "model")
+            elif t in ("cancel_pull", "cancel_install", "cancel_setup"):
+                cancel_job(t)
             elif t == "cloud_test":
                 def _test():
                     try:
