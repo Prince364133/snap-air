@@ -55,6 +55,10 @@ def kokoro_ready():
     return all(os.path.exists(os.path.join(d, f)) for f in KOKORO_FILES)
 
 
+class SetupCancelled(Exception):
+    """The user pressed Cancel; the current download stops and the rest are skipped."""
+
+
 class Setup:
     """Runs the first-run downloads one by one and reports progress."""
 
@@ -62,16 +66,40 @@ class Setup:
         self.on_change = on_change
         self.items = []
         self.running = False
-        self._cancelled = False
+        self._cancel = threading.Event()
         self._last_emit = 0.0
         self._lock = threading.Lock()
 
+    # ------------------------------------------------------------ lifecycle
+    def try_start(self):
+        """Atomically claim the setup run; False if one is already in progress."""
+        with self._lock:
+            if self.running:
+                return False
+            self.running = True
+            self._cancel.clear()
+            return True
+
+    def finish(self):
+        with self._lock:
+            self.running = False
+        self._emit(force=True)
+
+    @property
+    def cancelled(self):
+        return self._cancel.is_set()
+
+    def check_cancel(self):
+        if self._cancel.is_set():
+            raise SetupCancelled()
+
     def cancel(self):
-        self._cancelled = True
-        self.running = False
+        """Stop the running download and skip what's left. `running` stays True until the
+        worker thread actually exits, so a retry can't start a second run alongside it."""
+        self._cancel.set()
         for it in self.items:
-            if it.get("state") == "downloading":
-                it["state"] = "cancelled"
+            if it.get("state") in ("waiting", "downloading"):
+                it.update(state="cancelled", speed=0)
         self._emit(force=True)
 
     # ------------------------------------------------------------- state
@@ -80,7 +108,6 @@ class Setup:
                 "speed": 0, "error": None}
 
     def plan(self, need_speech, need_voice, need_runtime, need_brain, brain_name=""):
-        self._cancelled = False
         items = []
         est = appdata.get("setup_size_estimates", {})          # replaced by real sizes once known
         if need_speech:
@@ -97,8 +124,9 @@ class Setup:
     def state(self):
         total = sum(i["total"] or 0 for i in self.items)
         done = sum(min(i["done"], i["total"] or i["done"]) if i["state"] != "done" else (i["total"] or 0) for i in self.items)
-        return {"type": "setup", "running": self.running, "items": self.items,
-                "done": done, "total": total, "complete": bool(self.items) and all(i["state"] in ("done", "skipped") for i in self.items)}
+        return {"type": "setup", "running": self.running, "items": self.items, "done": done, "total": total,
+                "cancelled": any(i["state"] == "cancelled" for i in self.items),
+                "complete": bool(self.items) and all(i["state"] in ("done", "skipped") for i in self.items)}
 
     def _emit(self, force=False):
         now = time.time()
@@ -122,9 +150,9 @@ class Setup:
 
     # --------------------------------------------------------- downloads
     def fetch(self, id_, urls_dests):
-        """Download several files as one progress item, resuming partial files."""
-        if self._cancelled:
-            return
+        """Download several files as one progress item, resuming partial files.
+        Raises SetupCancelled when the user cancels (the .part file is kept for resuming)."""
+        self.check_cancel()
         it = self.get(id_)
         sizes = []
         for url, _ in urls_dests:
@@ -155,6 +183,7 @@ class Setup:
                         r.raise_for_status()
                         with open(part, "ab" if have else "wb") as f:
                             for chunk in r.iter_content(1 << 18):
+                                self.check_cancel()
                                 f.write(chunk)
                                 have += len(chunk)
                                 it["done"] = base + have
@@ -170,7 +199,8 @@ class Setup:
                     if attempt == 3:
                         raise RuntimeError(f"network error: {e}") from e
                     self.update(id_, error="Connection dropped — retrying…")
-                    time.sleep(2 * (attempt + 1))
+                    if self._cancel.wait(2 * (attempt + 1)):     # wake immediately on Cancel
+                        raise SetupCancelled()
             base += os.path.getsize(dest)
             it["done"] = base
         self.update(id_, state="done", done=it["total"], speed=0, error=None)

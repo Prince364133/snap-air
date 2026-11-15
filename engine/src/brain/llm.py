@@ -227,6 +227,10 @@ class LLM:
         finally:
             self._active_pull_resp = None
 
+    def pull_cancelled(self):
+        """True when the most recent pull() stopped because cancel_pull() was called."""
+        return self._cancel_pull.is_set()
+
     def cancel_pull(self):
         """Immediately abort active model download."""
         self._cancel_pull.set()

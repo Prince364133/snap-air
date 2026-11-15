@@ -906,7 +906,7 @@ function renderModelSection() {
             onclick: () => send({ type: 'model_pull', name: picked.name }) }, `Install ${picked.size}`);
     }
 
-    const cancelBtn = (pulling || oi.status === 'running' || oi.status === 'installing')
+    const cancelBtn = (pulling || oi.status === 'running')
         ? h('button', { class: 'btn small', onclick: () => send({ type: 'cancel_pull' }) }, 'Cancel')
         : null;
 
@@ -974,9 +974,7 @@ function renderModelSection() {
                 h('button', { class: 'btn small primary', onclick: () => {
                     const keyVal = keyIn.value.trim();
                     if (keyVal) {
-                        send({ type: 'set_api_key', provider: provSel.value, key: keyVal });
-                        updateSetting('ai_provider', 'cloud');
-                        showToast('API key saved — switched to live cloud brain');
+                        send({ type: 'set_api_key', provider: provSel.value, key: keyVal });   // engine tests it and reports back
                     } else {
                         showToast('Please enter an API key', false);
                     }
@@ -985,8 +983,6 @@ function renderModelSection() {
                 h('button', { class: 'btn small', disabled: !cl.configured, onclick: () => send({ type: 'cloud_test' }) }, 'Test'),
                 cl.key ? h('button', { class: 'mini', onclick: () => {
                     send({ type: 'set_api_key', provider: provSel.value, key: '' });
-                    updateSetting('ai_provider', m.ready ? 'local' : 'auto');
-                    showToast('API key removed');
                 } }, 'Remove') : null),
             h('div', { class: 'm-note', style: 'margin-top:6px' },
                 (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? '🟢 Live Cloud brain is active.' : ''}`
@@ -1130,6 +1126,7 @@ function setupItemEl(it) {
     else if (it.state === 'skipped') meta = 'Not needed';
     else if (it.state === 'installing') meta = 'Installing…';
     else if (it.state === 'error') meta = 'Failed';
+    else if (it.state === 'cancelled') meta = 'Cancelled';
     else if (it.state === 'downloading') {
         const left = it.speed > 0 ? Math.max(1, Math.round((it.total - it.done) / it.speed)) : 0;
         meta = `${fmtMB(it.done)} of ${fmtMB(it.total)}` + (it.speed > 0 ? ` · ${(it.speed / 1e6).toFixed(1)} MB/s · ${left >= 60 ? Math.round(left / 60) + ' min' : left + ' s'} left` : '');
@@ -1144,7 +1141,7 @@ function setupItemEl(it) {
 function renderSetup() {
     const st = SETUP;
     const active = st && st.items && st.items.length && !st.complete;
-    const failed = st && (st.items || []).some((i) => i.state === 'error');
+    const failed = st && (st.items || []).some((i) => i.state === 'error' || i.state === 'cancelled');
     // onboarding shows a compact version inside its own sheet
     const box = document.getElementById('ob-setup');
     if (box) {
@@ -1160,13 +1157,16 @@ function renderSetup() {
     $('setup-list').replaceChildren(...st.items.map(setupItemEl));
     $('setup-total').textContent = st.complete ? 'All set' : `${fmtMB(st.done)} of ${fmtMB(st.total)} · ${setupPct(st)}%`;
     $('setup-retry').classList.toggle('hidden', !(failed && !st.running));
+    $('setup-cancel').classList.toggle('hidden', !(st.running && !st.complete && !st.cancelled));
     $('setup-lead').textContent = failed && !st.running
-        ? 'Some downloads didn’t finish. Check your internet connection and try again — finished parts are kept.'
+        ? (st.cancelled ? 'Setup was cancelled. Press Try again whenever you’re ready — finished parts are kept.'
+            : 'Some downloads didn’t finish. Check your internet connection and try again — finished parts are kept.')
         : `Downloading what ${NAME()} needs to run on this PC. You can keep working — this continues in the background.`;
     if (st.complete && !sheet.classList.contains('hidden')) setTimeout(() => sheet.classList.add('hidden'), 1500);
     renderIsland();
 }
 $('setup-hide').onclick = () => { setupHidden = true; $('setup-sheet').classList.add('hidden'); };
+$('setup-cancel').onclick = () => send({ type: 'cancel_install' });
 $('setup-retry').onclick = () => { setupHidden = false; send({ type: 'setup_retry' }); };
 $('island-status').addEventListener('click', () => { if (SETUP && !SETUP.complete && (SETUP.items || []).length) { setupHidden = false; renderSetup(); } });
 const ob = { name: '', role: '', work_start: '09:00', work_end: '18:00', city: '', languages: ['English'],
@@ -1293,9 +1293,7 @@ function renderObStep() {
                 h('button', { class: 'btn', onclick: () => {
                     if (keyIn.value.trim()) {
                         send({ type: 'set_api_key', provider: provSel.value, key: keyIn.value.trim() });
-                        updateSetting('ai_provider', 'cloud');
                         keyIn.value = '';
-                        showToast('Key saved — switched to live cloud brain');
                     }
                 } }, 'Save')));
     } else if (step === 'done') {

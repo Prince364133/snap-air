@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -465,23 +466,53 @@ def pull_model(name):
     llm.ensure_server()
     ok = llm.pull(name, on_progress=lambda p: send_all(models_payload()))
     send_all(models_payload())
-    if not getattr(llm, "_cancel_pull", None) or not llm._cancel_pull.is_set():
+    if not llm.pull_cancelled():
         toast(f"{name} is ready" if ok else f"Couldn't download {name}: {llm.last_error}", ok, "model")
     return ok
 
 
+def refresh_brain_state():
+    state["brain"] = "cloud" if brain.is_cloud else ("local" if llm.ready() else "none")
+    send_all({"type": "state_update", **state})
+    send_all(models_payload())
+
+
+def save_api_key(prov, key):
+    """Store (or remove) a cloud key, then check it with one tiny request before calling
+    the cloud brain live. "auto" uses the cloud while online and the key works, and the
+    local model otherwise, so a dropped connection never leaves Snapy without a brain."""
+    secrets_store.set_key(f"cloud_{prov}", key)
+    settings.update({"cloud_provider": prov})
+    cloud.last_error = None
+    label = PROVIDERS.get(prov, {}).get("label", prov)
+    if not key:
+        if settings.get("ai_provider") == "cloud":
+            settings.update({"ai_provider": "auto"})
+        refresh_brain_state()
+        toast("API key removed", True, "cloud")
+        return
+    if settings.get("ai_provider") != "cloud":
+        settings.update({"ai_provider": "auto"})
+    try:
+        secs, _ = cloud.test()
+        toast(f"API key saved — {label} answered in {secs}s", True, "cloud")
+    except Exception as e:
+        toast(f"Key saved, but {label} didn't answer: {e}", False, "cloud")
+    refresh_brain_state()
+
+
 _ollama_install = {"status": None, "pct": 0}
 _cancel_ollama = threading.Event()
-from src.setup_assets import Setup, whisper_ready, kokoro_ready, WHISPER_REPO, WHISPER_FILES, KOKORO_URL, KOKORO_FILES  # noqa: E402
+from src.setup_assets import (Setup, SetupCancelled, whisper_ready, kokoro_ready,  # noqa: E402
+                              WHISPER_REPO, WHISPER_FILES, KOKORO_URL, KOKORO_FILES)
 setup = Setup(on_change=lambda st: send_all(st))
 
 
 def run_setup():
     """First-run downloads with real progress: speech, voice, AI engine, AI model."""
     import importlib.util
-    if setup.running:
+    if not setup.try_start():          # one run at a time, even if Retry is pressed mid-cancel
         return
-    setup.running = True
     try:
         local_ai = settings["ai_provider"] != "cloud"
         from src.brain.llm import _ollama_exe
@@ -501,9 +532,10 @@ def run_setup():
                    need_brain=local_ai and not has_brain, brain_name=rec)
         if not setup.items:
             return
-        from src.setup_assets import whisper_dir
         from src.voice.tts import model_dir as kokoro_dir
         for it in list(setup.items):
+            if setup.cancelled:
+                break                    # cancel() already marked the remaining items
             try:
                 if it["id"] == "speech":
                     d = os.path.join(storage.data_dir(), "models", f"faster-whisper-{wname}")
@@ -514,6 +546,8 @@ def run_setup():
                     speaker.reload()
                 elif it["id"] == "runtime":
                     install_ollama(progress_item="runtime")
+                    if _ollama_install.get("status") == "cancelled":
+                        raise SetupCancelled()
                     if _ollama_install.get("status") != "done":
                         raise RuntimeError(_ollama_install.get("error") or "the AI engine didn't install")
                 elif it["id"] == "brain":
@@ -526,16 +560,19 @@ def run_setup():
                             setup.get("brain").update(done=p["done"], total=p["total"])
                         setup._emit()
                     if not llm.pull(rec, on_progress=prog):
+                        if llm.pull_cancelled():
+                            raise SetupCancelled()
                         raise RuntimeError(llm.last_error or "download failed")
                     settings.update({"llm_model": rec})
                     setup.update("brain", state="done", done=setup.get("brain")["total"])
                     send_all(models_payload())
+            except SetupCancelled:
+                setup.update(it["id"], state="cancelled", speed=0, error=None)
+                break
             except Exception as e:
                 setup.update(it["id"], state="error", error=str(e)[:160])
-        _ = whisper_dir
     finally:
-        setup.running = False
-        setup._emit(force=True)
+        setup.finish()
 
 
 def install_ollama(progress_item=None):
@@ -543,7 +580,7 @@ def install_ollama(progress_item=None):
     recommended model for this PC. With progress_item, reports bytes to first-run setup."""
     import tempfile
     import requests as rq
-    if _ollama_install["status"] == "running":
+    if _ollama_install["status"] in ("running", "installing"):
         return
     _cancel_ollama.clear()
     _ollama_install.update(status="running", pct=0)
@@ -559,9 +596,7 @@ def install_ollama(progress_item=None):
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
                     if _cancel_ollama.is_set():
-                        _ollama_install.update(status="cancelled", pct=0)
-                        send_all(models_payload())
-                        return
+                        break
                     f.write(chunk)
                     done += len(chunk)
                     if progress_item:
@@ -573,9 +608,15 @@ def install_ollama(progress_item=None):
                         if not progress_item:
                             send_all(models_payload())
         if _cancel_ollama.is_set():
+            # a half-downloaded installer is useless (and must never be run): remove it
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
             _ollama_install.update(status="cancelled", pct=0)
             send_all(models_payload())
             return
+        # From here the Windows installer runs; it can't be stopped safely, so Cancel is ignored
         _ollama_install.update(status="installing", pct=92)
         if progress_item:
             setup.update(progress_item, state="installing", speed=0)
@@ -893,28 +934,12 @@ async def ws_handler(ws):
             elif t == "onboarding_complete":
                 bg(complete_onboarding, d)
             elif t == "set_api_key":
-                prov = d.get("provider") or cloud.provider
-                key = (d.get("key") or "").strip()
-                secrets_store.set_key(f"cloud_{prov}", key)
-                settings.update({"cloud_provider": prov})
-                if key:
-                    settings.update({"ai_provider": "cloud"})
-                    cloud._online = (time.time(), True)
-                    state["brain"] = "cloud"
-                else:
-                    if settings.get("ai_provider") == "cloud":
-                        settings.update({"ai_provider": "auto"})
-                    state["brain"] = "cloud" if brain.is_cloud else ("local" if llm.ready() else "none")
-                cloud.last_error = None
-                send_all({"type": "state_update", **state})
-                send_all(models_payload())
-                prov_lbl = PROVIDERS.get(prov, {}).get("label", prov)
-                toast(f"API key saved — switched to live {prov_lbl}" if key else "API key removed", True, "cloud")
+                bg(save_api_key, d.get("provider") or cloud.provider, (d.get("key") or "").strip())
             elif t in ("cancel_pull", "cancel_install"):
                 llm.cancel_pull()
                 _cancel_ollama.set()
                 setup.cancel()
-                if _ollama_install.get("status") in ("running", "installing"):
+                if _ollama_install.get("status") == "running":      # the installer itself can't be stopped
                     _ollama_install.update(status="cancelled", pct=0)
                 send_all(models_payload())
                 toast("Installation cancelled", True, "model")

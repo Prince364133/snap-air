@@ -30,10 +30,10 @@ PROVIDERS = {
         "desc": "Fast, smart, and lightweight flagship from OpenAI",
     },
     "anthropic": {
-        "label": "Anthropic Claude (Haiku 3.5)",
-        "model": "claude-3-5-haiku-20241022",
+        "label": "Anthropic Claude (Haiku 5.5)",
+        "model": "claude-haiku-5-5",
         "base_url": "https://api.anthropic.com/v1",
-        "desc": "Lightning fast and highly capable Haiku 3.5",
+        "desc": "Fast, low-cost Claude for everyday answers",
     },
     "grok": {
         "label": "xAI Grok",
@@ -78,6 +78,7 @@ PROVIDERS = {
         "desc": "Custom server, vLLM, or self-hosted GPU endpoint",
     },
 }
+ANTHROPIC_MIN_MAX_TOKENS = 1024
 JSON_HINT = ('\nRespond with a JSON object whose keys appear in this order: "say", "tool", "args". '
              'No text outside the JSON.')
 
@@ -90,6 +91,7 @@ class CloudLLM:
         self.last_stats = {}
         self.last_error = None
         self._online = (0.0, False)
+        self._rejected = None                # (provider, key) the provider answered 401/403 for
 
     def _s(self, k, d=""):
         v = self.settings.get(k) if self.settings else None
@@ -121,6 +123,10 @@ class CloudLLM:
     def configured(self):
         return bool(self.key() and self.model)
 
+    def key_rejected(self):
+        """True when the provider refused the current key (wrong or revoked), until it is replaced."""
+        return self._rejected is not None and self._rejected == (self.provider, self.key())
+
     def online(self):
         t, ok = self._online
         if time.time() - t < 60:
@@ -140,7 +146,7 @@ class CloudLLM:
         return ok
 
     def ready(self):
-        return self.configured() and self.online()
+        return self.configured() and not self.key_rejected() and self.online()
 
     # ------------------------------------------------------------ requests
     def _openai_req(self, messages, json_mode, max_tokens, temperature, stream):
@@ -167,10 +173,12 @@ class CloudLLM:
                 })
         if not chat_msgs:
             chat_msgs = [{"role": "user", "content": "Hello"}]
+        # Claude Haiku 5.5 rejects non-default sampling params (so no temperature) and thinks by
+        # default; thinking counts toward max_tokens, so low effort + headroom keeps short replies whole.
         body = {
             "model": self.model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            "max_tokens": max(int(max_tokens), ANTHROPIC_MIN_MAX_TOKENS),
+            "output_config": {"effort": "low"},
             "messages": chat_msgs,
             "stream": stream,
         }
@@ -216,7 +224,10 @@ class CloudLLM:
             except ValueError:
                 detail = r.text[:200]
             self.last_error = f"{PROVIDERS.get(self.provider, {}).get('label', self.provider)}: {detail}"
+            if r.status_code in (401, 403):
+                self._rejected = (self.provider, self.key())
             raise RuntimeError(self.last_error)
+        self._rejected = None
         return r
 
     @staticmethod
@@ -237,11 +248,11 @@ class CloudLLM:
                         if part.get("text"):
                             yield part["text"]
             elif provider == "anthropic":
-                if d.get("type") == "content_block_delta":
-                    delta = d.get("delta") or {}
-                    txt = delta.get("text")
-                    if txt:
-                        yield txt
+                if d.get("type") == "error":                 # e.g. overloaded mid-stream
+                    raise RuntimeError("Anthropic Claude: " + ((d.get("error") or {}).get("message") or "stream error"))
+                delta = d.get("delta") or {}
+                if d.get("type") == "content_block_delta" and delta.get("type") == "text_delta" and delta.get("text"):
+                    yield delta["text"]
             else:
                 for c in d.get("choices", [])[:1]:
                     t = (c.get("delta") or {}).get("content")
@@ -319,7 +330,7 @@ class Brain:
     def active(self):
         mode = self._mode()
         cloud_ok = self.purpose != "memory" or bool(self.settings.get("cloud_for_memory"))
-        if mode == "cloud" and cloud_ok and self.cloud.configured():
+        if mode == "cloud" and cloud_ok and self.cloud.configured() and not self.cloud.key_rejected():
             return self.cloud
         if mode == "auto" and cloud_ok and self.cloud.ready():
             return self.cloud
