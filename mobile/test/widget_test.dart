@@ -88,7 +88,7 @@ void main() {
     await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();
     expect(find.text('Count Reels and Shorts. Never reads messages or what you type.'), findsOneWidget);
-    expect(find.text('Agree and continue'), findsOneWidget);
+    expect(find.text('Agree and continue', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('chip settings: size, nudges, creator mode, pause and simple mode', (tester) async {
@@ -96,7 +96,9 @@ void main() {
     await tester.pump();
     expect(find.text('Show the chip'), findsOneWidget);
     expect(find.text('Large'), findsOneWidget);
-    expect(find.text('Gentle nudges'), findsWidgets);
+    expect(find.text('On the camera'), findsOneWidget);                 // chip style
+    await tester.scrollUntilVisible(find.text('Creator mode'), 300);
+    expect(find.text('Gentle nudges', skipOffstage: false), findsWidgets);
     expect(find.text('Creator mode'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Big text & simple mode'), 300);
     expect(find.text('Big text & simple mode'), findsOneWidget);

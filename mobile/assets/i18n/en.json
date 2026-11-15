@@ -1,5 +1,5 @@
 {
-  "_comment": "Snapy app strings (English). Source of truth: core/i18n/en.json — copy with `dart run tool/sync_core.dart`. {name} = filled in by the app. No shame words, ever.",
+  "_comment": "Snapy app strings (English). Source of truth: core/i18n/en.json — copy with `dart run tool/sync_core.dart`. {name} = filled in by the app. Kind, non-judgemental wording only.",
   "common": {
     "ok": "OK",
     "cancel": "Cancel",
@@ -275,6 +275,10 @@
     "chip_sub": "Screen time and reels beside your camera. Drag it anywhere.",
     "overlay_fallback": "Show the chip when the Reel counter is off",
     "overlay_fallback_sub": "Uses “Display over other apps” and a small notification.",
+    "style": "Chip style",
+    "style_orb": "Orb",
+    "style_island": "On the camera",
+    "style_sub": "“On the camera” wraps the chip around the camera with a limit ring. Takes effect the next time the Reel counter starts.",
     "size": "Chip size",
     "position": "Position",
     "position_auto": "Centred on the camera",

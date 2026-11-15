@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Real Count chip without the Reel counter ("Display over other apps"), kept alive as a
+         user-visible foreground service; restored after a restart -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Phone actions: "call Mom", "WhatsApp Rahul …" (asked when first needed), alarms/timers in Clock -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
@@ -62,6 +66,24 @@
             android:name=".WakeWordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- The chip over other apps when the Reel counter is off (TYPE_APPLICATION_OVERLAY) -->
+        <service
+            android:name=".ChipService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows the user's own screen-time chip over other apps (Display over other apps) while the user keeps it switched on." />
+        </service>
+
+        <!-- After a restart / update: chip back on, one-tap "Hey Snapy" notification -->
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Shows reminder notifications at their time, even if Snapy isn't running -->
         <receiver android:name=".ReminderReceiver" android:exported="false" />

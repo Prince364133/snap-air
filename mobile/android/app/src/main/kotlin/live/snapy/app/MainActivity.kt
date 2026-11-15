@@ -18,7 +18,14 @@ class MainActivity : FlutterActivity() {
         val core = CoreBridge.get(applicationContext)
         Thread {
             val wanted = try { JSONObject(core.configNowCall("voice_config")).optBoolean("wake_enabled") } catch (_: Exception) { false }
+            RcPrefs(applicationContext).putBool(RcPrefs.WAKE_WANTED, wanted)      // remembered for after a reboot
             if (wanted) runOnUiThread { WakeWordService.enable(applicationContext, true) }
         }.start()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // the chip without the Reel counter ("Display over other apps"): start it from the foreground
+        ChipService.startIfWanted(applicationContext)
     }
 }

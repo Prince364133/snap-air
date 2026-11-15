@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -42,143 +44,6 @@ import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
-
-/**
- * Living AI Orb for overlay: smoothly rotates harmonic light blobs and shifts
- * through the 6 spectral palettes matching Snapy's desktop HUD and Flutter UI.
- */
-class LivingOrbView(context: Context) : View(context) {
-    private val palettes = arrayOf(
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFF28C8FF.toInt(), 0xFF3CFFC8.toInt(), 0xFF78A0FF.toInt()), // Cyan Electric
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFF5E81FF.toInt(), 0xFF966EFF.toInt(), 0xFF46C8FF.toInt()), // Snapy Classic
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFFAA5AFF.toInt(), 0xFFFF5AC8.toInt(), 0xFF5A78FF.toInt()), // Ultra Violet
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFF5AAAFF.toInt(), 0xFFBEDCFF.toInt(), 0xFF826EFF.toInt()), // Ice Blue
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFFFF9F0A.toInt(), 0xFFFF375F.toInt(), 0xFFBF5AF2.toInt()), // Sunset Aura
-        intArrayOf(0xFFFFFFFF.toInt(), 0xFF30D158.toInt(), 0xFF00F2FE.toInt(), 0xFF66FF99.toInt()), // Emerald
-    )
-    private var paletteIndex = 0
-    private var colorT = 1f
-    private var turnT = 0f
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val turnAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 9000
-        repeatCount = ValueAnimator.INFINITE
-        addUpdateListener {
-            turnT = it.animatedValue as Float
-            invalidate()
-        }
-    }
-
-    private val colorAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 750
-        addUpdateListener {
-            colorT = it.animatedValue as Float
-            invalidate()
-        }
-    }
-
-    private val cycleRunnable = object : Runnable {
-        override fun run() {
-            nextPalette()
-            mainHandler.postDelayed(this, 6500)
-        }
-    }
-
-    init {
-        turnAnimator.start()
-        mainHandler.postDelayed(cycleRunnable, 6500)
-    }
-
-    fun nextPalette() {
-        paletteIndex = (paletteIndex + 1) % palettes.size
-        colorAnimator.start()
-    }
-
-    fun stop() {
-        turnAnimator.cancel()
-        colorAnimator.cancel()
-        mainHandler.removeCallbacks(cycleRunnable)
-    }
-
-    private fun lerpColor(c1: Int, c2: Int, t: Float): Int {
-        val a = ((c1 ushr 24) * (1 - t) + (c2 ushr 24) * t).toInt()
-        val r = (((c1 shr 16) and 0xff) * (1 - t) + ((c2 shr 16) and 0xff) * t).toInt()
-        val g = (((c1 shr 8) and 0xff) * (1 - t) + ((c2 shr 8) and 0xff) * t).toInt()
-        val b = ((c1 and 0xff) * (1 - t) + (c2 and 0xff) * t).toInt()
-        return (a shl 24) or (r shl 16) or (g shl 8) or b
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val w = width.toFloat()
-        val h = height.toFloat()
-        val r = minOf(w, h) / 2f
-        val cx = w / 2f
-        val cy = h / 2f
-
-        val prev = palettes[(paletteIndex - 1 + palettes.size) % palettes.size]
-        val curr = palettes[paletteIndex]
-        val c0 = lerpColor(prev[0], curr[0], colorT)
-        val c1 = lerpColor(prev[1], curr[1], colorT)
-        val c2 = lerpColor(prev[2], curr[2], colorT)
-        val c3 = lerpColor(prev[3], curr[3], colorT)
-
-        // 1. Soft atmospheric halo
-        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(cx, cy, r,
-                intArrayOf(c1 and 0x55FFFFFF, c2 and 0x22FFFFFF, 0),
-                floatArrayOf(0.4f, 0.75f, 1.0f),
-                Shader.TileMode.CLAMP)
-        }
-        canvas.drawCircle(cx, cy, r, haloPaint)
-
-        // 2. Base spherical gradient
-        val innerR = r * 0.88f
-        val path = Path().apply { addCircle(cx, cy, innerR, Path.Direction.CW) }
-        canvas.save()
-        canvas.clipPath(path)
-
-        val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(cx - innerR * 0.25f, cy - innerR * 0.35f, innerR * 1.1f,
-                intArrayOf(c0, c1),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP)
-        }
-        canvas.drawCircle(cx, cy, innerR, basePaint)
-
-        // 3. Spectral light blobs rotating inside
-        val t = turnT * 2 * Math.PI.toFloat()
-        val blobColors = intArrayOf(c1, c2, c3)
-        for (i in 0..2) {
-            val a = t + i * 2.1f
-            val rr = innerR * (0.35f + 0.1f * Math.sin((t * 0.8f + i).toDouble()).toFloat())
-            val px = cx + Math.cos(a.toDouble()).toFloat() * rr
-            val py = cy + Math.sin((a * 1.12f).toDouble()).toFloat() * rr
-            val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
-                shader = RadialGradient(px, py, innerR * 0.75f,
-                    intArrayOf(blobColors[i] and 0xE6FFFFFF.toInt(), 0),
-                    floatArrayOf(0f, 1f),
-                    Shader.TileMode.CLAMP)
-            }
-            canvas.drawCircle(px, py, innerR * 0.75f, blobPaint)
-        }
-
-        // 4. Glassy specular highlight
-        val hx = cx - innerR * 0.30f
-        val hy = cy - innerR * 0.35f
-        val hlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(hx, hy, innerR * 0.45f,
-                intArrayOf(0xAAFFFFFF.toInt(), 0),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP)
-        }
-        canvas.drawCircle(hx, hy, innerR * 0.45f, hlPaint)
-
-        canvas.restore()
-    }
-}
 
 /**
  * Real Count.
@@ -230,6 +95,10 @@ class SnapyAccessibilityService : AccessibilityService() {
     private var todayMs = 0L
     private var appMs = mapOf<String, Long>()
     private var hiddenUntil = 0L
+    /** Phase 5: nudges, focus, intention, creator mode, health (RealCountController). With
+     *  RcPrefs chip_style = "island" it also draws the camera-centred chip instead of this pill. */
+    private var rc: RealCountController? = null
+    private val island get() = RcPrefs(this).str("chip_style") == "island"
 
     override fun onServiceConnected() {
         instance = this
@@ -237,7 +106,10 @@ class SnapyAccessibilityService : AccessibilityService() {
         store = RealCountStore(this)
         usage = UsageTracker(this)
         loadConfig()
-        showPill()
+        ChipService.stop(this)                           // the counter's own chip replaces the fallback one
+        rc = RealCountController(this, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, counting = true,
+            externalCounter = true, showChip = island).also { it.start() }
+        if (!island) showPill()
         tick()
     }
 
@@ -261,12 +133,12 @@ class SnapyAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
         when (e.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> onWindow(pkg)
-            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) onScroll(pkg, e)
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> { onWindow(pkg); rc?.onWindow(pkg, e.className?.toString() ?: "") }
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) { rc?.onScrollEvent(pkg); onScroll(pkg, e) }
         }
     }
 
-    fun showPillPublic() = main.post { showPill() }
+    fun showPillPublic() = main.post { if (island) rc?.reload() else showPill() }
 
     private fun onWindow(pkg: String) {
         if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
@@ -277,7 +149,7 @@ class SnapyAccessibilityService : AccessibilityService() {
         val isSocial = socialApps.containsKey(pkg) && !socialApps[pkg]!!.isNull("short_video")
         setSocialAppActive(isSocial)
 
-        if (socialApps.containsKey(pkg) && pkg != prev) nudge(pkg)
+        if (socialApps.containsKey(pkg) && pkg != prev && rc == null) nudge(pkg)    // the nudge engine replaces this card
         updatePill()
     }
 
@@ -305,9 +177,11 @@ class SnapyAccessibilityService : AccessibilityService() {
         if (!pageChanged) return
         val last = lastReelAt[pkg] ?: 0L
         if (now - last < minDwellMs) return                      // a flick past, not a watch
+        if (rc?.shouldCount(pkg, src?.viewIdResourceName ?: "") == false) return   // creator mode / paused counting
         lastReelAt[pkg] = now
         if (reelTimeFrom == 0L) reelTimeFrom = now
         store.addReel(pkg)
+        rc?.onReelCounted()
         animateReelNumberDrop()
         updatePill()
     }
@@ -993,6 +867,7 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     /** Voice feedback in the pill (wake word or push-to-talk while another app is open). */
     fun showVoice(state: String, text: String) = main.post {
+        rc?.onVoice(state, text)
         val p = pillLayout ?: return@post
         p.visibility = View.VISIBLE
         if (state == "listening" || state == "thinking") {
@@ -1013,7 +888,10 @@ class SnapyAccessibilityService : AccessibilityService() {
         }
         dismissLiquidCard()
         removeCard()
+        rc?.stop()
+        rc = null
         instance = null
+        ChipService.startIfWanted(applicationContext)    // keep a chip via "Display over other apps" if allowed
         super.onDestroy()
     }
 

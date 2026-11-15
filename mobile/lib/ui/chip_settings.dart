@@ -111,6 +111,17 @@ class _ChipSettingsPageState extends State<ChipSettingsPage> {
       body: ListView(children: [
         group(tr('home.real_count'), [
           sw('chip_enabled', tr('rcset.chip'), tr('rcset.chip_sub')),
+          if (!simple)
+            ListTile(
+              title: Text(tr('rcset.style')),
+              subtitle: Text(tr('rcset.style_sub')),
+              trailing: SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: [for (final s in ['orb', 'island']) ButtonSegment(value: s, label: Text(tr('rcset.style_$s')))],
+                selected: {_p.s('chip_style')},
+                onSelectionChanged: (v) => _set('chip_style', v.first),
+              ),
+            ),
           ListTile(
             title: Text(tr('rcset.size')),
             trailing: SegmentedButton<String>(

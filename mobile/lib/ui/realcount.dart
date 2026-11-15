@@ -150,10 +150,17 @@ class _Dashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
     final t = today;
-    final social = t == null
-        ? <MapEntry<String, int>>[]
-        : (t.perAppMs.entries.where((e) => labels.containsKey(e.key) || t.reels.containsKey(e.key)).toList()
-          ..sort((a, b) => b.value.compareTo(a.value)));
+    final allPkgs = <String>{
+      if (t != null) ...t.perAppMs.keys,
+      if (t != null) ...t.reels.keys,
+    }.where((k) => labels.containsKey(k) || (t?.reels.containsKey(k) ?? false) || (t?.perAppMs[k] ?? 0) >= 60000).toList();
+    allPkgs.sort((a, b) {
+      final reelsA = t?.reels[a]?.reels ?? 0;
+      final reelsB = t?.reels[b]?.reels ?? 0;
+      final msA = t?.perAppMs[a] ?? 0;
+      final msB = t?.perAppMs[b] ?? 0;
+      return (reelsB * 1000000 + msB).compareTo(reelsA * 1000000 + msA);
+    });
     final focusUntil = (state['focus_until'] as num?)?.toInt() ?? 0;
     final focusOn = focusUntil > DateTime.now().millisecondsSinceEpoch;
     final focusMin = rules.i('nudges.focus_min');
@@ -199,15 +206,63 @@ class _Dashboard extends StatelessWidget {
           ActionChip(avatar: const Icon(Icons.tune, size: 18), label: Text(tr('rc.chip_settings')), onPressed: () => _push(context, const ChipSettingsPage())),
         ]),
       ),
-      if (social.isNotEmpty) Divider(color: c.hair, height: 24),
-      ...social.take(6).map((e) {
-        final reels = t!.reels[e.key]?.reels ?? 0;
+      if (allPkgs.isNotEmpty) Divider(color: c.hair, height: 24),
+      ...allPkgs.map((pkg) {
+        final reels = t!.reels[pkg]?.reels ?? 0;
+        final ms = t.perAppMs[pkg] ?? 0;
+        final name = labels[pkg] ?? pkg.split('.').last;
+        Color badgeColor = c.accent;
+        if (pkg.contains('instagram')) {
+          badgeColor = const Color(0xFFDD2A7B);
+        } else if (pkg.contains('youtube')) {
+          badgeColor = const Color(0xFFFF0000);
+        } else if (pkg.contains('snapchat')) {
+          badgeColor = const Color(0xFFFFD600);
+        } else if (pkg.contains('facebook')) {
+          badgeColor = const Color(0xFF1877F2);
+        } else if (pkg.contains('twitter') || pkg.contains('x')) {
+          badgeColor = Colors.white70;
+        } else if (pkg.contains('whatsapp')) {
+          badgeColor = const Color(0xFF25D366);
+        } else if (pkg.contains('reddit')) {
+          badgeColor = const Color(0xFFFF4500);
+        }
+
         return ListTile(
           dense: true,
-          title: Text(labels[e.key] ?? e.key, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text(tr('rc.opens', {'n': '${t.opens[e.key] ?? 0}'})),
-          trailing: Text(reels > 0 ? '$reels · ${formatMs(e.value)}' : formatMs(e.value),
-              style: TextStyle(color: c.text2, fontFeatures: const [FontFeature.tabularFigures()])),
+          leading: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: badgeColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: badgeColor.withValues(alpha: 0.35), width: 1),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : 'A',
+              style: TextStyle(color: badgeColor == const Color(0xFFFFD600) ? Colors.amber : badgeColor, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(tr('rc.opens', {'n': '${t.opens[pkg] ?? 0}'}) + (ms >= 60000 ? ' · ${formatMs(ms)}' : '')),
+          trailing: reels > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: c.accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: c.accent.withValues(alpha: 0.3), width: 1),
+                  ),
+                  child: Text(
+                    '▶ $reels reels',
+                    style: TextStyle(color: c.accent, fontWeight: FontWeight.bold, fontSize: 12, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                )
+              : Text(
+                  formatMs(ms),
+                  style: TextStyle(color: c.text2, fontFeatures: const [FontFeature.tabularFigures()]),
+                ),
         );
       }),
       if (counterOn)

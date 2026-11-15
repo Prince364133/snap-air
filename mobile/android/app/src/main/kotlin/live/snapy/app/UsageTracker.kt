@@ -67,6 +67,20 @@ class UsageTracker(private val ctx: Context) {
         return Today(perApp.values.sum(), perApp, opens)
     }
 
+    /** The app in front right now (last RESUMED in the past 10 min), for the chip without accessibility. */
+    fun foreground(): String? {
+        if (!hasAccess()) return null
+        val now = System.currentTimeMillis()
+        val events = usm.queryEvents(now - 10 * 60_000, now)
+        val e = UsageEvents.Event()
+        var pkg: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) pkg = e.packageName
+        }
+        return pkg?.takeIf { it !in launchers } ?: pkg?.let { "" }
+    }
+
     companion object {
         fun format(ms: Long): String {
             val m = ms / 60000

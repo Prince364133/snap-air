@@ -118,7 +118,8 @@ bool counterPaused({required int nowMs, required int inAppSinceMs, required int 
 bool countsAsFeed(RealCountRules rules, {required String pkg, required String windowClass, required String sourceId,
     required bool creatorMode}) {
   if (!creatorMode) return true;
-  final app = rules.get('creator.apps.$pkg');
+  final apps = rules.get('creator.apps');                 // packages contain dots: not a dotted path
+  final app = apps is Map ? apps[pkg] : null;
   final feedIds = (app is Map ? (app['feed_view_ids'] as List?) : null)?.map((e) => e.toString()).toList() ?? const <String>[];
   if (feedIds.isNotEmpty && sourceId.isNotEmpty) return feedIds.contains(sourceId);
   final words = <String>{

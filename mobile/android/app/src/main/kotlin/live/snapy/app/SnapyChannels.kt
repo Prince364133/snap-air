@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -58,6 +59,8 @@ object SnapyChannels {
                     "wake" to WakeWordService.enabled,
                     "notifications" to (Build.VERSION.SDK_INT < 33 ||
                         activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED),
+                    "battery" to (activity.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager)
+                        .isIgnoringBatteryOptimizations(activity.packageName),
                 ))
                 "requestNotifications" -> {
                     if (Build.VERSION.SDK_INT >= 33) activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 41)
@@ -76,7 +79,9 @@ object SnapyChannels {
                 "openRealCountSettings" -> { activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); result.success(true) }
                 "startChip" -> {
                     SnapyAccessibilityService.instance?.showPillPublic()
-                    result.success(true)
+                    RealCountController.active?.reload()
+                    // without the Reel counter: the chip via "Display over other apps" (ChipService)
+                    result.success(SnapyAccessibilityService.instance != null || ChipService.startIfWanted(activity.applicationContext))
                 }
                 "today" -> Thread {
                     val t = usage.today()
@@ -91,6 +96,58 @@ object SnapyChannels {
                     if (activity is SheetActivity) {
                         activity.finish()
                     }
+                    result.success(true)
+                }
+                // ---- Real Count (Phase 5): prefs, focus, brain calls, battery guide
+                "filesDir" -> result.success(activity.filesDir.absolutePath)
+                "rcPrefs" -> result.success(RcPrefs(activity).prefsJson().toString())
+                "setRcPrefs" -> {
+                    RcPrefs(activity).update(JSONObject(str("json")))
+                    Strings.reload()
+                    RealCountController.active?.reload()
+                    result.success(true)
+                }
+                "rcState" -> result.success((RealCountController.active?.stateJson() ?: JSONObject().put("mode", "off")
+                    .put("focus_until", RcPrefs(activity).long(RcPrefs.FOCUS_UNTIL))).toString())
+                "startFocus" -> {
+                    val min = call.argument<Int>("minutes") ?: 25
+                    val c = RealCountController.active
+                    if (c != null) c.startFocus(min) else RcPrefs(activity).putLong(RcPrefs.FOCUS_UNTIL, System.currentTimeMillis() + min * 60000L)
+                    result.success(true)
+                }
+                "stopFocus" -> { RcPrefs(activity).putLong(RcPrefs.FOCUS_UNTIL, 0); RealCountController.active?.render(); result.success(true) }
+                "pauseCounting" -> {
+                    RcPrefs(activity).putLong(RcPrefs.PAUSED_UNTIL, System.currentTimeMillis() + (call.argument<Int>("minutes") ?: 60) * 60000L)
+                    result.success(true)
+                }
+                "coreCall" -> {
+                    val args = call.argument<List<String>>("args") ?: emptyList()
+                    core.call(str("method"), *args.toTypedArray()) { result.success(it) }
+                }
+                "device" -> result.success(mapOf(
+                    "manufacturer" to Build.MANUFACTURER, "brand" to Build.BRAND, "model" to Build.MODEL,
+                    "sdk" to Build.VERSION.SDK_INT,
+                    "snapy_version" to (try { activity.packageManager.getPackageInfo(activity.packageName, 0).versionName } catch (_: Exception) { "" }),
+                ))
+                "appVersions" -> {
+                    val out = HashMap<String, String>()
+                    for (p in call.argument<List<String>>("packages") ?: emptyList()) {
+                        try { out[p] = activity.packageManager.getPackageInfo(p, 0).versionName ?: "" } catch (_: Exception) { }
+                    }
+                    result.success(out)
+                }
+                "openTarget" -> {
+                    val pkg = call.argument<String>("pkg"); val cls = call.argument<String>("cls"); val action = call.argument<String>("action")
+                    val i = when {
+                        pkg != null && cls != null -> Intent().setComponent(ComponentName(pkg, cls))
+                        action == Settings.ACTION_APPLICATION_DETAILS_SETTINGS -> Intent(action, Uri.parse("package:${activity.packageName}"))
+                        action != null -> Intent(action)
+                        else -> null
+                    }
+                    result.success(i != null && tryStart(activity, i))
+                }
+                "goHome" -> {
+                    tryStart(activity, Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
                     result.success(true)
                 }
                 // ---- voice
@@ -117,6 +174,7 @@ object SnapyChannels {
                         activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
                         result.success(false)
                     } else {
+                        RcPrefs(activity).putBool(RcPrefs.WAKE_WANTED, on)          // BootReceiver restores it
                         core.call("update_settings", JSONObject().put("android_wake_word", on).toString()) {
                             WakeWordService.enable(activity.applicationContext, on)   // started while Snapy is open
                             result.success(true)
@@ -127,6 +185,11 @@ object SnapyChannels {
             }
         }
     }
+
+    /** Some OEM settings screens don't exist or aren't exported: false instead of a crash. */
+    private fun tryStart(activity: Activity, i: Intent): Boolean = try {
+        activity.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
+    } catch (_: Exception) { false }
 
     fun isAccessibilityOn(activity: Activity): Boolean {
         val enabled = Settings.Secure.getString(activity.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
