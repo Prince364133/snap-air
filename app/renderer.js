@@ -930,20 +930,25 @@ function renderModelSection() {
     ];
 
     // cloud
+    // The provider you picked updates S at once; the engine's status (cl) catches up a moment later.
+    // Show engine-reported key/model/status only once it describes the provider shown, and always
+    // save keys under the provider shown, never a stale one.
+    const prov = S.cloud_provider || cl.provider;
+    const cs = cl.provider === prov ? cl : {};
     const provSel = h('select', { class: 'select' }, ...Object.entries(cl.providers || {}).map(([k, v]) => {
         const o = h('option', { value: k }, v.label);
-        if (k === cl.provider) o.selected = true;
+        if (k === prov) o.selected = true;
         return o;
     }));
     provSel.onchange = () => {
         updateSetting('cloud_provider', provSel.value);
         renderModelSection();
     };
-    const currentProvInfo = (cl.providers && cl.providers[cl.provider]) || {};
-    const defModel = currentProvInfo.model || 'auto';
+    const currentProvInfo = (cl.providers && cl.providers[prov]) || {};
+    const defModel = currentProvInfo.model || (currentProvInfo.custom ? 'enter a Model ID below' : '');
     const keyIn = h('input', {
         type: 'password',
-        placeholder: cl.key ? `Saved (${cl.key}) — paste to replace` : `Paste your ${currentProvInfo.label || ''} API key`,
+        placeholder: cs.key ? `Saved (${cs.key}) — paste to replace` : `Paste your ${currentProvInfo.label || ''} API key`,
         autocomplete: 'off'
     });
 
@@ -952,31 +957,31 @@ function renderModelSection() {
 
     const cloudRows = [
         h('div', { class: 'g-row' }, h('span', {}, 'Provider'), provSel),
-        h('div', { class: 'm-note', style: 'margin:4px 0 6px 0;color:var(--text-sub)' },
-            '⚡ Smart Model: ', h('strong', { style: 'color:var(--text)' }, cl.model || defModel),
-            ' · Auto-selected for fastest sub-second responses and zero laptop load.'),
-        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Base URL'),
-            settingControl({ key: 'cloud_base_url', type: 'text', placeholder: cl.base_url || 'https://…/v1' })) : null,
-        cl.provider === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Model ID', h('span', { class: 'sub' }, 'Required for a custom endpoint')),
-            settingControl({ key: 'cloud_model', type: 'text', placeholder: cl.model || 'e.g. llama-3.1-8b-instruct' })) : null,
+        h('div', { class: 'g-row col' }, h('div', { class: 'm-note' },
+            'Model: ', h('strong', { style: 'color:var(--text)' }, cs.model || defModel),
+            ' · picked automatically for this provider (a fast, low-cost one)')),
+        prov === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Base URL'),
+            settingControl({ key: 'cloud_base_url', type: 'text', placeholder: cs.base_url || currentProvInfo.base_url || 'https://…/v1' })) : null,
+        prov === 'compatible' ? h('div', { class: 'g-row' }, h('span', {}, 'Model ID', h('span', { class: 'sub' }, 'Required for a custom endpoint')),
+            settingControl({ key: 'cloud_model', type: 'text', placeholder: cs.model || 'e.g. llama-3.1-8b-instruct' })) : null,
         h('div', { class: 'g-row col' },
             h('div', { class: 'row', style: 'gap:8px' }, keyIn,
                 h('button', { class: 'btn small primary', onclick: () => {
                     const keyVal = keyIn.value.trim();
                     if (keyVal) {
-                        send({ type: 'set_api_key', provider: provSel.value, key: keyVal });   // engine tests it and reports back
+                        send({ type: 'set_api_key', provider: prov, key: keyVal });   // engine tests it and reports back
                     } else {
                         showToast('Please enter an API key', false);
                     }
                     keyIn.value = '';
                 } }, 'Save'),
-                h('button', { class: 'btn small', disabled: !cl.configured, onclick: () => send({ type: 'cloud_test' }) }, 'Test'),
-                cl.key ? h('button', { class: 'mini', onclick: () => {
-                    send({ type: 'set_api_key', provider: provSel.value, key: '' });
+                h('button', { class: 'btn small', disabled: !cs.configured, onclick: () => send({ type: 'cloud_test' }) }, 'Test'),
+                cs.key ? h('button', { class: 'mini', onclick: () => {
+                    send({ type: 'set_api_key', provider: prov, key: '' });
                 } }, 'Remove') : null),
             h('div', { class: 'm-note', style: 'margin-top:6px' },
-                (cl.configured ? `Key saved, encrypted with Windows DPAPI. ${cl.active ? '🟢 Live Cloud brain is active.' : ''}`
-                    : keyGuide) + (cl.error ? '  ⚠ ' + cl.error : ''))),
+                (cs.configured ? `Key saved, encrypted with Windows DPAPI. ${cs.active ? '🟢 Live Cloud brain is active.' : ''}`
+                    : keyGuide) + (cs.error ? '  ⚠ ' + cs.error : ''))),
         h('div', { class: 'g-row' }, h('span', {}, 'Let the cloud help learn memories', h('span', { class: 'sub' }, 'Off = memory learning stays on this PC')),
             settingControl({ key: 'cloud_for_memory', type: 'switch' })),
     ];
