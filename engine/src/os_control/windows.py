@@ -4,7 +4,11 @@ import re
 import os
 import sys
 import time
-from ctypes import wintypes
+
+try:                                     # not available on Android/Linux
+    from ctypes import wintypes
+except (ImportError, ValueError):
+    wintypes = None
 
 IS_WIN = sys.platform == "win32"
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_summary">Real Count: screen time and reels you\'ve watched, in a small pill at the top of your screen.</string>
+    <string name="accessibility_description">Snapy uses this permission to see which app is open and to count swipes in short-video feeds (Instagram Reels, YouTube Shorts, Facebook, Snapchat, Moj, Josh and others), so it can show your Real Count and gentle reminders. It also lets Snapy go Back, Home or open Recents when you ask by voice. Counting happens on your phone. Snapy never reads, stores or sends your messages, posts or what\'s on your screen.</string>
+</resources>

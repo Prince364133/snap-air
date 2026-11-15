@@ -1,0 +1,17 @@
+{
+  "name": "snapy-workspace",
+  "version": "2.0.0",
+  "description": "Snapy — your private AI companion for Windows & Android",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:all": "node scripts/dev.js --all",
+    "dev:hud": "node scripts/dev.js --no-web --no-engine",
+    "dev:web": "node scripts/dev.js --no-hud --no-engine",
+    "dev:engine": "node scripts/dev.js --engine-only",
+    "dev:mobile": "node scripts/dev.js --mobile",
+    "start": "node scripts/dev.js",
+    "build": "npm run build --prefix website"
+  },
+  "packageManager": "pnpm@11.25.0"
+}

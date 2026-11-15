@@ -26,8 +26,8 @@ export const RELEASE = {
   // Where the installer is hosted (a CDN / object storage URL). Static hosts like
   // GitHub Pages can't serve a 358 MB file, so this is configurable.
   downloadUrl: '/download/Snapy-Setup-2.0.0.exe',
-  sizeMB: 358,
-  sha256: 'c7a3664c2f8e7a99fb8f513f5795db0273a53dc40bae8c654997aa82b9111351',
+  sizeMB: 198,
+  sha256: '0757bd550459ff708d3360126204527924e8c736b30b58985da52ceb78696613',
   os: 'Windows 10 (64-bit, version 1903+) or Windows 11',
 };
 

@@ -16,7 +16,10 @@ import json
 import os
 import threading
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 _lock = threading.Lock()
 _backends = {}

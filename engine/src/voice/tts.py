@@ -9,7 +9,10 @@ import sys
 import threading
 import time
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:                          # e.g. Android: speech comes from Android TextToSpeech
+    np = None
 
 try:
     import sounddevice as sd
@@ -17,7 +20,10 @@ except Exception:  # pragma: no cover
     sd = None
 
 from src import storage
-from src.voice.piper_voice import CATALOG as PIPER_CATALOG, PiperVoice, download as piper_download
+try:
+    from src.voice.piper_voice import CATALOG as PIPER_CATALOG, PiperVoice, download as piper_download
+except ImportError:
+    PIPER_CATALOG, PiperVoice, piper_download = {}, None, None
 
 # whisper language code -> (kokoro voice, kokoro lang)
 VOICES = {

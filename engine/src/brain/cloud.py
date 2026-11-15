@@ -30,6 +30,9 @@ def _load_providers():
 
 PROVIDERS = _load_providers()
 
+# Some providers (Gemini, xAI) answer a bad key with HTTP 400 rather than 401/403
+_KEY_BAD = re.compile(r"api[ _-]?key.{0,30}(not valid|invalid|incorrect)|(invalid|incorrect).{0,20}api[ _-]?key", re.I)
+
 # Phrases providers use when a model ID is retired or not available to this key
 _MODEL_GONE = re.compile(r"not[ _]found|does not exist|decommission|deprecat|retired|no longer|"
                          r"unknown model|invalid model|model.{0,40}(not supported|unsupported|not available)", re.I)
@@ -186,10 +189,13 @@ class CloudLLM:
             return r.text[:200]
         if isinstance(d, list) and d:              # Gemini can wrap errors in a list
             d = d[0]
-        err = d.get("error") if isinstance(d, dict) else None
+        if not isinstance(d, dict):
+            return str(d)[:200]
+        err = d.get("error")
         if isinstance(err, dict):
             return err.get("message") or str(err)[:200]
-        return str(err or d)[:200]
+        detail = err or d.get("message") or d.get("detail")        # Mistral: {"detail": "..."}
+        return str(detail if isinstance(detail, str) else d)[:200]
 
     def _request(self, messages, json_mode, max_tokens, temperature, stream):
         if json_mode:
@@ -206,7 +212,7 @@ class CloudLLM:
             if r.status_code in (400, 404) and _MODEL_GONE.search(detail) and self._advance_model():
                 continue
             self.last_error = f"{self._info.get('label', self.provider)}: {detail}"
-            if r.status_code in (401, 403):
+            if r.status_code in (401, 403) or (r.status_code == 400 and _KEY_BAD.search(detail)):
                 self._rejected = (self.provider, self.key())
             raise RuntimeError(self.last_error)
 

@@ -369,7 +369,8 @@ class Assistant:
                 not re.search(r"\b(stop|end|finish)\b", low):
             if self.meeting.recording:
                 return self.reply("I'm already taking notes.", lang, speak)
-            self.meeting.start()
+            if self.meeting.start() is False:
+                return self.reply("I can't take meeting notes on this device yet.", lang, speak, error=True)
             self.emit({"type": "meeting", **self.meeting.state()})
             return self.reply("Taking meeting notes now. Say “stop taking notes” when it's over.", lang, speak,
                               tool="meeting")
@@ -877,6 +878,15 @@ class Assistant:
                              r"(?: (?:on|about|for) (.+))?$")
 
     def _screen_intent(self, t, low, lang, speak):
+        if not getattr(self, "screen_available", True):
+            return None                   # e.g. Android before its accessibility click scripts
+        # "play arijit songs, the 4th video" is a YouTube search, not a click on the current screen
+        try:
+            rest, _ = self.agent._ordinal(self.agent._plain(low))
+            if self.agent._play_request(rest):
+                return None
+        except Exception:
+            pass
         m = self.SCREEN_TASK.match(low)
         if m:
             return self.screen_task(m.group(1), lang, speak)

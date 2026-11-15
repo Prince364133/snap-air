@@ -115,6 +115,23 @@ class RejectedKeyTests(unittest.TestCase):
         with mock.patch.object(cloud_mod.secrets_store, "get_key", return_value="new"):
             self.assertFalse(c.key_rejected())
 
+    def test_gemini_and_xai_400_bad_key_is_rejected(self):
+        # real replies captured 2026-11-15 from the live APIs with an invalid key
+        for prov, body in [("gemini", [{"error": {"code": 400, "message": "API key not valid. Please pass a valid API key."}}]),
+                           ("grok", {"error": "Incorrect API key provided. You can obtain an API key from https://console.x.ai."})]:
+            c, keyp = cloud_for(prov, "bad")
+            with keyp, mock.patch.object(cloud_mod.requests, "post", return_value=FakeResp(400, body)):
+                with self.assertRaises(RuntimeError):
+                    c.test()
+                self.assertTrue(c.key_rejected(), prov)
+
+    def test_mistral_detail_message_is_readable(self):
+        c, keyp = cloud_for("mistral", "bad")
+        with keyp, mock.patch.object(cloud_mod.requests, "post", return_value=FakeResp(401, {"detail": "Invalid API Key"})):
+            with self.assertRaises(RuntimeError) as e:
+                c.test()
+        self.assertEqual(str(e.exception), "Mistral AI: Invalid API Key")
+
     def test_server_errors_do_not_mark_key_rejected(self):
         c, keyp = anthropic_cloud()
         with keyp, mock.patch.object(cloud_mod.requests, "post", return_value=FakeResp(529, {"error": {"message": "x"}})):

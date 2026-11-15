@@ -3,16 +3,32 @@ Keys are never written in plain text and never sent back to the HUD."""
 import base64
 import ctypes
 import sys
-from ctypes import wintypes
 
 from src import storage
 
+try:
+    from ctypes import wintypes
+except (ImportError, ValueError):            # not Windows
+    wintypes = None
 
-class _Blob(ctypes.Structure):
-    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+# Other platforms plug in their own cipher, e.g. Android Keystore AES-GCM (set_cipher)
+_cipher = None
+
+
+def set_cipher(protect, unprotect):
+    """protect/unprotect: bytes -> bytes (used instead of DPAPI on Android)."""
+    global _cipher
+    _cipher = (protect, unprotect)
+
+
+if wintypes is not None:
+    class _Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
 
 def _protect(data: bytes) -> bytes:
+    if _cipher:
+        return bytes(_cipher[0](data))
     if sys.platform != "win32":
         return data
     inp = _Blob(len(data), ctypes.cast(ctypes.create_string_buffer(data, len(data)), ctypes.POINTER(ctypes.c_char)))
@@ -26,6 +42,8 @@ def _protect(data: bytes) -> bytes:
 
 
 def _unprotect(data: bytes) -> bytes:
+    if _cipher:
+        return bytes(_cipher[1](data))
     if sys.platform != "win32":
         return data
     inp = _Blob(len(data), ctypes.cast(ctypes.create_string_buffer(data, len(data)), ctypes.POINTER(ctypes.c_char)))

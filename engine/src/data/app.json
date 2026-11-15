@@ -309,5 +309,156 @@
     "chauthi": 4,
     "paanchva": 5,
     "paanchvi": 5
+  },
+  "android": {
+    "_comment": "Phone-specific data for the Android app (same file the Windows engine reads).",
+    "app_links": {
+      "web.whatsapp.com": "com.whatsapp",
+      "whatsapp.com": "com.whatsapp",
+      "wa.me": "com.whatsapp",
+      "instagram.com": "com.instagram.android",
+      "facebook.com": "com.facebook.katana",
+      "youtube.com": "com.google.android.youtube",
+      "music.youtube.com": "com.google.android.apps.youtube.music",
+      "open.spotify.com": "com.spotify.music",
+      "x.com": "com.twitter.android",
+      "twitter.com": "com.twitter.android",
+      "linkedin.com": "com.linkedin.android",
+      "reddit.com": "com.reddit.frontpage",
+      "snapchat.com": "com.snapchat.android",
+      "mail.google.com": "com.google.android.gm",
+      "maps.google.com": "com.google.android.apps.maps",
+      "telegram.org": "org.telegram.messenger",
+      "t.me": "org.telegram.messenger"
+    },
+    "key_actions": {
+      "alt+left": "back",
+      "browserback": "back",
+      "escape": "back",
+      "backspace+alt": "back",
+      "win+d": "home",
+      "win": "home",
+      "win+m": "home",
+      "win+tab": "recents",
+      "alt+tab": "recents",
+      "win+n": "notifications",
+      "win+a": "quick_settings",
+      "win+v": "clipboard",
+      "printscreen": "screenshot",
+      "win+shift+s": "screenshot",
+      "win+printscreen": "screenshot",
+      "win+l": "lock",
+      "win+h": "voice_typing"
+    },
+    "social_apps": [
+      {
+        "package": "com.instagram.android",
+        "label": "Instagram",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.google.android.youtube",
+        "label": "YouTube",
+        "short_video": "Shorts"
+      },
+      {
+        "package": "com.facebook.katana",
+        "label": "Facebook",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.facebook.lite",
+        "label": "Facebook Lite",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.snapchat.android",
+        "label": "Snapchat",
+        "short_video": "Spotlight"
+      },
+      {
+        "package": "in.mohalla.video",
+        "label": "Moj",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.eterno.shortvideos",
+        "label": "Josh",
+        "short_video": "Videos"
+      },
+      {
+        "package": "in.mohalla.sharechat",
+        "label": "ShareChat",
+        "short_video": "Videos"
+      },
+      {
+        "package": "io.chingari.app",
+        "label": "Chingari",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.roposo.android",
+        "label": "Roposo",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.zhiliaoapp.musically",
+        "label": "TikTok",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.ss.android.ugc.trill",
+        "label": "TikTok",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.twitter.android",
+        "label": "X",
+        "short_video": null
+      },
+      {
+        "package": "com.instagram.barcelona",
+        "label": "Threads",
+        "short_video": null
+      },
+      {
+        "package": "com.reddit.frontpage",
+        "label": "Reddit",
+        "short_video": null
+      },
+      {
+        "package": "com.linkedin.android",
+        "label": "LinkedIn",
+        "short_video": null
+      },
+      {
+        "package": "com.pinterest",
+        "label": "Pinterest",
+        "short_video": null
+      },
+      {
+        "package": "com.tumblr",
+        "label": "Tumblr",
+        "short_video": null
+      },
+      {
+        "package": "com.whatsapp",
+        "label": "WhatsApp",
+        "short_video": null
+      },
+      {
+        "package": "org.telegram.messenger",
+        "label": "Telegram",
+        "short_video": null
+      },
+      {
+        "package": "com.discord",
+        "label": "Discord",
+        "short_video": null
+      }
+    ],
+    "reels_selectors_url": "https://snapy.live/config/reels.json",
+    "min_reel_dwell_ms": 700,
+    "screen_time_refresh_s": 60
   }
 }
