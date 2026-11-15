@@ -74,6 +74,9 @@ class OSActions:
         self.pg = pyautogui
 
     def hotkey(self, *keys):
+        k_set = {str(k).lower() for k in keys}
+        if "win" in k_set and "ctrl" in k_set and "o" in k_set:
+            return
         win.ensure_target_focus()
         self.pg.hotkey(*keys)
 
@@ -801,6 +804,15 @@ class AgentController:
         def _(m, orig):
             return self.open_anything(m.group(1))
 
+        @cmd(r"(?:close|kill|exit|hide) (?:the )?(?:on[- ]?screen |touch )?keyboard")
+        def _(m, orig):
+            try:
+                subprocess.run(["taskkill", "/f", "/im", "osk.exe"], capture_output=True,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception:
+                pass
+            return Result(True, "Closed On-Screen Keyboard", "close")
+
         @cmd(r"close (.+)")
         def _(m, orig):
             found = o.find_window(m.group(1))
@@ -826,6 +838,9 @@ class AgentController:
 
     def open_anything(self, name):
         name = name.strip()
+        clean_target = name.lower()
+        if any(b in clean_target for b in ("on-screen keyboard", "on screen keyboard", "touch keyboard", "osk")):
+            return Result(False, "On-screen keyboard is disabled", "blocked")
         name = re.sub(r"^(the|my|a)\s+", "", name)
         name = re.sub(r"\s+(website|site|web site)$", "", name)
         # punctuation was stripped: "github com" / "github dot com" -> github.com

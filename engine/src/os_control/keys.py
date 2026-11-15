@@ -89,7 +89,6 @@ SHORTCUTS = [
     (r"system (?:info|information|properties)|about (?:this )?pc", ("win", "pause"), "System info"),
     (r"power (?:user )?menu|quick link menu|admin menu", ("win", "x"), "Power user menu"),
     (r"(?:keyboard |input )?language switch|switch (?:keyboard )?(?:layout|language)|change (?:keyboard )?language", ("win", "space"), "Switched input language"),
-    (r"on[- ]?screen keyboard|touch keyboard", ("ctrl", "win", "o"), "On-screen keyboard"),
     (r"(?:open )?(?:the )?feedback hub", ("win", "f"), "Feedback Hub"),
     (r"restore (?:all )?(?:minimi[sz]ed )?windows|undo minimi[sz]e all", ("win", "shift", "m"), "Restored windows"),
     (r"minimi[sz]e everything|minimi[sz]e all windows", ("win", "m"), "Minimised everything"),
@@ -170,6 +169,9 @@ def parse_combo(text, require_modifier=False):
         return None
     # modifiers first, keep order otherwise
     ordered = [k for k in ("ctrl", "alt", "shift", "win") if k in mods] + [k for k in keys if k not in mods]
+    # Never allow combinations that summon Windows On-Screen Keyboard
+    if "win" in ordered and "ctrl" in ordered and "o" in ordered:
+        return None
     return {"keys": ordered, "times": times}
 
 
@@ -189,5 +191,8 @@ def describe(keys):
 
 
 # Things Windows doesn't let any app simulate
-BLOCKED = {("ctrl", "alt", "delete"): "Windows doesn't let apps press Ctrl+Alt+Delete (it's a security key). "
-                                     "I can open Task Manager or lock the PC instead."}
+BLOCKED = {
+    ("ctrl", "alt", "delete"): "Windows doesn't let apps press Ctrl+Alt+Delete (it's a security key). I can open Task Manager or lock the PC instead.",
+    ("ctrl", "win", "o"): "On-Screen Keyboard is disabled.",
+    ("win", "ctrl", "o"): "On-Screen Keyboard is disabled.",
+}

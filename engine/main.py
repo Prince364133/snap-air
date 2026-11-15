@@ -896,7 +896,17 @@ def camera_loop():
             time.sleep(0.15)
 
 
+def close_osk():
+    try:
+        subprocess.run(["taskkill", "/f", "/im", "osk.exe"], capture_output=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        pass
+
+
 def startup():
+    # make sure on-screen keyboard is not lingering
+    close_osk()
     # the greeting itself is triggered by the activity tracker's session start
     send_all(models_payload())
     if memory.profile.get("onboarded"):

@@ -55,6 +55,8 @@ class AppIndex:
             for lnk in glob.glob(pattern, recursive=True):
                 name = _clean(os.path.splitext(os.path.basename(lnk))[0])
                 if name and "uninstall" not in name and name not in apps:
+                    if any(b in name for b in ("on screen keyboard", "on-screen keyboard", "touch keyboard", "osk")):
+                        continue
                     apps[name] = ("lnk", lnk)
         try:
             out = subprocess.run(
@@ -67,6 +69,8 @@ class AppIndex:
                     name, appid = line.rsplit("|", 1)
                     name = _clean(name)
                     if name and "uninstall" not in name and name not in apps:
+                        if any(b in name for b in ("on screen keyboard", "on-screen keyboard", "touch keyboard", "osk")) or "osk.exe" in appid.lower():
+                            continue
                         apps[name] = ("appid", appid.strip())
         except Exception as e:
             print("[Apps] Get-StartApps failed:", e)
@@ -79,7 +83,7 @@ class AppIndex:
         q = _clean(spoken)
         q = re.sub(r"^(the|my)\s+", "", q)
         q = re.sub(r"\s+(app|application|program)$", "", q)
-        if not q:
+        if not q or any(b in q for b in ("on screen keyboard", "on-screen keyboard", "touch keyboard")) or q == "osk":
             return None
         alias = ALIASES.get(q)
         if alias and alias in BUILTIN:
