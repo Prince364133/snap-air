@@ -22,15 +22,19 @@ class _ProfileTabState extends State<ProfileTab> {
   ActivationModes _modes = const ActivationModes();
   final _ice = TextEditingController();
   Map<String, dynamic> _device = const {};
+  // back from Android's accessibility settings (volume shortcut setup): refresh the modes
+  late final AppLifecycleListener _life;
 
   @override
   void initState() {
     super.initState();
+    _life = AppLifecycleListener(onResume: _load);
     _load();
   }
 
   @override
   void dispose() {
+    _life.dispose();
     _ice.dispose();
     super.dispose();
   }
@@ -98,7 +102,11 @@ class _ProfileTabState extends State<ProfileTab> {
     final ok = await NextApi.requestAssistantRole();
     final m = await NextApi.activationModes();
     if (!mounted) return;
-    setState(() => _modes = m ?? (ok ? ActivationModes(wake: _modes.wake, volume: _modes.volume, power: _modes.power, assistantRole: true) : _modes));
+    setState(() => _modes = m ??
+        (ok
+            ? ActivationModes(wake: _modes.wake, volume: _modes.volume, power: _modes.power, assistantRole: true,
+                shortcut: _modes.shortcut, shortcutTarget: _modes.shortcutTarget)
+            : _modes));
     if (!ok && m == null) toast(context, tr('profile.unavailable'));
   }
 
@@ -340,11 +348,16 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                   CheckboxListTile(
                     secondary: const Icon(Icons.volume_up_outlined),
-                    title: const Text('Hold Volume Up + Down for 2s'),
-                    subtitle: const Text('Instantly summons your AI from anywhere, even over full-screen apps.'),
+                    title: Text(tr('profile.volume')),
+                    subtitle: Text(tr('profile.volume_sub')),
                     value: _modes.volume,
                     onChanged: (v) => _setMode('volume', v ?? false),
                   ),
+                  if (_modes.volumeNeedsSetup)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: VolumeShortcutGuide(modes: _modes, assistant: a['assistant'] ?? 'Snapy'),
+                    ),
                   CheckboxListTile(
                     secondary: const Icon(Icons.power_settings_new),
                     title: Text(tr('profile.power')),
@@ -444,6 +457,37 @@ class _ProfileTabState extends State<ProfileTab> {
           },
         ),
       ),
+    );
+  }
+}
+
+/// How to make Snapy the target of Android's volume-key accessibility shortcut (§4): the
+/// service must be on and chosen under its "shortcut" option. Snapy can't set this itself.
+class VolumeShortcutGuide extends StatelessWidget {
+  final ActivationModes modes;
+  final String assistant;
+  const VolumeShortcutGuide({super.key, required this.modes, required this.assistant});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    final a = {'assistant': assistant};
+    return Container(
+      key: const ValueKey('volume-shortcut-guide'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr(modes.shortcut ? 'profile.volume_setup_target' : 'profile.volume_setup_service', a),
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Text(tr('profile.volume_steps', a), style: TextStyle(color: c.text2, fontSize: 13)),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => SnapyCore.openRealCountSettings().catchError((_) {}),
+          icon: const Icon(Icons.accessibility_new),
+          label: Text(tr('profile.volume_open')),
+        ),
+      ]),
     );
   }
 }

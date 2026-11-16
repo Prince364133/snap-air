@@ -72,19 +72,26 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('permission flow: plan order, the Reel counter disclosure, every step skippable', (tester) async {
-    expect(permSteps.map((s) => s.id), ['usage', 'overlay', 'counter', 'notifications', 'mic', 'contacts']);
-    await tester.pumpWidget(const MaterialApp(home: PermissionFlow()));
+  testWidgets('permission cards: plan order, the Reel counter disclosure, every card skippable', (tester) async {
+    expect(permCards.map((s) => s.id), ['counter', 'overlay', 'usage', 'mic', 'notifications']);
+    tester.view.physicalSize = const Size(1200, 7000);
+    tester.view.devicePixelRatio = 2.5;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: const OnboardingFlow(isInitialSetup: false),
+        ),
+      ),
+    ));
     await tester.pump();
-    expect(find.text('Usage access'), findsOneWidget);
-    expect(find.text('Step 1 of 6'), findsOneWidget);
-    await tester.tap(find.text('Not now'));
-    await tester.pumpAndSettle();
-    expect(find.text('Display over other apps'), findsOneWidget);
-    await tester.tap(find.text('Not now'));
-    await tester.pumpAndSettle();
+    expect(find.text('Reel counter'), findsOneWidget);
     expect(find.text('Count Reels and Shorts. Never reads messages or what you type.'), findsOneWidget);
-    expect(find.text('Agree and continue', skipOffstage: false), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Agree and continue'), findsOneWidget);
+    await tester.tap(find.text('Skip for now'));
+    await tester.pump();
+    expect(find.text('Chip by the camera'), findsOneWidget);
   });
 
   testWidgets('chip settings: size, nudges, creator mode, pause and simple mode', (tester) async {

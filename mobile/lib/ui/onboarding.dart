@@ -1,173 +1,68 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../i18n/i18n.dart';
+import '../realcount/oem.dart' show oemOf;
 import 'main_scaffold.dart';
 import 'orb.dart';
+import 'profile_store.dart';
+import 'profile_tab.dart' show VolumeShortcutGuide;
 
-/// One permission step: why we ask, what happens without it, how to grant it.
-class PermStep {
-  final String id; // i18n: perm.<id>.title / why / without
-  final String? statusKey; // key in SnapyCore.status(); null = nothing to grant now
+/// One permission card: why we ask, how to grant it, and what to tap in Settings.
+class PermCard {
+  final String id;          // i18n: onb.<id>.title / why / steps
+  final String statusKey;   // key in SnapyCore.status()
   final IconData icon;
-  final Future<void> Function()? grant;
-  const PermStep(this.id, this.statusKey, this.icon, this.grant);
+  const PermCard(this.id, this.statusKey, this.icon);
 }
 
-/// The plan's order: Usage access → Display over other apps → Reel counter (prominent
-/// disclosure) → Notifications → (opt-in) Microphone + wake word → Contacts/Phone on first use.
-final permSteps = <PermStep>[
-  PermStep('usage', 'usage', Icons.timer_outlined, SnapyCore.openUsageAccess),
-  PermStep('overlay', 'overlay', Icons.picture_in_picture_alt_outlined, SnapyCore.openOverlaySettings),
-  PermStep('counter', 'realcount', Icons.play_circle_outline, SnapyCore.openRealCountSettings),
-  PermStep('notifications', 'notifications', Icons.notifications_none, SnapyCore.requestNotifications),
-  PermStep('mic', 'microphone', Icons.mic_none, () => SnapyCore.requestPermission('microphone')),
-  const PermStep('contacts', null, Icons.contacts_outlined, null),
+/// The plan's order (docs/ANDROID_NEXT_PLAN.md §2): Reel counter (prominent disclosure) →
+/// Chip by the camera → Screen time → "Hey {assistant}" & buttons → Notifications.
+const permCards = <PermCard>[
+  PermCard('counter', 'realcount', Icons.play_circle_outline),
+  PermCard('overlay', 'overlay', Icons.camera_outlined),
+  PermCard('usage', 'usage', Icons.timer_outlined),
+  PermCard('mic', 'microphone', Icons.mic_none),
+  PermCard('notifications', 'notifications', Icons.notifications_none),
 ];
 
-/// Every step can be declined; the app keeps working with less.
-class PermissionFlow extends StatefulWidget {
-  const PermissionFlow({super.key});
-  @override
-  State<PermissionFlow> createState() => _PermissionFlowState();
+/// Phone families whose Settings screens differ (Nothing isn't in realcount/oem.dart's list).
+String onboardingOem(Map<String, dynamic> device) {
+  final m = '${device['manufacturer'] ?? ''} ${device['brand'] ?? ''}'.toLowerCase();
+  if (m.contains('nothing')) return 'nothing';
+  return oemOf('${device['manufacturer'] ?? ''}', '${device['brand'] ?? ''}');
 }
 
-class _PermissionFlowState extends State<PermissionFlow> with WidgetsBindingObserver {
-  final _pages = PageController();
-  int _i = 0;
-  Map<String, bool> _status = const {};
-  bool _wake = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _refresh();
+/// The OEM note for a card, or null. Android 13+ gets the generic "restricted setting" hint.
+String? oemNoteKey(String card, String oem, int sdk) {
+  if (card == 'overlay') return oem == 'xiaomi' ? 'onb.oem.xiaomi_overlay' : null;
+  if (card != 'counter') return null;
+  switch (oem) {
+    case 'xiaomi':
+      return 'onb.oem.xiaomi_counter';
+    case 'samsung':
+      return 'onb.oem.samsung_counter';
+    case 'oppo':
+      return 'onb.oem.oppo_counter';
+    case 'oneplus':
+      return 'onb.oem.oneplus_counter';
+    case 'nothing':
+      return 'onb.oem.nothing_counter';
   }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _pages.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState s) {
-    if (s == AppLifecycleState.resumed) _refresh(); // back from Android Settings
-  }
-
-  Future<void> _refresh() async {
-    try {
-      final st = await SnapyCore.status();
-      if (mounted) setState(() => _status = st);
-    } catch (_) {}
-  }
-
-  void _next() {
-    if (_i >= permSteps.length - 1) {
-      _finish();
-      return;
-    }
-    _pages.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-  }
-
-  Future<void> _finish() async {
-    if ((_status['overlay'] ?? false) && !(_status['realcount'] ?? false)) {
-      await SnapyCore.startChip().catchError((_) => false);
-    }
-    if (mounted) Navigator.of(context).maybePop();
-  }
-
-  Future<void> _grant(PermStep s) async {
-    if (s.id == 'counter') {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(tr('perm.counter.disclosure')),
-          content: SingleChildScrollView(child: Text(tr('perm.counter.detail'))),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('perm.not_now'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('perm.agree'))),
-          ],
-        ),
-      );
-      if (ok != true) return;
-    }
-    try {
-      await s.grant?.call();
-      if (s.id == 'mic' && _wake) await SnapyCore.setWakeWord(true);
-    } catch (_) {}
-    await _refresh();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SnapyColors.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('perm.title')), backgroundColor: c.bg),
-      body: PageView.builder(
-        controller: _pages,
-        itemCount: permSteps.length,
-        onPageChanged: (i) => setState(() => _i = i),
-        itemBuilder: (context, i) {
-          final s = permSteps[i];
-          final on = s.statusKey != null && (_status[s.statusKey] ?? false);
-          final without = tr('perm.${s.id}.without');
-          return ListView(padding: const EdgeInsets.all(24), children: [
-            Text(tr('perm.step', {'n': '${i + 1}', 'total': '${permSteps.length}'}), style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-            Icon(s.icon, size: 48, color: c.accent),
-            const SizedBox(height: 16),
-            Text(tr('perm.${s.id}.title'), style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 12),
-            if (s.id == 'counter') ...[
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(r)),
-                child: Text(tr('perm.counter.disclosure'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-              ),
-              const SizedBox(height: 12),
-              Text(tr('perm.counter.detail')),
-            ] else
-              Text(tr('perm.${s.id}.why')),
-            if (without.isNotEmpty && !without.startsWith('perm.')) ...[
-              const SizedBox(height: 12),
-              Text(without, style: Theme.of(context).textTheme.bodySmall),
-            ],
-            if (s.id == 'mic')
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _wake,
-                onChanged: (v) => setState(() => _wake = v ?? false),
-                title: Text(tr('perm.mic.wake')),
-              ),
-            const SizedBox(height: 24),
-            if (on)
-              ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.check_circle, color: c.green), title: Text(tr('perm.granted')))
-            else if (s.grant != null)
-              FilledButton(
-                onPressed: () => _grant(s),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                child: Text(s.id == 'counter' ? tr('perm.agree') : tr('perm.allow')),
-              ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _next,
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              child: Text(i == permSteps.length - 1 ? tr('perm.finish') : (on ? tr('common.continue') : tr('perm.not_now'))),
-            ),
-          ]);
-        },
-      ),
-    );
-  }
+  return sdk >= 33 ? 'onb.oem.generic_counter' : null;
 }
 
-/// Friendly, delightful onboarding flow that introduces the user to their
-/// on-device AI guardian, sets up personalized names, guides through permissions
-/// with clear visual step-by-step instructions, and launches into the main app.
+/// Cute, guided first run: your name → what to call Snapy → five permission cards (each
+/// skippable, refreshed when you come back from Settings) → confetti → Home. No API key here:
+/// that lives in Profile → Settings only.
+///
+/// With [isInitialSetup] false (Settings → "Set up step by step") it opens straight on the
+/// permission cards and returns to where it was opened from.
 class OnboardingFlow extends StatefulWidget {
   final bool isInitialSetup;
   const OnboardingFlow({super.key, this.isInitialSetup = true});
@@ -177,872 +72,850 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObserver {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-
-  final TextEditingController _userCtrl = TextEditingController(text: 'Boss');
-  final TextEditingController _aiCtrl = TextEditingController(text: 'Snapy');
-
-  Map<String, bool> _permStatus = const {};
-  bool _wakeWordOptIn = false;
+  final _pages = PageController();
+  final _name = TextEditingController();
+  final _assistant = TextEditingController(text: 'Snapy');
+  int _i = 0;
+  Map<String, bool> _status = const {};
+  String _oem = 'other';
+  int _sdk = 0;
+  final Map<String, bool> _modes = {'wake': false, 'volume': false, 'power': false};
+  ActivationModes? _act;        // shortcut / shortcutTarget for the volume-key setup steps
   bool _saving = false;
+
+  bool get _intro => widget.isInitialSetup;
+  int get _first => _intro ? 2 : 0;                  // index of the first permission card
+  int get _count => _first + permCards.length + 1;   // + the celebration
+  int get _doneIndex => _count - 1;
+  String get _who => _name.text.trim();
+  String get _assistantName => _assistant.text.trim().isEmpty ? 'Snapy' : _assistant.text.trim();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadInitialPrefs();
-    _refreshPermissions();
+    _refresh();
+    _loadDevice();
+    _loadProfile();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pageController.dispose();
-    _userCtrl.dispose();
-    _aiCtrl.dispose();
+    _pages.dispose();
+    _name.dispose();
+    _assistant.dispose();
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshPermissions();
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) {
+      _refresh(); // back from Android Settings
+      NextApi.activationModes().then((m) {
+        if (mounted && m != null) setState(() => _act = m);
+      });
     }
   }
 
-  Future<void> _loadInitialPrefs() async {
+  Future<void> _refresh() async {
     try {
-      final p = await SnapyCore.rcPrefs();
-      if ((p['user_name'] as String?)?.isNotEmpty == true) {
-        _userCtrl.text = p['user_name'] as String;
-      }
-      if ((p['ai_name'] as String?)?.isNotEmpty == true) {
-        _aiCtrl.text = p['ai_name'] as String;
-      }
-      if (mounted) setState(() {});
+      final st = await SnapyCore.status();
+      if (mounted) setState(() => _status = st);
     } catch (_) {}
   }
 
-  Future<void> _refreshPermissions() async {
+  Future<void> _loadDevice() async {
     try {
-      final s = await SnapyCore.status();
-      if (mounted) {
-        setState(() => _permStatus = s);
-      }
+      final d = await SnapyCore.device();
+      if (mounted) setState(() { _oem = onboardingOem(d); _sdk = (d['sdk'] as num?)?.toInt() ?? 0; });
     } catch (_) {}
   }
 
-  void _nextPage() {
-    if (_currentPage < 5) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeInOutCubic,
-      );
+  Future<void> _loadProfile() async {
+    final p = await ProfileStore.load();
+    final m = await NextApi.activationModes();
+    if (!mounted) return;
+    setState(() {
+      if (_name.text.isEmpty && p.name.isNotEmpty) _name.text = p.name;
+      if (p.assistantName.isNotEmpty) _assistant.text = p.assistantName;
+      _act = m;
+      if (m != null) {
+        for (final k in _modes.keys.toList()) {
+          _modes[k] = m.of(k);
+        }
+      }
+    });
+  }
+
+  bool _reduced(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  void _go(int i) {
+    FocusScope.of(context).unfocus();
+    if (_reduced(context)) {
+      _pages.jumpToPage(i);
     } else {
-      _finishOnboarding();
+      _pages.animateToPage(i, duration: const Duration(milliseconds: 320), curve: Curves.easeOutCubic);
     }
   }
 
-  void _prevPage() {
-    if (_currentPage > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOutCubic,
-      );
+  void _next() => _go(math.min(_i + 1, _doneIndex));
+
+  void _back() {
+    if (_i > 0) {
+      _go(_i - 1);
     } else {
       Navigator.of(context).maybePop();
     }
   }
 
-  Future<void> _finishOnboarding() async {
-    if (_saving) return;
-    setState(() => _saving = true);
+  Future<void> _grant(PermCard card) async {
     try {
-      final uName = _userCtrl.text.trim().isEmpty ? 'Boss' : _userCtrl.text.trim();
-      final aName = _aiCtrl.text.trim().isEmpty ? 'Snapy' : _aiCtrl.text.trim();
-      await SnapyCore.setRcPrefs({
-        'onboarding_done': true,
-        'user_name': uName,
-        'ai_name': aName,
-        'wake_enabled': _wakeWordOptIn,
-      });
-
-      if (_wakeWordOptIn) {
-        await SnapyCore.setWakeWord(true).catchError((_) => false);
-      }
-
-      if (_permStatus['overlay'] == true) {
-        await SnapyCore.startChip().catchError((_) => false);
+      switch (card.id) {
+        case 'counter':
+          var restricted = false;
+          try {
+            restricted = await SnapyCore.isRestrictedSettings();
+          } catch (_) {}
+          if (restricted) {
+            if (mounted) _showRestrictedHelp();
+            return;
+          }
+          await SnapyCore.openRealCountSettings();
+        case 'overlay':
+          await SnapyCore.openOverlaySettings();
+        case 'usage':
+          await SnapyCore.openUsageAccess();
+        case 'mic':
+          await SnapyCore.requestPermission('microphone');
+        case 'notifications':
+          await SnapyCore.requestNotifications();
       }
     } catch (_) {}
+    await _refresh();
+  }
 
-    if (mounted) {
-      if (widget.isInitialSetup) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)),
-          (route) => false,
-        );
-      } else {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)),
-          );
-        }
-      }
+  /// Sideloaded APKs on Android 13+ need "Allow restricted settings" before Accessibility.
+  void _showRestrictedHelp() {
+    final c = SnapyColors.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.bg,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.security_rounded, color: c.accent),
+              const SizedBox(width: 10),
+              Expanded(child: Text(tr('onb.restricted_title'), style: Theme.of(ctx).textTheme.titleMedium)),
+            ]),
+            const SizedBox(height: 10),
+            Text(tr('onb.restricted_body'), style: TextStyle(color: c.text2, height: 1.45)),
+            const SizedBox(height: 18),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    SnapyCore.openRealCountSettings().catchError((_) {});
+                  },
+                  child: Text(tr('onb.go_settings')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    SnapyCore.openAppDetails().catchError((_) {});
+                  },
+                  child: Text(tr('onb.open_app_info')),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setMode(String mode, bool on) async {
+    setState(() => _modes[mode] = on);
+    if (mode == 'power' && on) await NextApi.requestAssistantRole();
+  }
+
+  Future<void> _finish() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    if (_intro) await ProfileStore.save(name: _who, assistantName: _assistantName);
+    for (final e in _modes.entries) {
+      await NextApi.setActivationMode(e.key, e.value);
+    }
+    try {
+      await SnapyCore.setRcPrefs({'onboarding_done': true, 'wake_enabled': _modes['wake'] == true});
+    } catch (_) {}
+    // the microphone service starts here, while the app is visible (as Android requires)
+    if (_modes['wake'] == true && (_status['microphone'] ?? false)) {
+      try {
+        await SnapyCore.setWakeWord(true);
+      } catch (_) {}
+    }
+    if ((_status['overlay'] ?? false) && !(_status['realcount'] ?? false)) {
+      try {
+        await SnapyCore.startChip();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (_intro) {
+      nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)), (_) => false);
+    } else if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacement(MaterialPageRoute(builder: (_) => const MainScaffold(checkOnboarding: false)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final c = SnapyColors.of(context);
-
+    final showProgress = _i < _doneIndex;
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _prevPage,
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Orb(size: 20, active: false, interactive: false),
-            const SizedBox(width: 8),
-            Text(
-              'Step ${_currentPage + 1} of 6',
-              style: TextStyle(fontSize: 14, color: c.text2, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
+        leading: _i == 0 && _intro
+            ? null
+            : IconButton(tooltip: tr('onb.back'), icon: const Icon(Icons.arrow_back), onPressed: _back),
+        automaticallyImplyLeading: !_intro,
         centerTitle: true,
+        title: showProgress
+            ? Semantics(
+                label: tr('onb.progress', {'n': '${_i + 1}', 'total': '${_count - 1}'}),
+                child: ExcludeSemantics(child: _Dots(count: _count - 1, index: _i)),
+              )
+            : null,
       ),
       body: SafeArea(
-        child: Column(
+        child: PageView(
+          controller: _pages,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: (i) => setState(() => _i = i),
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (_currentPage + 1) / 6.0,
-                  backgroundColor: c.hair,
-                  valueColor: AlwaysStoppedAnimation<Color>(c.accent),
-                  minHeight: 4,
-                ),
-              ),
-            ),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const BouncingScrollPhysics(),
-                onPageChanged: (idx) => setState(() => _currentPage = idx),
-                children: [
-                  _buildWelcomePage(c),
-                  _buildReelGuardianPage(c),
-                  _buildOverlayPage(c),
-                  _buildUsageAccessPage(c),
-                  _buildMicPage(c),
-                  _buildCelebrationPage(c),
-                ],
-              ),
-            ),
+            if (_intro) _namePage(c),
+            if (_intro) _assistantPage(c),
+            for (final card in permCards) _permPage(c, card),
+            _donePage(c),
           ],
         ),
       ),
     );
   }
 
-  /// Page 1: Welcome & Personalization
-  Widget _buildWelcomePage(SnapyColors c) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        const SizedBox(height: 12),
-        const Center(
-          child: Orb(size: 80, active: true, interactive: true),
-        ),
-        const SizedBox(height: 24),
-        const Center(
-          child: Text(
-            'Meet Your AI Guardian ✨',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Center(
-          child: Text(
-            'A private on-device companion that tracks your phone use, breaks doomscrolling loops, and assists you hands-free.',
-            style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const SizedBox(height: 32),
-        _buildSectionCard(
-          c,
-          title: 'Personalize Your Experience',
-          icon: Icons.person_outline,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('What should I call you?', style: TextStyle(color: c.text2, fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _userCtrl,
-                decoration: InputDecoration(
-                  hintText: 'e.g. Boss, Alex',
-                  filled: true,
-                  fillColor: c.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: c.hair),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: c.hair),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text('What do you want to name me?', style: TextStyle(color: c.text2, fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _aiCtrl,
-                decoration: InputDecoration(
-                  hintText: 'e.g. Snapy, Jarvis',
-                  filled: true,
-                  fillColor: c.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: c.hair),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: c.hair),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 28),
-        FilledButton(
-          onPressed: _nextPage,
-          style: FilledButton.styleFrom(
-            backgroundColor: c.accent,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: const Text("Let's Get Started ✨", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        ),
+  // ------------------------------------------------------------------ steps 1–2
+
+  Widget _ask({required Widget art, required String title, String? sub, required Widget field, required Widget actions}) {
+    final t = Theme.of(context).textTheme;
+    return ListView(padding: const EdgeInsets.fromLTRB(24, 8, 24, 24), children: [
+      const SizedBox(height: 16),
+      Center(child: art),
+      const SizedBox(height: 28),
+      Semantics(header: true, child: Text(title, textAlign: TextAlign.center, style: t.headlineMedium)),
+      if (sub != null) ...[
+        const SizedBox(height: 8),
+        Text(sub, textAlign: TextAlign.center, style: t.bodySmall),
       ],
-    );
+      const SizedBox(height: 28),
+      field,
+      const SizedBox(height: 20),
+      actions,
+    ]);
   }
 
-  /// Page 2: Short-Form Reel Guardian (Accessibility)
-  Widget _buildReelGuardianPage(SnapyColors c) {
-    final granted = _permStatus['realcount'] == true;
+  InputDecoration _field(SnapyColors c, String hint) => InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: c.card,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(rLg), borderSide: BorderSide(color: c.hair)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(rLg), borderSide: BorderSide(color: c.hair)),
+      );
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        _buildHeaderIcon(Icons.play_circle_filled, c.accent),
-        const SizedBox(height: 16),
-        const Text(
-          'Reels & Shorts Guardian',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
+  Widget _namePage(SnapyColors c) => _ask(
+        art: _Hello(reduced: _reduced(context)),
+        title: tr('onb.name_title'),
+        sub: tr('onb.name_sub'),
+        field: TextField(
+          key: const ValueKey('onb-name'),
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          style: const TextStyle(fontSize: 18),
+          decoration: _field(c, tr('onb.name_hint')),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _who.isEmpty ? null : _next(),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Automatically counts reels you watch on Instagram, YouTube Shorts, Snapchat, etc., right beside your front camera.',
-          style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        _buildSectionCard(
-          c,
-          title: 'Feed Lock Defense',
-          icon: Icons.shield_outlined,
-          child: Text(
-            'When you reach your daily reel limit, it smoothly bounces out of the addictive short-video feed while keeping direct messages and home feeds completely accessible!',
-            style: TextStyle(fontSize: 13, color: c.text2, height: 1.4),
+        actions: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          FilledButton(
+            onPressed: _who.isEmpty ? null : _next,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: Text(tr('onb.next')),
           ),
-        ),
-        const SizedBox(height: 16),
-        _buildStepsGuide(
-          c,
-          steps: [
-            '1. Tap "Turn On Guardian" below to open Accessibility',
-            '2. Tap "Installed apps" (or "Downloaded apps")',
-            '3. Tap "Snapy" and toggle the switch ON',
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: c.hair),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: c.accent),
-                  const SizedBox(width: 6),
-                  Text('Android 13+ Security Note', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: c.text)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'If Android says "Restricted setting unavailable": Open App Info, tap the 3 dots in the top right corner, and select "Allow restricted settings".',
-                style: TextStyle(fontSize: 11, color: c.text2, height: 1.3),
-              ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => SnapyCore.openAppDetails(),
-                  icon: const Icon(Icons.settings_applications, size: 14),
-                  label: const Text('Open App Info', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        if (granted)
-          _buildGrantedBanner(c, 'Guardian Service Active & Ready')
-        else
-          FilledButton.icon(
-            onPressed: () async {
-              final isRestricted = await SnapyCore.isRestrictedSettings();
-              if (!mounted) return;
-              if (isRestricted) {
-                _showRestrictedHelp(context);
-                return;
-              }
-              SnapyCore.openRealCountSettings();
+          TextButton(
+            onPressed: () {
+              _name.clear();
+              _next();
             },
-            icon: const Icon(Icons.check_circle_outline),
-            label: const Text('Turn On Guardian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            style: FilledButton.styleFrom(
-              backgroundColor: c.accent,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: Text(tr('onb.skip')),
           ),
-        const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _nextPage,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: Text(granted ? 'Continue' : 'Skip for now'),
-        ),
-      ],
-    );
-  }
+        ]),
+      );
 
-  void _showRestrictedHelp(BuildContext context) {
-    final c = SnapyColors.of(context);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: c.bg,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(width: 36, height: 4, decoration: BoxDecoration(color: c.hairStrong, borderRadius: BorderRadius.circular(2))),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Icon(Icons.security_rounded, color: c.accent, size: 24),
-                  const SizedBox(width: 10),
-                  Text('Android Sideload Verification', style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 17)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Because Snapy was installed as an APK, Android requires a 1-time security unlock before enabling accessibility:\n\n'
-                '1. Tap "Open App Info" below.\n'
-                '2. Tap the ⋮ (three dots) at top-right corner.\n'
-                '3. Select "Allow restricted permissions".\n'
-                '4. Return here and tap "Turn On Guardian".',
-                style: TextStyle(color: c.text2, fontSize: 13.5, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        SnapyCore.openRealCountSettings();
-                      },
-                      child: const Text('Go to Settings'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        SnapyCore.openAppDetails();
-                      },
-                      child: const Text('Open App Info'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+  Widget _assistantPage(SnapyColors c) => _ask(
+        art: _Hello(reduced: _reduced(context), wave: false),
+        title: _who.isEmpty ? tr('onb.assistant_title_anon') : tr('onb.assistant_title', {'name': _who}),
+        sub: tr('onb.assistant_sub', {'assistant': _assistantName}),
+        field: TextField(
+          key: const ValueKey('onb-assistant'),
+          controller: _assistant,
+          textCapitalization: TextCapitalization.words,
+          style: const TextStyle(fontSize: 18),
+          decoration: _field(c, 'Snapy'),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _next(),
         ),
-      ),
-    );
-  }
+        actions: FilledButton(
+          onPressed: _next,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          child: Text(tr('onb.next')),
+        ),
+      );
 
-  /// Page 3: Display Over Other Apps (Camera Punch-Hole Halo)
-  Widget _buildOverlayPage(SnapyColors c) {
-    final granted = _permStatus['overlay'] == true;
+  // ------------------------------------------------------------------ step 3: permission cards
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        _buildHeaderIcon(Icons.lens_blur, c.accent),
-        const SizedBox(height: 16),
-        const Text(
-          'Camera Punch-Hole Halo',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Snapy hugs your front camera with an interactive living halo ring. The camera lens stays completely clear while the glowing aura indicates active status.',
-          style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        _buildSectionCard(
-          c,
-          title: 'Interactive Dropped Strip',
-          icon: Icons.unfold_more,
-          child: Text(
-            'Touch the camera halo anytime to drop a sleek status strip displaying your screen time and reel count. Tap left to open the AI assistant, or tap right to launch your active social feed.',
-            style: TextStyle(fontSize: 13, color: c.text2, height: 1.4),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildStepsGuide(
-          c,
-          steps: [
-            '1. Tap "Allow Camera Overlay" below',
-            '2. Find "Snapy" in the list of applications',
-            '3. Switch "Allow display over other apps" to ON',
-          ],
-        ),
-        const SizedBox(height: 24),
-        if (granted)
-          _buildGrantedBanner(c, 'Camera Punch-Hole Halo Active')
-        else
-          FilledButton.icon(
-            onPressed: () => SnapyCore.openOverlaySettings(),
-            icon: const Icon(Icons.layers_outlined),
-            label: const Text('Allow Camera Overlay', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            style: FilledButton.styleFrom(
-              backgroundColor: c.accent,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-        const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _nextPage,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: Text(granted ? 'Continue' : 'Skip for now'),
-        ),
-      ],
-    );
-  }
-
-  /// Page 4: Usage Access (Screen Time & Stats)
-  Widget _buildUsageAccessPage(SnapyColors c) {
-    final granted = _permStatus['usage'] == true;
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        _buildHeaderIcon(Icons.timer_outlined, c.orange),
-        const SizedBox(height: 16),
-        const Text(
-          'Screen Time & Wellness',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Provides accurate screen time statistics and per-app usage so you can understand your daily phone habits.',
-          style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        _buildSectionCard(
-          c,
-          title: '100% On-Device Privacy',
-          icon: Icons.lock_outline,
-          child: Text(
-            'Your app usage data never leaves this phone. No telemetry, no external ad tracking, and zero cloud uploads of your personal activity.',
-            style: TextStyle(fontSize: 13, color: c.text2, height: 1.4),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildStepsGuide(
-          c,
-          steps: [
-            '1. Tap "Allow Usage Access" below',
-            '2. Find "Snapy" in the list',
-            '3. Turn "Permit usage access" ON',
-          ],
-        ),
-        const SizedBox(height: 24),
-        if (granted)
-          _buildGrantedBanner(c, 'Usage Access Granted')
-        else
-          FilledButton.icon(
-            onPressed: () => SnapyCore.openUsageAccess(),
-            icon: const Icon(Icons.analytics_outlined),
-            label: const Text('Allow Usage Access', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            style: FilledButton.styleFrom(
-              backgroundColor: c.accent,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-        const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _nextPage,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: Text(granted ? 'Continue' : 'Skip for now'),
-        ),
-      ],
-    );
-  }
-
-  /// Page 5: Smart Hands-Free Activation (Microphone & Wake Word)
-  Widget _buildMicPage(SnapyColors c) {
-    final granted = _permStatus['microphone'] == true;
-    final userName = _userCtrl.text.trim().isEmpty ? 'Boss' : _userCtrl.text.trim();
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        _buildHeaderIcon(Icons.mic_none, c.green),
-        const SizedBox(height: 16),
-        const Text(
-          'Smart Activation',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Wake your AI hands-free or with a single hardware button hold, even when your screen is locked.',
-          style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        _buildSectionCard(
-          c,
-          title: 'Hardware & Voice Shortcuts',
-          icon: Icons.bolt,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.volume_up, size: 16, color: c.accent),
-                  const SizedBox(width: 6),
-                  const Text('Hardware Shortcut:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Hold Volume Up + Down together for 3 seconds anywhere to summon your AI with gentle haptic confirmation.',
-                style: TextStyle(fontSize: 12, color: c.text2, height: 1.3),
-              ),
-              const Divider(height: 20),
-              Row(
-                children: [
-                  Icon(Icons.record_voice_over, size: 16, color: c.accent),
-                  const SizedBox(width: 6),
-                  const Text('Voice Wake Word:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Say "Hey Snapy" to activate. Snapy replies: "Yes $userName, tell me!"',
-                style: TextStyle(fontSize: 12, color: c.text2, height: 1.3),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
+  Widget _permPage(SnapyColors c, PermCard card) {
+    final t = Theme.of(context).textTheme;
+    final a = {'assistant': _assistantName};
+    final on = _status[card.statusKey] ?? false;
+    final note = oemNoteKey(card.id, _oem, _sdk);
+    final steps = tr('onb.${card.id}.steps', a).split('\n');
+    final allow = card.id == 'counter' ? tr('perm.agree') : tr('onb.allow');
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 24), children: [
+      _Illustration(kind: card.id, reduced: _reduced(context), label: tr('onb.illustration', {'what': tr('onb.${card.id}.title', a)})),
+      const SizedBox(height: 20),
+      Semantics(header: true, child: Text(tr('onb.${card.id}.title', a), style: t.headlineMedium)),
+      const SizedBox(height: 6),
+      Text(tr('onb.${card.id}.why', a), style: t.bodyMedium?.copyWith(color: c.text2)),
+      const SizedBox(height: 12),
+      _PrivacyBadge(text: tr('onb.privacy_badge')),
+      if (card.id == 'counter') ...[
+        // Play's prominent disclosure: shown in full before the user agrees
+        const SizedBox(height: 14),
         Container(
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.hair),
-          ),
-          child: SwitchListTile(
-            value: _wakeWordOptIn,
-            onChanged: (v) => setState(() => _wakeWordOptIn = v),
-            title: const Text('Enable Voice Wake Word', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-            subtitle: Text('Listens locally on device for the wake phrase', style: TextStyle(fontSize: 12, color: c.text2)),
-            activeTrackColor: c.accent,
-          ),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(r)),
+          child: Text(tr('perm.counter.disclosure'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         ),
-        const SizedBox(height: 24),
-        if (granted)
-          _buildGrantedBanner(c, 'Microphone Permission Granted')
-        else
-          FilledButton.icon(
-            onPressed: () async {
-              await SnapyCore.requestPermission('microphone');
-              await _refreshPermissions();
-            },
-            icon: const Icon(Icons.mic),
-            label: const Text('Enable Microphone', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            style: FilledButton.styleFrom(
-              backgroundColor: c.accent,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
         const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _nextPage,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: Text(granted ? 'Continue' : 'Skip for now'),
-        ),
+        Text(tr('perm.counter.detail'), style: t.bodySmall),
       ],
-    );
-  }
-
-  /// Page 6: Celebration & Final Step
-  Widget _buildCelebrationPage(SnapyColors c) {
-    final userName = _userCtrl.text.trim().isEmpty ? 'Boss' : _userCtrl.text.trim();
-    final aiName = _aiCtrl.text.trim().isEmpty ? 'Snapy' : _aiCtrl.text.trim();
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
+      if (card.id == 'mic') ...[
         const SizedBox(height: 16),
-        const Center(
-          child: Orb(size: 88, active: true, interactive: true),
-        ),
-        const SizedBox(height: 24),
-        Center(
-          child: Text(
-            "You're All Set, $userName! 🎉",
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
+        Text(tr('onb.mic.modes', a), style: t.titleMedium),
+        for (final m in ['wake', 'volume', 'power'])
+          CheckboxListTile(
+            key: ValueKey('mode-$m'),
+            contentPadding: EdgeInsets.zero,
+            value: _modes[m],
+            onChanged: (v) => _setMode(m, v ?? false),
+            title: Text(tr('onb.mode.$m', a)),
           ),
-        ),
-        const SizedBox(height: 10),
-        Center(
-          child: Text(
-            "$aiName is fully armed and guarding your digital wellness.",
-            style: TextStyle(fontSize: 14, color: c.text2, height: 1.4),
-            textAlign: TextAlign.center,
+        // the volume keys reach Snapy only once it is Android's accessibility-shortcut target
+        if (_modes['volume'] == true && (_act == null || _act!.shortcutTarget != true))
+          VolumeShortcutGuide(
+            modes: ActivationModes(volume: true, shortcut: _act?.shortcut ?? (_status['realcount'] ?? false), shortcutTarget: _act?.shortcutTarget),
+            assistant: _assistantName,
           ),
-        ),
-        const SizedBox(height: 28),
-        _buildSectionCard(
-          c,
-          title: 'Active Features Overview',
-          icon: Icons.stars,
-          child: Column(
-            children: [
-              _buildFeatureRow(Icons.shield_outlined, 'Reel Counter & Feed Limiter', 'Controls Instagram, YouTube Shorts, etc.', c),
-              const Divider(height: 18),
-              _buildFeatureRow(Icons.camera_alt_outlined, 'Camera Punch-Hole Halo', 'Dynamic halo & tap-to-drop status strip', c),
-              const Divider(height: 18),
-              _buildFeatureRow(Icons.tune_outlined, 'Tools & App Limits Tab', 'Set custom limits in the dedicated Tools tab', c),
-              const Divider(height: 18),
-              _buildFeatureRow(Icons.lock_outline, '100% On-Device Privacy', 'Zero external telemetry or data tracking', c),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: c.hair),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.key_outlined, size: 20, color: c.accent),
+      ],
+      const SizedBox(height: 16),
+      _HowTo(steps: steps, note: note == null ? null : tr(note), reduced: _reduced(context),
+          onAppInfo: note == null || card.id != 'counter' ? null : () => SnapyCore.openAppDetails().catchError((_) {})),
+      const SizedBox(height: 20),
+      if (on)
+        Semantics(
+          liveRegion: true,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(color: c.green.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(rLg)),
+            child: Row(children: [
+              Icon(Icons.check_circle, color: c.green),
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Want your own Gemini API key? You can paste and test it anytime in Profile → Settings.',
-                  style: TextStyle(fontSize: 12, color: c.text2, height: 1.3),
-                ),
-              ),
-            ],
+              Text(tr('onb.granted'), style: TextStyle(color: c.green, fontWeight: FontWeight.w700)),
+            ]),
           ),
-        ),
-        const SizedBox(height: 28),
+        )
+      else
         FilledButton(
-          onPressed: _finishOnboarding,
-          style: FilledButton.styleFrom(
-            backgroundColor: c.accent,
-            foregroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: _saving
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('Enter Snapy 🚀', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          key: ValueKey('allow-${card.id}'),
+          onPressed: () => _grant(card),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56), textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+          child: Text(allow),
         ),
-      ],
-    );
+      const SizedBox(height: 8),
+      if (on)
+        FilledButton.tonal(
+          onPressed: _next,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          child: Text(tr('onb.continue')),
+        )
+      else
+        TextButton(
+          key: ValueKey('skip-${card.id}'),
+          onPressed: _next,
+          style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          child: Text(tr('onb.skip_card')),
+        ),
+    ]);
   }
 
-  Widget _buildHeaderIcon(IconData icon, Color color) {
-    return Center(
+  // ------------------------------------------------------------------ step 4: celebration
+
+  Widget _donePage(SnapyColors c) {
+    final t = Theme.of(context).textTheme;
+    return Stack(children: [
+      Positioned.fill(child: IgnorePointer(child: _Confetti(play: _i == _doneIndex, reduced: _reduced(context)))),
+      ListView(padding: const EdgeInsets.fromLTRB(24, 40, 24, 24), children: [
+        Center(child: _Hello(reduced: _reduced(context), wave: false)),
+        const SizedBox(height: 28),
+        Semantics(
+          header: true,
+          child: Text(_who.isEmpty ? tr('onb.done_title_anon') : tr('onb.done_title', {'name': _who}), textAlign: TextAlign.center, style: t.headlineMedium),
+        ),
+        const SizedBox(height: 8),
+        Text(tr('onb.done_sub', {'assistant': _assistantName}), textAlign: TextAlign.center, style: t.bodySmall),
+        const SizedBox(height: 32),
+        FilledButton(
+          key: const ValueKey('onb-go'),
+          onPressed: _saving ? null : _finish,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56), textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          child: Text(tr('onb.go')),
+        ),
+      ]),
+    ]);
+  }
+}
+
+// ---------------------------------------------------------------------------------------- pieces
+
+class _Dots extends StatelessWidget {
+  final int count, index;
+  const _Dots({required this.count, required this.index});
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < count; i++)
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: i == index ? 18 : 7,
+          height: 7,
+          decoration: BoxDecoration(color: i <= index ? c.accent : c.hairStrong, borderRadius: BorderRadius.circular(4)),
+        ),
+    ]);
+  }
+}
+
+class _PrivacyBadge extends StatelessWidget {
+  final String text;
+  const _PrivacyBadge({required this.text});
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Container(
-        width: 68,
-        height: 68,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(color: c.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.lock_outline, size: 16, color: c.green),
+          const SizedBox(width: 6),
+          Flexible(child: Text(text, style: TextStyle(color: c.green, fontWeight: FontWeight.w600, fontSize: 13))),
+        ]),
+      ),
+    );
+  }
+}
+
+/// The friendly face on the name steps: Snapy's orb (static under reduced motion).
+class _Hello extends StatelessWidget {
+  final bool reduced, wave;
+  const _Hello({required this.reduced, this.wave = true});
+  @override
+  Widget build(BuildContext context) {
+    if (!reduced) return ExcludeSemantics(child: Orb(size: 96, active: wave, interactive: false));
+    return ExcludeSemantics(
+      child: Container(
+        width: 96,
+        height: 96,
+        decoration: const BoxDecoration(shape: BoxShape.circle, gradient: SweepGradient(colors: [...orbPalette, Color(0xFF5E81FF)])),
+      ),
+    );
+  }
+}
+
+/// A looping (or, with reduced motion, still) picture for each permission, on a pastel
+/// gradient made from the theme tokens. No network images.
+class _Illustration extends StatefulWidget {
+  final String kind, label;
+  final bool reduced;
+  const _Illustration({required this.kind, required this.reduced, required this.label});
+  @override
+  State<_Illustration> createState() => _IllustrationState();
+}
+
+class _IllustrationState extends State<_Illustration> with SingleTickerProviderStateMixin {
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.reduced) _a.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_Illustration old) {
+    super.didUpdateWidget(old);
+    if (widget.reduced && _a.isAnimating) _a.stop();
+    if (!widget.reduced && !_a.isAnimating) _a.repeat();
+  }
+
+  @override
+  void dispose() {
+    _a.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    final tint = switch (widget.kind) {
+      'counter' => orbPalette[0],
+      'overlay' => orbPalette[1],
+      'usage' => c.orange,
+      'mic' => c.green,
+      _ => orbPalette[2],
+    };
+    return Semantics(
+      image: true,
+      label: widget.label,
+      child: Container(
+        height: 180,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 36, color: color),
-      ),
-    );
-  }
-
-  Widget _buildSectionCard(SnapyColors c, {required String title, required IconData icon, required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: c.hair),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: c.accent),
-              const SizedBox(width: 8),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            ],
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [tint.withValues(alpha: 0.26), orbPalette[2].withValues(alpha: 0.12), c.card],
           ),
-          const SizedBox(height: 12),
-          child,
-        ],
+          border: Border.all(color: c.hair),
+        ),
+        child: AnimatedBuilder(
+          animation: _a,
+          builder: (_, _) => CustomPaint(painter: _IllustrationPainter(widget.kind, widget.reduced ? 0.35 : _a.value, tint, c)),
+        ),
       ),
     );
   }
+}
 
-  Widget _buildStepsGuide(SnapyColors c, {required List<String> steps}) {
+class _IllustrationPainter extends CustomPainter {
+  final String kind;
+  final double t;     // 0..1 loop
+  final Color tint;
+  final SnapyColors c;
+  _IllustrationPainter(this.kind, this.t, this.tint, this.c);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2, cy = size.height / 2;
+    final fill = Paint()..color = c.card;
+    final line = Paint()
+      ..color = c.hairStrong
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final accent = Paint()..color = tint;
+    final soft = Paint()..color = tint.withValues(alpha: 0.35);
+    final wave = math.sin(t * 2 * math.pi);
+
+    RRect phone() => RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, cy + 8), width: 86, height: 150), const Radius.circular(16));
+
+    switch (kind) {
+      case 'counter':
+        final p = phone();
+        canvas.drawRRect(p, fill);
+        canvas.save();
+        canvas.clipRRect(p.deflate(6));
+        // reels sliding up
+        final h = p.height - 12;
+        final off = (t * h) % h;
+        for (var i = -1; i < 2; i++) {
+          final top = p.top + 6 - off + i * h;
+          canvas.drawRRect(RRect.fromLTRBR(p.left + 6, top + 4, p.right - 6, top + h - 4, const Radius.circular(10)),
+              Paint()..color = (i.isEven ? tint : orbPalette[2]).withValues(alpha: 0.30));
+          canvas.drawCircle(Offset(cx, top + h / 2), 12, Paint()..color = c.card.withValues(alpha: 0.9));
+          final path = Path()
+            ..moveTo(cx - 4, top + h / 2 - 6)
+            ..lineTo(cx + 7, top + h / 2)
+            ..lineTo(cx - 4, top + h / 2 + 6)
+            ..close();
+          canvas.drawPath(path, accent);
+        }
+        canvas.restore();
+        canvas.drawRRect(p, line);
+        // the count badge
+        final badge = RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(p.right + 18, p.top + 26 - wave * 3), width: 48, height: 26), const Radius.circular(13));
+        canvas.drawRRect(badge, accent);
+        _text(canvas, '▶ 12', badge.center, Colors.white, 12);
+      case 'overlay':
+        final p = phone();
+        canvas.drawRRect(p, fill);
+        canvas.drawRRect(p, line);
+        final cam = Offset(cx, p.top + 14);
+        // the chip hugging the camera, gently breathing
+        final w = 60 + wave * 4;
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: cam, width: w, height: 18), const Radius.circular(9)), soft);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: cam, width: w, height: 18), const Radius.circular(9)), Paint()
+          ..color = tint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2);
+        canvas.drawCircle(cam, 5, Paint()..color = c.text);
+        for (var i = 0; i < 3; i++) {
+          canvas.drawRRect(RRect.fromLTRBR(p.left + 12, p.top + 44 + i * 26.0, p.right - 12, p.top + 60 + i * 26.0, const Radius.circular(6)), Paint()..color = c.fill);
+        }
+      case 'usage':
+        const bars = [0.45, 0.8, 0.6, 0.95, 0.5];
+        const bw = 22.0;
+        final base = cy + 50;
+        for (var i = 0; i < bars.length; i++) {
+          final grow = ((t * 1.4 - i * 0.12).clamp(0.0, 1.0));
+          final h = 100 * bars[i] * (0.35 + 0.65 * grow);
+          final x = cx - (bars.length * (bw + 10)) / 2 + i * (bw + 10);
+          canvas.drawRRect(RRect.fromLTRBR(x, base - h, x + bw, base, const Radius.circular(6)), i == 3 ? accent : soft);
+        }
+        canvas.drawLine(Offset(cx - 90, base + 2), Offset(cx + 90, base + 2), line);
+      case 'mic':
+        for (var i = 0; i < 3; i++) {
+          final f = (t + i / 3) % 1.0;
+          canvas.drawCircle(Offset(cx, cy), 30 + f * 50, Paint()
+            ..color = tint.withValues(alpha: (1 - f) * 0.5)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3);
+        }
+        canvas.drawCircle(Offset(cx, cy), 30, accent);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, cy - 4), width: 14, height: 24), const Radius.circular(7)), Paint()..color = Colors.white);
+        canvas.drawLine(Offset(cx, cy + 10), Offset(cx, cy + 16), Paint()
+          ..color = Colors.white
+          ..strokeWidth = 3);
+      default: // notifications: a swinging bell
+        canvas.save();
+        canvas.translate(cx, cy - 40);
+        canvas.rotate(wave * 0.25);
+        final bell = Path()
+          ..moveTo(-32, 56)
+          ..quadraticBezierTo(-30, 8, 0, 6)
+          ..quadraticBezierTo(30, 8, 32, 56)
+          ..close();
+        canvas.drawPath(bell, accent);
+        canvas.drawCircle(const Offset(0, 4), 6, accent);
+        canvas.drawCircle(const Offset(0, 64), 8, accent);
+        canvas.restore();
+        canvas.drawCircle(Offset(cx + 34, cy - 30), 10 + wave.abs() * 2, Paint()..color = c.red);
+    }
+  }
+
+  void _text(Canvas canvas, String s, Offset center, Color color, double size) {
+    final tp = TextPainter(text: TextSpan(text: s, style: TextStyle(color: color, fontSize: size, fontWeight: FontWeight.w700)), textDirection: TextDirection.ltr)..layout();
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+  }
+
+  @override
+  bool shouldRepaint(_IllustrationPainter old) => old.t != t || old.kind != kind || old.tint != tint;
+}
+
+/// "What to tap": a mini Settings list where each step lights up in turn and the last row's
+/// switch flips on. Under reduced motion every step is simply listed.
+class _HowTo extends StatefulWidget {
+  final List<String> steps;
+  final String? note;
+  final bool reduced;
+  final VoidCallback? onAppInfo;
+  const _HowTo({required this.steps, this.note, required this.reduced, this.onAppInfo});
+  @override
+  State<_HowTo> createState() => _HowToState();
+}
+
+class _HowToState extends State<_HowTo> {
+  int _step = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_HowTo old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.reduced) {
+      _timer?.cancel();
+      _timer = null;
+    } else {
+      _timer ??= Timer.periodic(const Duration(milliseconds: 1600), (_) {
+        if (mounted) setState(() => _step = (_step + 1) % (widget.steps.length + 1));
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    final small = Theme.of(context).textTheme.bodySmall;
+    final n = widget.steps.length;
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.hair),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Easy 3-Step Setup:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: c.accent)),
-          const SizedBox(height: 8),
-          for (final step in steps)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(step, style: TextStyle(fontSize: 12, color: c.text2, height: 1.3)),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(rLg), border: Border.all(color: c.hair)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('onb.howto'), style: TextStyle(fontWeight: FontWeight.w700, color: c.accent, fontSize: 13)),
+        const SizedBox(height: 8),
+        for (var i = 0; i < n; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: !widget.reduced && i == _step ? c.accentSoft : c.fill.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(rSm),
+            ),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 11,
+                backgroundColor: (widget.reduced || i <= _step) ? c.accent : c.hairStrong,
+                child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(widget.steps[i], style: const TextStyle(fontSize: 13.5))),
+              if (i == n - 1)
+                ExcludeSemantics(
+                  child: IgnorePointer(
+                    child: Transform.scale(
+                      scale: 0.75,
+                      child: Switch(value: widget.reduced || _step >= n - 1, onChanged: (_) {}),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        if (widget.note != null) ...[
+          const SizedBox(height: 4),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.info_outline, size: 16, color: c.orange),
+            const SizedBox(width: 6),
+            Expanded(child: Text(widget.note!, style: small)),
+          ]),
+          if (widget.onAppInfo != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: widget.onAppInfo,
+                icon: const Icon(Icons.settings_applications, size: 18),
+                label: Text(tr('onb.open_app_info')),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              ),
             ),
         ],
-      ),
+      ]),
     );
+  }
+}
+
+/// A light, one-shot confetti burst (custom painter, ~40 pieces). Still under reduced motion.
+class _Confetti extends StatefulWidget {
+  final bool play, reduced;
+  const _Confetti({required this.play, required this.reduced});
+  @override
+  State<_Confetti> createState() => _ConfettiState();
+}
+
+class _ConfettiState extends State<_Confetti> with SingleTickerProviderStateMixin {
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  final _rnd = math.Random(7);
+  late final List<(double, double, double, int)> _bits =
+      List.generate(40, (i) => (_rnd.nextDouble(), _rnd.nextDouble() * 0.5 + 0.5, _rnd.nextDouble() * 6.28, i % 5));
+
+  @override
+  void didUpdateWidget(_Confetti old) {
+    super.didUpdateWidget(old);
+    if (widget.play && !old.play && !widget.reduced) _a.forward(from: 0);
   }
 
-  Widget _buildGrantedBanner(SnapyColors c, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: c.green.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.green.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle, color: c.green, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: c.green, fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
+  @override
+  void dispose() {
+    _a.dispose();
+    super.dispose();
   }
 
-  Widget _buildFeatureRow(IconData icon, String title, String subtitle, SnapyColors c) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: c.accent),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 2),
-              Text(subtitle, style: TextStyle(fontSize: 11, color: c.text2)),
-            ],
-          ),
-        ),
-      ],
+  @override
+  Widget build(BuildContext context) {
+    final c = SnapyColors.of(context);
+    final colors = [...orbPalette, c.orange, c.green];
+    return AnimatedBuilder(
+      animation: _a,
+      builder: (_, _) => CustomPaint(
+        painter: _ConfettiPainter(_bits, widget.reduced ? (widget.play ? 0.55 : 0) : _a.value, colors),
+      ),
     );
   }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  final List<(double, double, double, int)> bits;
+  final double t;
+  final List<Color> colors;
+  _ConfettiPainter(this.bits, this.t, this.colors);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (t <= 0 || t >= 1) return;
+    for (final (x, speed, spin, ci) in bits) {
+      final y = -20 + t * speed * (size.height + 40);
+      final dx = math.sin(t * 6 + spin) * 18;
+      canvas.save();
+      canvas.translate(x * size.width + dx, y);
+      canvas.rotate(spin + t * 8);
+      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-4, -7, 8, 14), const Radius.circular(2)),
+          Paint()..color = colors[ci % colors.length].withValues(alpha: 1 - t * 0.6));
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => old.t != t;
 }

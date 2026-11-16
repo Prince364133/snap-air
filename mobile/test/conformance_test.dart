@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:snapy/core_runtime/core_data.dart';
+import 'package:snapy/core_runtime/local_intents.dart';
 import 'package:snapy/core_runtime/realcount.dart';
 import 'package:snapy/core_runtime/rules.dart';
 
@@ -104,6 +105,10 @@ void main() {
           return {'secret': rules.isSecret(text), 'extract': out, 'explicit': rules.explicitFact(text)};
         },
         'task_title': (c) => {'title': rules.cleanTitle(c['input'] as String)},
+        'phone_device': (c) {
+          final d = LocalIntents.parse(c['input'] as String, core: core);
+          return {'intent': d?.intent, 'camera': d?.camera};
+        },
       };
 
   final suites = loadConformanceSuites();

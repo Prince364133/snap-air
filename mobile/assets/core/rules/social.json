@@ -66,6 +66,36 @@
         "short_video": "Videos"
       },
       {
+        "package": "com.instagram.lite",
+        "label": "Instagram Lite",
+        "short_video": "Reels"
+      },
+      {
+        "package": "com.zhiliaoapp.musically.go",
+        "label": "TikTok Lite",
+        "short_video": "Videos"
+      },
+      {
+        "package": "video.like",
+        "label": "Likee",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.next.innovation.takatak",
+        "label": "MX TakaTak",
+        "short_video": "Videos"
+      },
+      {
+        "package": "co.triller.droid",
+        "label": "Triller",
+        "short_video": "Videos"
+      },
+      {
+        "package": "com.kwai.video",
+        "label": "Kwai",
+        "short_video": "Videos"
+      },
+      {
         "package": "com.twitter.android",
         "label": "X",
         "short_video": null
@@ -184,6 +214,18 @@
       },
       "health": {
         "stale_after_s": 180
+      },
+      "long_video_apps": ["com.google.android.youtube"],
+      "reel_lock": {
+        "_comment": "Hard lock / 80% deflector tunables (ReelLock.kt <-> lib/realcount/reel_lock.dart ReelLockRules): extra_reels per '5 more' grant, extra_per_day grants, breath_s before a grant, deflect_at fraction of the limit, deflect_bubble_ms, max_backs before escalating to the app's start screen within bounce_window_ms, bounce_latency_ms budget. Feed pager ids for the lock: creator.apps.<pkg>.feed_view_ids.",
+        "extra_reels": 5,
+        "extra_per_day": 1,
+        "breath_s": 10,
+        "deflect_at": 0.8,
+        "deflect_bubble_ms": 3000,
+        "max_backs": 2,
+        "bounce_window_ms": 2500,
+        "bounce_latency_ms": 150
       }
     }
   }

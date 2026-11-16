@@ -178,3 +178,28 @@ Events on `snapy/events`:
 - **Foreground services:** `microphone` (wake word + meeting recording), `camera` only while CaptureActivity is visible (no background camera).
 - **Data safety:** meeting audio is stored locally and sent to the user's own AI provider only if they use summaries with their key.
 - No credential collection of any kind (no device PIN).
+
+### 11.1 Play checklist notes (phone services, 2026-11-16)
+- **Target API:** `targetSdk = 36`, `compileSdk = 36` (Play requires API 36 for new apps/updates from 31 Aug 2026 — confirm in Play Console before release). Behaviour changes handled: edge-to-edge is enforced (Android 15/16) — the new native activities (Capture, SOS, Listen) pad for system bars/cut-out via `WindowInsets`; mic FGS never started from `BOOT_COMPLETED` (one-tap notification, unchanged); no FGS types other than `microphone` (wake word + meeting recording) and the owner's `specialUse` chip.
+- **Accessibility declaration (update the form + video):** (1) counts short-video page changes in catalogue apps; (2) **hard reel lock**: `GLOBAL_ACTION_BACK` only while the short-video feed of an app the user limited is on screen (opt-in, per app, disclosed in `accessibility_description`); (3) **volume keys**: Snapy is the target of Android's own accessibility shortcut (`flagRequestAccessibilityButton`); key events are **not** filtered (`canRequestFilterKeyEvents=false`); (4) `typeViewClicked` events are read only to re-check the feed after a tap in a locked app.
+- **Permissions added:** `CAMERA` (CaptureActivity, asked in context, only while visible), `WRITE_EXTERNAL_STORAGE` maxSdk 28 (gallery save on Android 8–9), `USE_BIOMETRIC` (Ghost-mode vault). No `FOREGROUND_SERVICE_CAMERA`.
+- **Data safety:** meeting audio (`files/snapy/meetings/*.m4a`) and transcripts stay on the phone; audio is sent to Gemini only if the user turns on `meeting_audio_upload` and uses their own key (disclose in the meeting card + privacy policy). Vault Markdown can be sealed with a biometric-bound Keystore key (Ghost mode).
+- **No credentials:** no device PIN anywhere; locked-phone actions use `KeyguardManager.requestDismissKeyguard` (UnlockActivity) and continue after the user unlocks.
+- **Digital assistant:** `AssistActivity` handles `ACTION_ASSIST`; `ROLE_ASSISTANT` is not requestable via `RoleManager.createRequestRoleIntent` on stock Android, so Profile → Activation opens the "Digital assistant app" settings (`Settings.ACTION_VOICE_INPUT_SETTINGS`).
+
+## 12. Progress (phone services — Kotlin + runtime, 2026-11-16)
+
+| Area | State | Where |
+|---|---|---|
+| Reel counter (one path, catalogue apps only, full-screen pager, feed ids, ViewPager2 item identity, dwell) | Done, tests | `lib/realcount/reel_counter.dart` ↔ `ReelCounter.kt`; `RealCountController.onScroll`; service only forwards |
+| Reel limits + hard lock (opt-in, soft default, Back only on the feed, escalate after 2 Backs, persistent re-entry bounce, lock capsule, "5 more" after a 10 s breath once/day, midnight reset, 80% deflector + amber halo) | Done, tests; ≤150 ms needs device check | `lib/realcount/reel_lock.dart` ↔ `ReelLock.kt`, `ReelLockController.kt` |
+| Activation (wake greeting "Yes {name}, tell me!", accessibility-shortcut volume keys, accessibility button, ACTION_ASSIST, lock-screen ListenActivity, modes in settings) | Done (device check) | `Activation.kt`, `WakeWordService.kt` |
+| Meeting notes in the mic service (AudioRecord → AAC .m4a + offline Vosk captions, "Recording meeting notes" notification, red capsule, voice start/stop, Markdown vault, mine → tasks, optional Gemini inline audio) | Done (device check) | `MeetingAudioRecorder.kt`, `WakeWordService.kt`, `runtime.dart`, `life.dart`, `meeting_audio.dart` |
+| Captions capsule (28 dp, 11.5 sp, fades 2 s after speech) + soundwave halo | Done | `CameraCapsule.kt`, `Captions.kt`, `ChipOverlay.micLevel` |
+| CaptureActivity (CameraX video/photo, front/back, MediaStore, "stop recording", show-when-locked) | Done (device check) | `CaptureActivity.kt` |
+| Unlock flow (requestDismissKeyguard, queued op) | Done | `UnlockActivity.kt`, `OpExecutor.kt` |
+| Ghost-mode vault (RSA-OAEP + AES-GCM, biometric-bound key, prompt gates list/export/clear) | Done for vault Markdown; live stores stay app-readable | `GhostVault.kt`, `PhoneServices.kt` |
+| SOS (Morse strobe, STREAM_ALARM tone, ICE card, confirm → ACTION_DIAL) | Done | `SosActivity.kt`, `phone_services.dart` |
+| §9 methods | Done | `PhoneServices.kt` (first handler on `snapy/core`) + runtime `call()` |
+
+Device-verification list: bounce latency (`ReelLockController.lastLatencyMs`) on Instagram Reels / YouTube Shorts and DMs still usable; ViewPager2 item identity on current app versions; accessibility-shortcut callback on ColorOS/OneUI/HyperOS; MediaCodec AAC on low-end chips; CameraX over the lock screen; BiometricPrompt + time-bound RSA key on Android 9–10.

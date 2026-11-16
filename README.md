@@ -61,7 +61,11 @@ First-time setup: `cd engine && python -m venv .venv && .venv\Scripts\pip instal
 - Ctrl+Alt+H: hide
 
 ## Privacy
-All data is plain JSON in `%APPDATA%\SnapAir\` (profile, memories, journal, notes, tasks, activity). Activity tracking stores app, project and site names with durations. It never stores keystrokes, screen contents, URLs, or private windows. The internet is used only when you ask for a web search or weather. Settings has **Open folder**, **Export**, and **Delete all my data**.
+All data is plain JSON in `%APPDATA%\SnapAir\` (profile, memories, journal, notes, tasks, activity). Activity tracking stores app, project and site names with durations. It never stores keystrokes, screen contents, URLs, or private windows. Short-video counting (on by default, Settings → Attention) saves only counts and minutes per site; window titles and the address bar are read in memory and never stored.
+
+The internet is used for: first-run downloads (speech model, voice, Ollama and the AI model, from their publishers; the Ollama installer must carry a valid Authenticode signature from its publisher before it runs), things you ask for (web search, weather, "play … on YouTube", reading a page), and the optional cloud brain once you add a key. Before the first cloud request Snapy shows what would be sent and asks once; personal identifiers are masked first. Settings has **Open folder**, **Export**, and **Delete all my data** (which also removes exported copies).
+
+The HUD talks to the engine over `ws://localhost:8765`, which only accepts the HUD: a per-launch token plus an Origin allow-list (`engine/src/server/auth.py`); the token is not passed on to programs Snapy starts.
 
 ## Licensing notes (read before selling)
 **Voices: handled in code.** Each voice carries the licence from its model card (`src/voice/piper_voice.py`). By default Snapy only uses voices that allow commercial use:
@@ -86,6 +90,9 @@ AI4Bharat's FastPitch/HiFi-GAN Indic-TTS models appear to be MIT-licensed. They 
 ## Tests
 ```
 cd engine
+.venv\Scripts\python -m unittest discover -s tests -t .   # everything (~1 min)
 .venv\Scripts\python -m unittest tests.test_gestures tests.test_agent tests.test_life tests.test_brain   # fast
 .venv\Scripts\python -m unittest tests.test_voice   # real speech → Whisper → actions
 ```
+
+The suite is hermetic (`engine/tests/_env.py`): data and settings go to a temporary folder, no test reaches the internet or a running Ollama, and modules pass in any order.

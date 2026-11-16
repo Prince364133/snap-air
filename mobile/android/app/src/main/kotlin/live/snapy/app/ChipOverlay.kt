@@ -174,11 +174,17 @@ class LivingOrbView(context: Context) : View(context) {
             }
 
             if (isHaloRing && cutoutRadiusPx > 0f) {
+                // A ring of the view's own shape: a circle for a punch-hole (w == h), a stadium for a
+                // pill / dual punch-hole (w > h). The centre stays transparent over the lens.
                 val innerCutout = cutoutRadiusPx.coerceIn(0.5f, (r - 2f).coerceAtLeast(0.5f))
+                val thick = (r - innerCutout).coerceAtLeast(1f)
+                val outer = RectF(0f, 0f, w, h)
+                val inner = RectF(thick, thick, w - thick, h - thick)
+                val innerR = (r - thick).coerceAtLeast(0.5f)
                 val ringPath = Path().apply {
                     fillType = Path.FillType.EVEN_ODD
-                    addCircle(cx, cy, r, Path.Direction.CW)
-                    addCircle(cx, cy, innerCutout, Path.Direction.CW)
+                    addRoundRect(outer, r, r, Path.Direction.CW)
+                    addRoundRect(inner, innerR, innerR, Path.Direction.CW)
                 }
                 canvas.save()
                 canvas.clipPath(ringPath)
@@ -187,19 +193,18 @@ class LivingOrbView(context: Context) : View(context) {
                 val t = turnT * 2 * Math.PI.toFloat()
                 val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     shader = RadialGradient(
-                        cx, cy, r.coerceAtLeast(1f),
+                        cx, cy, (maxOf(w, h) / 2f).coerceAtLeast(1f),
                         intArrayOf(c1 and 0xCCFFFFFF.toInt(), c2 and 0x88FFFFFF.toInt(), c3 and 0x44FFFFFF.toInt()),
                         floatArrayOf(0.2f, 0.6f, 1f),
                         Shader.TileMode.CLAMP
                     )
                 }
-                canvas.drawCircle(cx, cy, r, ringPaint)
+                canvas.drawRoundRect(outer, r, r, ringPaint)
 
                 // Dynamic rotating light streak around the ring
-                val angle = t
-                val lx = cx + Math.cos(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
-                val ly = cy + Math.sin(angle.toDouble()).toFloat() * (r + innerCutout) / 2f
-                val streakRadius = ((r - innerCutout) * 1.6f).coerceAtLeast(1f)
+                val lx = cx + Math.cos(t.toDouble()).toFloat() * (w / 2f - thick / 2f)
+                val ly = cy + Math.sin(t.toDouble()).toFloat() * (h / 2f - thick / 2f)
+                val streakRadius = (thick * 1.6f).coerceAtLeast(1f)
                 val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
                     shader = RadialGradient(
@@ -219,7 +224,8 @@ class LivingOrbView(context: Context) : View(context) {
                     strokeWidth = 2.5f
                     color = c1 and 0x99FFFFFF.toInt()
                 }
-                canvas.drawCircle(cx, cy, (r - 1.25f).coerceAtLeast(1f), outerStroke)
+                val o = RectF(outer).apply { inset(1.25f, 1.25f) }
+                canvas.drawRoundRect(o, (r - 1.25f).coerceAtLeast(1f), (r - 1.25f).coerceAtLeast(1f), outerStroke)
 
                 // Crisp inner camera cutout edge
                 val innerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -227,7 +233,8 @@ class LivingOrbView(context: Context) : View(context) {
                     strokeWidth = 1.5f
                     color = 0x44FFFFFF.toInt()
                 }
-                canvas.drawCircle(cx, cy, innerCutout + 0.75f, innerStroke)
+                val i = RectF(inner).apply { inset(-0.75f, -0.75f) }
+                canvas.drawRoundRect(i, innerR + 0.75f, innerR + 0.75f, innerStroke)
                 return
             }
 
@@ -657,10 +664,26 @@ class ChipOverlay(
 
         try { wm.addView(r, p) } catch (_: Exception) { return }
         root = r
+        lastRules = rules
         place(rules)
+        r.post { place(rules) }                     // again once insets are attached (API 28 reads them from the view)
+        if (configWatcher == null) {
+            configWatcher = object : android.content.ComponentCallbacks {
+                // rotation, resolution / display-size change, folding: the camera moved on screen
+                override fun onConfigurationChanged(c: android.content.res.Configuration) {
+                    main.postDelayed({ lastRules?.let { dismissCapsuleStrip(); place(it) } }, 250)
+                }
+                @Deprecated("Deprecated in Java") override fun onLowMemory() {}
+            }.also { ctx.registerComponentCallbacks(it) }
+        }
     }
 
+    private var lastRules: RealCountRules? = null
+    private var configWatcher: android.content.ComponentCallbacks? = null
+
     fun remove() {
+        configWatcher?.let { try { ctx.unregisterComponentCallbacks(it) } catch (_: Exception) { } }
+        configWatcher = null
         dismissCapsuleStrip()
         dismissFloatingSubtitle()
         cameraHalo?.stop()
@@ -670,6 +693,13 @@ class ChipOverlay(
 
     fun rebuild(rules: RealCountRules) { remove(); show(rules) }
 
+    /** What the front camera looks like on this phone, in this rotation. */
+    enum class CameraShape { NONE, HOLE, PILL, NOTCH }
+
+    /**
+     * [bounds] is the camera lens itself (not the OEM's padded box); [cx]/[cy] its centre;
+     * [size] its smaller side.
+     */
     data class CutoutData(
         val hasCutout: Boolean,
         val bounds: Rect,
@@ -677,103 +707,147 @@ class ChipOverlay(
         val cy: Int,
         val size: Int,
         val isTopNotch: Boolean = false,
-        val isCorner: Boolean = false
+        val isCorner: Boolean = false,
+        val shape: CameraShape = if (!hasCutout) CameraShape.NONE else if (isTopNotch) CameraShape.NOTCH else CameraShape.HOLE,
     )
 
+    /**
+     * Works for every front-camera layout Android reports, on any brand:
+     *  - punch-hole (centre, left or right), pill / dual punch-hole, waterdrop and wide notch;
+     *  - no cutout (bezel or under-display camera): a small ring at the top centre;
+     *  - only the cutout on the TOP edge in the current rotation counts (landscape: none).
+     * The lens comes from DisplayCutout.cutoutPath (Android 12+), the exact shape; OEMs such as
+     * ColorOS / Realme UI report a bounding box padded to the full status-bar height, which put
+     * the ring off-centre. Older versions use the top bounding rect.
+     */
+    @Suppress("DEPRECATION")
     private fun getCutout(): CutoutData {
         val dm = ctx.resources.displayMetrics
-        if (Build.VERSION.SDK_INT >= 30) {
-            val insets = wm.currentWindowMetrics.windowInsets
-            val cutout = insets.displayCutout
-            if (cutout != null && cutout.boundingRects.isNotEmpty()) {
-                val r = cutout.boundingRects[0]
-                val sz = minOf(r.width(), r.height()).coerceIn(dp(18f), dp(36f))
-                val isTopNotch = (r.top <= 2 && r.width() > dp(85f) && r.width() > r.height() * 2.2f)
-                val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
-                val cy = if (r.top <= 2 && !isTopNotch) {
-                    (r.top + r.height() / 2).coerceAtLeast(sz / 2)
-                } else {
-                    r.centerY()
-                }
-                return CutoutData(true, r, r.centerX(), cy, sz, isTopNotch, isCorner)
+        val cutout: android.view.DisplayCutout? = try {
+            when {
+                Build.VERSION.SDK_INT >= 30 -> wm.currentWindowMetrics.windowInsets.displayCutout
+                Build.VERSION.SDK_INT >= 29 -> wm.defaultDisplay.cutout
+                Build.VERSION.SDK_INT >= 28 -> root?.rootWindowInsets?.displayCutout
+                else -> null
             }
-        } else if (Build.VERSION.SDK_INT >= 28) {
-            @Suppress("DEPRECATION")
-            val cutout = wm.defaultDisplay.cutout
-            if (cutout != null && cutout.boundingRects.isNotEmpty()) {
-                val r = cutout.boundingRects[0]
-                val sz = minOf(r.width(), r.height()).coerceIn(dp(18f), dp(36f))
-                val isTopNotch = (r.top <= 2 && r.width() > dp(85f) && r.width() > r.height() * 2.2f)
-                val isCorner = (r.centerX() < dm.widthPixels * 0.35f || r.centerX() > dm.widthPixels * 0.65f)
-                val cy = if (r.top <= 2 && !isTopNotch) {
-                    (r.top + r.height() / 2).coerceAtLeast(sz / 2)
-                } else {
-                    r.centerY()
-                }
-                return CutoutData(true, r, r.centerX(), cy, sz, isTopNotch, isCorner)
+        } catch (_: Throwable) { null }
+        val lens = cutout?.let { lensRect(it, dm) }
+        if (lens != null) {
+            val w = lens.width()
+            val h = lens.height()
+            val ratio = w.toFloat() / h.coerceAtLeast(1)
+            val attached = lens.top <= dp(2f)
+            val shape = when {
+                attached && ratio >= 2.2f && w > dp(60f) -> CameraShape.NOTCH        // wide notch
+                !attached && ratio >= 1.35f -> CameraShape.PILL                       // dual punch-hole
+                else -> CameraShape.HOLE                                              // punch-hole / waterdrop
             }
+            val isCorner = lens.centerX() < dm.widthPixels * 0.35f || lens.centerX() > dm.widthPixels * 0.65f
+            val size = minOf(w, h).coerceIn(dp(18f), dp(36f))
+            return CutoutData(true, lens, lens.centerX(), lens.centerY(), size,
+                isTopNotch = shape == CameraShape.NOTCH, isCorner = isCorner, shape = shape)
         }
+        // No cutout reported: camera in the bezel or under the display
         val defaultSize = dp(24f)
         var bar = dp(4f)
         if (Build.VERSION.SDK_INT >= 30) {
             val b = wm.currentWindowMetrics.windowInsets.getInsets(WindowInsets.Type.statusBars()).top
             if (b > 0) bar = ((b - defaultSize) / 2).coerceAtLeast(0)
         }
-        return CutoutData(false, Rect(dm.widthPixels / 2 - defaultSize / 2, bar, dm.widthPixels / 2 + defaultSize / 2, bar + defaultSize), dm.widthPixels / 2, bar + defaultSize / 2, defaultSize)
+        return CutoutData(false, Rect(dm.widthPixels / 2 - defaultSize / 2, bar, dm.widthPixels / 2 + defaultSize / 2, bar + defaultSize),
+            dm.widthPixels / 2, bar + defaultSize / 2, defaultSize, shape = CameraShape.NONE)
     }
 
+    /** The camera on the top edge: the exact path when Android gives it, else the top rect. */
+    private fun lensRect(c: android.view.DisplayCutout, dm: android.util.DisplayMetrics): Rect? {
+        val box: Rect = if (Build.VERSION.SDK_INT >= 29) {
+            c.boundingRectTop.takeIf { !it.isEmpty } ?: return null              // nothing on the top edge
+        } else {
+            c.boundingRects.filter { it.top <= dp(2f) && it.width() < dm.widthPixels }.minByOrNull { it.top } ?: return null
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                val path = c.cutoutPath
+                if (path != null) {
+                    val rf = RectF(); path.computeBounds(rf, true)
+                    val pr = Rect(); rf.roundOut(pr)
+                    val exact = Rect(pr)
+                    // the path covers every cutout (top and bottom): keep the part in the top box
+                    if (!pr.isEmpty && exact.intersect(box) && exact.width() >= dp(4f) && exact.height() >= dp(4f)) return exact
+                }
+            } catch (_: Throwable) { }
+        }
+        return box
+    }
+
+    /**
+     * Puts the ring exactly around the lens and makes the tap area the ring plus
+     * chip.touch_padding_dp on every side (at least 48 dp, Android's minimum touch target),
+     * so a tap on or just beside the camera opens the strip even where nothing is drawn.
+     */
     fun place(rules: RealCountRules) {
         val r = root ?: return
         val p = lp ?: return
         try {
             val cutout = getCutout()
             val dm = ctx.resources.displayMetrics
+            val pad = dp(rules.d("chip.touch_padding_dp", 10.0).toFloat())
+            val minHit = dp(48f)
 
-            if (cutout.isTopNotch) {
-                cameraHalo?.apply {
+            // the ring (outer size) around the lens
+            val (ringW, ringH) = when (cutout.shape) {
+                CameraShape.NOTCH -> (cutout.bounds.width() + dp(12f)) to (cutout.bounds.height() + dp(8f))
+                CameraShape.PILL -> (cutout.bounds.width() + dp(8f)) to (maxOf(cutout.bounds.height(), dp(22f)) + dp(8f))
+                CameraShape.HOLE -> (maxOf(cutout.size, dp(26f)) + dp(4f)).let { it to it }
+                CameraShape.NONE -> dp(28f) to dp(28f)
+            }
+            val ringCx = cutout.cx
+            val ringCy = if (cutout.shape == CameraShape.NOTCH) ringH / 2 else cutout.cy
+
+            cameraHalo?.apply {
+                if (cutout.shape == CameraShape.NOTCH) {
                     isHaloRing = false
                     isTopNotch = true
                     notchWidth = cutout.bounds.width().toFloat()
                     notchHeight = cutout.bounds.height().toFloat()
-                    layoutParams = FrameLayout.LayoutParams(cutout.bounds.width() + dp(12f), cutout.bounds.height() + dp(8f), Gravity.CENTER_HORIZONTAL or Gravity.TOP)
-                }
-                val hitW = cutout.bounds.width() + dp(12f)
-                val hitH = cutout.bounds.height() + dp(8f)
-                haloContainer?.layoutParams = LinearLayout.LayoutParams(hitW, hitH)
-                p.x = (cutout.cx - hitW / 2).coerceIn(0, (dm.widthPixels - hitW).coerceAtLeast(0))
-                p.y = 0
-            } else {
-                val haloSize = if (cutout.hasCutout) {
-                    maxOf(cutout.size, dp(26f)) + dp(4f)
                 } else {
-                    dp(28f)
-                }
-
-                cameraHalo?.apply {
                     isTopNotch = false
                     isHaloRing = true
-                    cutoutRadiusPx = if (cutout.hasCutout) {
-                        (cutout.size / 2f).coerceIn(dp(6f).toFloat(), dp(16f).toFloat())
-                    } else {
-                        dp(6.5f).toFloat()
-                    }
-                    layoutParams = FrameLayout.LayoutParams(haloSize, haloSize, Gravity.CENTER)
+                    cutoutRadiusPx = if (cutout.hasCutout) (minOf(cutout.bounds.width(), cutout.bounds.height()) / 2f + dp(1f))
+                        .coerceIn(dp(5f).toFloat(), (minOf(ringW, ringH) / 2f - dp(1.5f)).coerceAtLeast(dp(5f).toFloat()))
+                    else dp(6.5f).toFloat()
                 }
-
-                val touchW = maxOf(haloSize + dp(32f), dp(64f))
-                val touchH = maxOf(haloSize + dp(14f), dp(42f))
-                haloContainer?.layoutParams = LinearLayout.LayoutParams(touchW, touchH)
-                p.x = (cutout.cx - touchW / 2).coerceIn(0, (dm.widthPixels - touchW).coerceAtLeast(0))
-                p.y = (cutout.cy - haloSize / 2).coerceAtLeast(0)
             }
 
-            p.width = WindowManager.LayoutParams.WRAP_CONTENT
+            // tap area: ring + padding, centred on the lens; the window starts where it starts
+            val hitW = maxOf(ringW + 2 * pad, minHit)
+            val hitH = maxOf(ringH + 2 * pad, minHit)
+            val winW = maxOf(hitW, dp(88f))                                  // room for the badge underneath
+            p.x = (ringCx - winW / 2).coerceIn(0, (dm.widthPixels - winW).coerceAtLeast(0))
+            p.y = (ringCy - hitH / 2).coerceAtLeast(0)
+            p.width = winW
             p.height = WindowManager.LayoutParams.WRAP_CONTENT
+
+            // the hit box sits over the lens even when the window is pinned to an edge
+            haloContainer?.layoutParams = LinearLayout.LayoutParams(hitW, hitH).apply {
+                gravity = Gravity.START
+                leftMargin = (ringCx - hitW / 2 - p.x).coerceIn(0, (winW - hitW).coerceAtLeast(0))
+            }
+            val boxLeft = p.x + ((ringCx - hitW / 2 - p.x).coerceIn(0, (winW - hitW).coerceAtLeast(0)))
+            cameraHalo?.layoutParams = FrameLayout.LayoutParams(ringW, ringH, Gravity.TOP or Gravity.START).apply {
+                leftMargin = ringCx - ringW / 2 - boxLeft
+                topMargin = ringCy - ringH / 2 - p.y
+            }
+            socialBadge?.let { badge ->
+                (badge.layoutParams as? LinearLayout.LayoutParams)?.let { lpB -> lpB.gravity = Gravity.CENTER_HORIZONTAL; badge.layoutParams = lpB }
+            }
 
             y = p.y
             height = p.height
             wm.updateViewLayout(r, p)
-        } catch (_: Exception) { }
+        } catch (t: Throwable) {
+            CrashLog.record(ctx, "chip.place", t)
+        }
     }
 
     // ------------------------------------------------------------------ Dynamic Palette & Mode
@@ -911,6 +985,13 @@ class ChipOverlay(
 
     fun setHidden(hidden: Boolean) = main.post { root?.visibility = if (hidden) View.GONE else View.VISIBLE }
 
+    /** Soundwave halo (docs/ANDROID_NEXT_PLAN.md §6): the camera ring swells with the mic level. */
+    fun micLevel(level: Float) = main.post {
+        val h = haloContainer ?: return@post
+        val s = 1f + 0.18f * level.coerceIn(0f, 1f)
+        h.animate().scaleX(s).scaleY(s).setDuration(90).start()
+    }
+
     fun voice(text: String) = main.post {
         root?.visibility = View.VISIBLE
         stripTitleText?.text = text.takeLast(20)
@@ -1015,12 +1096,26 @@ class ChipOverlay(
     }
 
     // ------------------------------------------------------------------ Dropped Capsule Strip
+    /** When the open strip last closed itself because of a touch outside it (e.g. on the ring). */
+    private var outsideDismissAt = 0L
+
     fun toggleCapsuleStrip() {
+        // A tap on the ring while the strip is open first reaches the strip as ACTION_OUTSIDE
+        // (closing it); the same tap must not reopen it.
+        if (android.os.SystemClock.uptimeMillis() - outsideDismissAt < 350L) return
         if (capsuleOverlay != null) dismissCapsuleStrip() else showCapsuleStrip()
     }
 
     fun dismissCapsuleStrip() {
         val strip = capsuleOverlay ?: return
+        // forget it now (not at the end of the animation), so a tap during the close opens a new one
+        capsuleOverlay = null
+        stripTitleText = null
+        stripTimeText = null
+        stripReelText = null
+        stripReelIcon = null
+        noteDotView = null
+        noteText = null
         strip.animate()
             .scaleX(0.25f)
             .scaleY(0.1f)
@@ -1028,18 +1123,7 @@ class ChipOverlay(
             .alpha(0f)
             .setDuration(180)
             .setInterpolator(AccelerateInterpolator(1.4f))
-            .withEndAction {
-                try { wm.removeView(strip) } catch (_: Exception) {}
-                if (capsuleOverlay == strip) {
-                    capsuleOverlay = null
-                    stripTitleText = null
-                    stripTimeText = null
-                    stripReelText = null
-                    stripReelIcon = null
-                    noteDotView = null
-                    noteText = null
-                }
-            }
+            .withEndAction { try { wm.removeView(strip) } catch (_: Exception) {} }
             .start()
     }
 
@@ -1119,7 +1203,7 @@ class ChipOverlay(
             addView(redDot)
 
             val noteTv = TextView(ctx).apply {
-                text = if (AudioNoteRecorder.isRecording) "Recording..." else "Note"
+                text = if (AudioNoteRecorder.isRecording) "Rec…" else Strings.t(ctx, "chip.note")
                 setTextColor(0xFFFFFFFF.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f * scale)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
@@ -1140,16 +1224,19 @@ class ChipOverlay(
                 if (AudioNoteRecorder.isRecording) {
                     val f = AudioNoteRecorder.stop(ctx)
                     redDot.isRecording = false
-                    noteTv.text = "Note"
+                    noteTv.text = Strings.t(ctx, "chip.note")
                     if (f != null) {
-                        android.widget.Toast.makeText(ctx, "✓ Audio note saved to Conscious Vault", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(ctx, Strings.t(ctx, "chip.note_saved"), android.widget.Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     val ok = AudioNoteRecorder.start(ctx)
                     if (ok) {
                         redDot.isRecording = true
                         noteTv.text = "Rec 0:00"
-                        android.widget.Toast.makeText(ctx, "🎙 Taking audio note silently...", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(ctx, Strings.t(ctx, "chip.note_recording"), android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        // no microphone permission (or the mic is busy): say so instead of doing nothing
+                        android.widget.Toast.makeText(ctx, Strings.t(ctx, "chip.note_failed"), android.widget.Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -1228,6 +1315,7 @@ class ChipOverlay(
 
         stripRoot.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                outsideDismissAt = android.os.SystemClock.uptimeMillis()
                 dismissCapsuleStrip()
                 return@setOnTouchListener false
             }

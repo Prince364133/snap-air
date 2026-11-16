@@ -26,6 +26,7 @@ const toc: [string, string][] = [
       <tr><td>Profile &amp; memories</td><td>Stored as plain JSON in <code>%APPDATA%\SnapAir</code>. Passwords and API keys are filtered out.</td></tr>
       <tr><td>Notes, tasks, meeting summaries</td><td>Stored locally in the same folder.</td></tr>
       <tr><td>Activity (optional, off by default)</td><td>App, project and site names with durations. Never keystrokes, screen contents, URLs or private windows.</td></tr>
+      <tr><td>Short-video counts (on by default, can be turned off)</td><td>How many Shorts and Reels you watched in the browser, and minutes per site, counted from the window title and the address bar. Only the counts are saved; titles and addresses are looked at in memory and never stored.</td></tr>
       <tr><td>Screen contents</td><td>Read on demand when you ask Snapy to click, type or describe the screen; not stored.</td></tr>
       <tr><td>Camera (optional)</td><td>Only while hand gestures are on; frames are analysed in memory and never stored.</td></tr>
       <tr><td>API keys you add</td><td>Encrypted with Windows Data Protection (DPAPI).</td></tr>
@@ -35,7 +36,7 @@ const toc: [string, string][] = [
   <h2 id="leaves">When data leaves your PC</h2>
   <ul>
     <li><strong>Setup and downloads.</strong> Snapy downloads its AI runtime, models and optional voices from their publishers. These requests carry standard technical data (such as your IP address), not your personal content.</li>
-    <li><strong>Cloud AI (optional).</strong> With your own Gemini, OpenAI or compatible key, the text needed to answer is sent to that provider under your account and its terms.</li>
+    <li><strong>Cloud AI (optional).</strong> With your own Gemini, OpenAI or compatible key, the text needed to answer is sent to that provider under your account and its terms. Before the first request Snapy shows you exactly what would be sent and asks once; emails, phone and card numbers, key-like strings and your Windows user name are masked first (you can turn masking off in Settings). Memory learning stays on your PC unless you allow it.</li>
     <li><strong>Cloud vision (optional).</strong> If enabled, a screenshot of the relevant window is sent to your provider only when on-device methods can’t find what you asked for.</li>
     <li><strong>Web answers.</strong> Web searches, weather and page summaries fetch data from the relevant websites.</li>
   </ul>

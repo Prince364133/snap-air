@@ -1,0 +1,375 @@
+{
+ "suite": "phone_device",
+ "schema_version": 1,
+ "doc": "phone_device domain (core/README.md §4.8): text (wake word removed) -> {intent, camera}; input normalised: lower case, [.,!?;] -> space, whitespace collapsed; first_match by order; camera = named group `camera` mapped through slot_values.phone_device.camera (null when absent)",
+ "cases": [
+  {
+   "id": "phone_device.001",
+   "input": "take a video with the front camera",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.002",
+   "input": "Take a video",
+   "expect": {
+    "intent": "capture_video",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.003",
+   "input": "record a selfie video",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.004",
+   "input": "start recording with the rear camera",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "back"
+   }
+  },
+  {
+   "id": "phone_device.005",
+   "input": "please shoot a back camera video now",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "back"
+   }
+  },
+  {
+   "id": "phone_device.006",
+   "input": "start filming with my front camera",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.007",
+   "input": "stop recording",
+   "expect": {
+    "intent": "capture_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.008",
+   "input": "Stop the video.",
+   "expect": {
+    "intent": "capture_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.009",
+   "input": "take a photo",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.010",
+   "input": "click a front camera photo",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.011",
+   "input": "take a selfie",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.012",
+   "input": "take a picture with the back camera",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": "back"
+   }
+  },
+  {
+   "id": "phone_device.013",
+   "input": "SOS",
+   "expect": {
+    "intent": "sos",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.014",
+   "input": "help me",
+   "expect": {
+    "intent": "sos",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.015",
+   "input": "trigger emergency mode",
+   "expect": {
+    "intent": "sos",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.016",
+   "input": "stop SOS",
+   "expect": {
+    "intent": "sos_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.017",
+   "input": "I'm safe now",
+   "expect": {
+    "intent": "sos_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.018",
+   "input": "call emergency",
+   "expect": {
+    "intent": "sos_call",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.019",
+   "input": "call the ambulance please",
+   "expect": {
+    "intent": "sos_call",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.020",
+   "input": "I'm in a meeting, take notes",
+   "expect": {
+    "intent": "meeting_start",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.021",
+   "input": "I'm in a meeting",
+   "expect": {
+    "intent": "meeting_start",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.022",
+   "input": "start taking notes, we are in a meeting",
+   "expect": {
+    "intent": "meeting_start",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.023",
+   "input": "meeting is over, save the notes",
+   "expect": {
+    "intent": "meeting_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.024",
+   "input": "end the meeting",
+   "expect": {
+    "intent": "meeting_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.025",
+   "input": "front camera se video banao",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.026",
+   "input": "video band karo",
+   "expect": {
+    "intent": "capture_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.027",
+   "input": "selfie khincho",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.028",
+   "input": "photo lo",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.029",
+   "input": "bachao",
+   "expect": {
+    "intent": "sos",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.030",
+   "input": "emergency band karo",
+   "expect": {
+    "intent": "sos_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.031",
+   "input": "meeting chal rahi hai, notes lo",
+   "expect": {
+    "intent": "meeting_start",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.032",
+   "input": "meeting khatam",
+   "expect": {
+    "intent": "meeting_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.033",
+   "input": "सेल्फी कैमरा से वीडियो बनाओ",
+   "expect": {
+    "intent": "capture_video",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.034",
+   "input": "वीडियो बनाओ",
+   "expect": {
+    "intent": "capture_video",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.035",
+   "input": "वीडियो बंद करो",
+   "expect": {
+    "intent": "capture_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.036",
+   "input": "फोटो खींचो",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.037",
+   "input": "सेल्फी लो",
+   "expect": {
+    "intent": "capture_photo",
+    "camera": "front"
+   }
+  },
+  {
+   "id": "phone_device.038",
+   "input": "बचाओ",
+   "expect": {
+    "intent": "sos",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.039",
+   "input": "पुलिस को कॉल करो",
+   "expect": {
+    "intent": "sos_call",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.040",
+   "input": "मैं ठीक हूँ",
+   "expect": {
+    "intent": "sos_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.041",
+   "input": "मैं मीटिंग में हूँ, नोट्स लो",
+   "expect": {
+    "intent": "meeting_start",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.042",
+   "input": "मीटिंग खत्म हो गई",
+   "expect": {
+    "intent": "meeting_stop",
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.043",
+   "input": "open youtube",
+   "expect": {
+    "intent": null,
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.044",
+   "input": "what is a selfie",
+   "expect": {
+    "intent": null,
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.045",
+   "input": "call mom",
+   "expect": {
+    "intent": null,
+    "camera": null
+   }
+  },
+  {
+   "id": "phone_device.046",
+   "input": "take notes",
+   "expect": {
+    "intent": null,
+    "camera": null
+   }
+  }
+ ]
+}

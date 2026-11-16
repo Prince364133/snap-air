@@ -246,6 +246,20 @@ class NextApi {
     return v is Map ? SnapyProfile.fromJson(_map(v)) : null;
   }
 
+  // ------------------------------------------------------------------ diagnostics
+  /// Is the Reel counter (accessibility service) really running? state: on | stopped | off.
+  /// null = this build can't tell (older Kotlin).
+  static Future<A11yHealth?> a11yHealth() async {
+    final v = await _invoke('a11yHealth');
+    return v is Map ? A11yHealth.fromJson(_map(v)) : null;
+  }
+
+  /// Crash reports kept on the phone (newest first): [{file, text}].
+  static Future<List<CrashReport>> crashReports() async =>
+      [for (final m in _list(await _invoke('crashReports'))) CrashReport('${m['file'] ?? ''}', '${m['text'] ?? ''}')];
+
+  static Future<bool> clearCrashReports() async => (await _invoke('clearCrashReports')) == true;
+
   // ------------------------------------------------------------------ events
   /// voice / speak / reel_lock / meeting / activation events from `snapy/events` (never errors).
   static Stream<Map<String, dynamic>> events({Set<String> types = const {'voice', 'speak', 'reel_lock', 'meeting', 'activation'}}) {
@@ -292,22 +306,61 @@ class ReelLimit {
       ReelLimit(limit: limit ?? this.limit, mode: mode ?? this.mode, used: used ?? this.used, state: state);
 }
 
+class A11yHealth {
+  /// on: connected · stopped: enabled in Settings but not running (the phone stopped it) · off
+  final String state;
+  final bool enabled, connected;
+  final int crashCount;
+  final String manufacturer;
+  const A11yHealth({this.state = 'off', this.enabled = false, this.connected = false, this.crashCount = 0, this.manufacturer = ''});
+
+  factory A11yHealth.fromJson(Map<String, dynamic> j) => A11yHealth(
+        state: '${j['state'] ?? 'off'}',
+        enabled: NextApi._bool(j['enabled']),
+        connected: NextApi._bool(j['connected']),
+        crashCount: NextApi._int(j['crash_count']),
+        manufacturer: '${j['manufacturer'] ?? ''}',
+      );
+
+  bool get stopped => state == 'stopped';
+  bool get off => state == 'off';
+}
+
+class CrashReport {
+  final String file, text;
+  const CrashReport(this.file, this.text);
+}
+
 class ActivationModes {
   final bool wake, volume, power, assistantRole;
-  const ActivationModes({this.wake = false, this.volume = false, this.power = false, this.assistantRole = false});
+
+  /// The Real Count accessibility service is on (needed for the volume-key shortcut).
+  final bool shortcut;
+
+  /// Snapy is the target of Android's volume-key accessibility shortcut; null = Android doesn't say.
+  final bool? shortcutTarget;
+  const ActivationModes({this.wake = false, this.volume = false, this.power = false, this.assistantRole = false,
+      this.shortcut = false, this.shortcutTarget});
 
   factory ActivationModes.fromJson(Map<String, dynamic> j) => ActivationModes(
         wake: NextApi._bool(j['wake']),
         volume: NextApi._bool(j['volume']),
         power: NextApi._bool(j['power']),
         assistantRole: NextApi._bool(j['assistantRole'] ?? j['assistant_role']),
+        shortcut: NextApi._bool(j['shortcut']),
+        shortcutTarget: j['shortcutTarget'] is bool ? j['shortcutTarget'] as bool : null,
       );
+
+  /// The volume shortcut is switched on but Android isn't set up to send it to Snapy yet.
+  bool get volumeNeedsSetup => volume && (!shortcut || shortcutTarget == false);
 
   ActivationModes withMode(String mode, bool on) => ActivationModes(
         wake: mode == 'wake' ? on : wake,
         volume: mode == 'volume' ? on : volume,
         power: mode == 'power' ? on : power,
         assistantRole: assistantRole,
+        shortcut: shortcut,
+        shortcutTarget: shortcutTarget,
       );
 
   bool of(String mode) => switch (mode) { 'wake' => wake, 'volume' => volume, 'power' => power, _ => false };

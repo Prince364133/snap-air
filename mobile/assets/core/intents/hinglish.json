@@ -87,6 +87,17 @@
     ],
     "memory_self": [
       {"id": "hinglish", "pattern": "\\b(?:mera|meri|mere|mujhe|main|hum|hamara|pasand|yaad)\\b"}
+    ],
+    "phone_device": [
+      {"id": "phone_device.hinglish.capture_stop", "order": 11, "intent": "capture_stop", "pattern": "^(?:video|recording) (?:band|rok) karo$"},
+      {"id": "phone_device.hinglish.capture_video_camera", "order": 23, "intent": "capture_video", "pattern": "^(?<camera>front|back|selfie) camera (?:se )?video (?:banao|record karo|lo)$"},
+      {"id": "phone_device.hinglish.capture_video", "order": 24, "intent": "capture_video", "pattern": "^video (?:banao|record karo|shuru karo)$"},
+      {"id": "phone_device.hinglish.selfie", "order": 33, "intent": "capture_photo", "pattern": "^(?<camera>selfie) (?:khincho|lo|click karo)$"},
+      {"id": "phone_device.hinglish.capture_photo", "order": 34, "intent": "capture_photo", "pattern": "^(?:photo|pic) (?:khincho|lo|click karo)$"},
+      {"id": "phone_device.hinglish.sos_stop", "order": 41, "intent": "sos_stop", "pattern": "^(?:sos|emergency|alarm) band karo$|^main (?:theek|thik|safe) hoon$"},
+      {"id": "phone_device.hinglish.sos", "order": 61, "intent": "sos", "pattern": "^(?:bachao|madad karo)(?: please| now)?$"},
+      {"id": "phone_device.hinglish.meeting_start", "order": 71, "intent": "meeting_start", "pattern": "^meeting (?:chal rahi hai|shuru) notes? (?:lo|lena)$"},
+      {"id": "phone_device.hinglish.meeting_stop", "order": 81, "intent": "meeting_stop", "pattern": "\\b(?:meeting|call) (?:khatam|khatm)\\b"}
     ]
   }
 }

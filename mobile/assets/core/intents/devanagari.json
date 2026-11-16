@@ -50,6 +50,18 @@
       "गाना": "gaana", "अगला": "agla", "पिछला": "pichla", "टैब": "tab", "वापस": "wapas", "जाओ": "jao",
       "सर्च": "search", "क्रोम": "chrome", "म्यूट": "mute", "रुको": "ruko", "बजाओ": "bajao", "पर": "par",
       "पे": "pe", "में": "mein", "को": "ko", "और": "aur", "थोड़ा": "thoda", "ज़्यादा": "zyada"
-    }
+    },
+    "phone_device": [
+      {"id": "phone_device.devanagari.capture_stop", "order": 12, "intent": "capture_stop", "pattern": "^(?:वीडियो|विडियो|रिकॉर्डिंग) (?:बंद करो|रोको)$"},
+      {"id": "phone_device.devanagari.capture_video_camera", "order": 25, "intent": "capture_video", "pattern": "^(?<camera>फ्रंट|बैक|सेल्फी) कैमरा (?:से )?(?:वीडियो|विडियो) (?:बनाओ|रिकॉर्ड करो|लो)$"},
+      {"id": "phone_device.devanagari.capture_video", "order": 26, "intent": "capture_video", "pattern": "^(?:वीडियो|विडियो) (?:बनाओ|रिकॉर्ड करो|शुरू करो)$"},
+      {"id": "phone_device.devanagari.selfie", "order": 35, "intent": "capture_photo", "pattern": "^(?<camera>सेल्फी) (?:खींचो|लो|क्लिक करो)$"},
+      {"id": "phone_device.devanagari.capture_photo", "order": 36, "intent": "capture_photo", "pattern": "^(?:फोटो|फ़ोटो|तस्वीर) (?:खींचो|लो|क्लिक करो)$"},
+      {"id": "phone_device.devanagari.sos_stop", "order": 42, "intent": "sos_stop", "pattern": "^(?:एसओएस|इमरजेंसी|अलार्म) बंद करो$|^मैं (?:ठीक|सेफ) हू[ँं]$"},
+      {"id": "phone_device.devanagari.sos_call", "order": 52, "intent": "sos_call", "pattern": "^(?:इमरजेंसी|एम्बुलेंस|पुलिस|112) (?:को )?(?:कॉल|फोन|फ़ोन) करो$"},
+      {"id": "phone_device.devanagari.sos", "order": 62, "intent": "sos", "pattern": "^(?:बचाओ|मदद करो)$"},
+      {"id": "phone_device.devanagari.meeting_start", "order": 72, "intent": "meeting_start", "pattern": "^(?:मैं )?मीटिंग में हू[ँं](?: नोट्स? (?:लो|लेना|बनाओ))?$"},
+      {"id": "phone_device.devanagari.meeting_stop", "order": 82, "intent": "meeting_stop", "pattern": "(?:^|\\s)मीटिंग (?:खत्म|ख़त्म|समाप्त) (?:हो गई|हुई)(?=$|[\\s,.!?।])|(?:^|\\s)नोट्स सेव करो(?=$|[\\s,.!?।])"}
+    ]
   }
 }

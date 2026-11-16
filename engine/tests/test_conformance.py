@@ -111,6 +111,19 @@ def _memory(case):
     return {"secret": is_secret(text), "extract": out, "explicit": m.group("fact") if m else None}
 
 
+def _phone_device(case):
+    # Android-only domain (camera / SOS / meeting phrases): Windows has no handler, but the
+    # data must behave the same in both runtimes (core/README.md §4.8).
+    low = re.sub(r"\s+", " ", re.sub(r"[.,!?;]+", " ", case["input"].lower())).strip()
+    cams = core.slot_values("phone_device.camera")
+    for e in core.domain("phone_device"):
+        m = e["rx"].search(low)
+        if m:
+            cam = m.groupdict().get("camera")
+            return {"intent": e["intent"], "camera": cams.get(cam.lower(), cam) if cam else None}
+    return {"intent": None, "camera": None}
+
+
 def _task_title(case):
     from src.life.tasks import clean_title
     return {"title": clean_title(case["input"])}
@@ -118,7 +131,7 @@ def _task_title(case):
 
 RUNNERS = {"phone_intents": _phone, "yes_no": _yes_no, "hinglish": _hinglish, "polite": _polite,
            "ordinal": _ordinal, "play": _play, "time_parse": _time, "realcount": _realcount, "realcount_answer": _realcount_answer, "wake": _wake,
-           "unfinished": _unfinished, "memory": _memory, "task_title": _task_title}
+           "unfinished": _unfinished, "memory": _memory, "task_title": _task_title, "phone_device": _phone_device}
 
 
 def load_suites():
@@ -198,12 +211,24 @@ class CoreFormatTests(unittest.TestCase):
         m = core.manifest()["i18n"]
         en = core.read_json(f"{m['dir']}/en.json")
         ph = re.compile(r"\{[A-Za-z_]+\}")
+        # core/README.md §8: en is complete and the fallback; a language may leave keys out
+        # (they show in English) but never adds keys en lacks, and keeps en's placeholders.
         for lang in m["languages"]:
             d = core.read_json(f"{m['dir']}/{lang}.json")
-            self.assertEqual(set(d) - {"_meta"}, set(en) - {"_meta"}, lang)
-            for k, v in en.items():
+            self.assertEqual(set(d) - {"_meta"} - set(en), set(), lang)
+            for k, v in d.items():
                 if k != "_meta":
-                    self.assertEqual(sorted(ph.findall(v)), sorted(ph.findall(d[k])), f"{lang}:{k}")
+                    self.assertEqual(sorted(ph.findall(en[k])), sorted(ph.findall(v)), f"{lang}:{k}")
+
+    def test_i18n_translated_groups_complete(self):
+        # every key the translators already had (the original shared groups) stays translated
+        m = core.manifest()["i18n"]
+        base = core.read_json(f"{m['dir']}/hi.json")
+        for lang in m["languages"]:
+            if lang == "en":
+                continue
+            d = core.read_json(f"{m['dir']}/{lang}.json")
+            self.assertEqual(set(base) - set(d), set(), lang)
 
     def test_nudge_copy_keys_exist(self):
         en = core.strings("en")

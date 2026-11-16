@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
+import '../i18n/i18n.dart';
 import 'app_system_icon.dart';
 import 'common.dart';
 
@@ -17,6 +19,10 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
   List<Map<String, dynamic>> _allApps = [];
   List<Map<String, dynamic>> _filteredApps = [];
   Map<String, dynamic> _prefs = {};
+  // reel limits: the one store (ReelLimits / runtime reel_limits) and the core catalogue of
+  // short-video apps (core/rules android.social_apps) - no package-name guessing
+  Map<String, ReelLimit> _reel = {};
+  Set<String> _shortVideo = {};
   bool _loading = true;
   String _searchQuery = '';
   final _searchController = TextEditingController();
@@ -37,11 +43,15 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
     try {
       final apps = await SnapyCore.getInstalledApps();
       final prefs = await SnapyCore.rcPrefs();
+      final reel = await NextApi.reelLimits();
+      final catalogue = await NextApi.shortVideoApps();
 
       if (mounted) {
         setState(() {
           _allApps = apps;
           _prefs = prefs;
+          _reel = reel;
+          _shortVideo = {for (final a in catalogue) a.package, for (final a in apps) if (a['is_social'] == true) '${a['package']}'};
           _filterApps();
           _loading = false;
         });
@@ -66,13 +76,7 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
 
   void _openConfigSheet(Map<String, dynamic> app) {
     final pkg = app['package'] as String;
-    final isSocial = app['is_social'] == true ||
-        pkg.contains('instagram') ||
-        pkg.contains('youtube') ||
-        pkg.contains('facebook') ||
-        pkg.contains('tiktok') ||
-        pkg.contains('snapchat') ||
-        pkg.contains('reddit');
+    final isSocial = _shortVideo.contains(pkg);
 
     showModalBottomSheet(
       context: context,
@@ -82,18 +86,15 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
       builder: (ctx) => _AppLimitConfigSheet(
         app: app,
         isSocial: isSocial,
-        currentReelLimit: _prefs['limit_$pkg'] as int? ?? (isSocial ? 100 : 0),
+        // off until the user sets one; soft (a reminder) unless they opt in to the hard lock
+        currentReelLimit: _reel[pkg]?.limit ?? 0,
         currentTimeLimitMin: _prefs['time_limit_$pkg'] as int? ?? 0,
-        currentLock: _prefs['lock_$pkg'] as bool? ?? true,
+        currentLock: _reel[pkg]?.hard ?? false,
         onSave: (reelLimit, timeLimitMin, lock) async {
-          await SnapyCore.setRcPrefs({
-            'limit_$pkg': reelLimit,
-            'time_limit_$pkg': timeLimitMin,
-            'lock_$pkg': lock,
-          });
-          await SnapyCore.setAppReelLimit(pkg, reelLimit, lock);
+          await SnapyCore.setRcPrefs({'time_limit_$pkg': timeLimitMin});
+          if (isSocial) await NextApi.setReelLimit(pkg, reelLimit, lock ? 'hard' : 'soft');
           await _load();
-          if (mounted) toast(context, 'Limits updated for ${app['label']}');
+          if (mounted) toast(context, tr('limits.updated', {'app': '${app['label']}'}));
         },
       ),
     );
@@ -105,7 +106,7 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('App & Reel Limits', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(tr('limits.title'), style: const TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: c.bg,
         elevation: 0,
       ),
@@ -118,7 +119,7 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: 'Search installed apps...',
+                  hintText: tr('limits.search'),
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
@@ -152,7 +153,7 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
                   : _filteredApps.isEmpty
                       ? Center(
                           child: Text(
-                            _searchQuery.isEmpty ? 'No installed apps detected' : 'No apps match "$_searchQuery"',
+                            _searchQuery.isEmpty ? tr('limits.no_apps') : tr('limits.no_match', {'q': _searchQuery}),
                             style: TextStyle(color: c.text2),
                           ),
                         )
@@ -164,22 +165,18 @@ class _AppLimitsPageState extends State<AppLimitsPage> {
                             final app = _filteredApps[i];
                             final pkg = app['package'] as String? ?? '';
                             final label = app['label'] as String? ?? pkg;
-                            final reelLimit = _prefs['limit_$pkg'] as int? ?? 0;
+                            final reelLimit = _reel[pkg]?.limit ?? 0;
                             final timeLimit = _prefs['time_limit_$pkg'] as int? ?? 0;
                             final hasLimit = reelLimit > 0 || timeLimit > 0;
 
-                            final isSocial = app['is_social'] == true ||
-                                pkg.contains('instagram') ||
-                                pkg.contains('youtube') ||
-                                pkg.contains('facebook') ||
-                                pkg.contains('tiktok') ||
-                                pkg.contains('snapchat') ||
-                                pkg.contains('reddit');
+                            final isSocial = _shortVideo.contains(pkg);
 
                             final details = <String>[];
-                            if (isSocial && reelLimit > 0) details.add('$reelLimit reels');
-                            if (timeLimit > 0) details.add('${timeLimit}m limit');
-                            if (details.isEmpty) details.add('No limits set');
+                            if (isSocial && reelLimit > 0) {
+                              details.add(tr(_reel[pkg]?.hard == true ? 'limits.reels_hard' : 'limits.reels_soft', {'n': '$reelLimit'}));
+                            }
+                            if (timeLimit > 0) details.add(tr('limits.minutes', {'min': '$timeLimit'}));
+                            if (details.isEmpty) details.add(tr('limits.none'));
 
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -274,8 +271,8 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Configure $label', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-                    Text('Set usage boundaries and locks', style: TextStyle(color: c.text2, fontSize: 13)),
+                    Text(tr('limits.configure', {'app': label}), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+                    Text(tr('limits.configure_sub'), style: TextStyle(color: c.text2, fontSize: 13)),
                   ],
                 ),
               ),
@@ -288,8 +285,8 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Daily Reel Limit', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Text(_reelLimit > 0 ? '$_reelLimit reels' : 'Disabled (off)', style: TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
+                Flexible(child: Text(tr('limits.reel_limit'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
+                Text(_reelLimit > 0 ? tr('limits.reels_n', {'n': '$_reelLimit'}) : tr('limits.off'), style: TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
               ],
             ),
             Slider(
@@ -307,8 +304,8 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Daily Screen Time Limit', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              Text(_timeLimitMin > 0 ? '${_timeLimitMin}m (${_timeLimitMin ~/ 60}h ${_timeLimitMin % 60}m)' : 'No limit', style: TextStyle(color: c.green, fontWeight: FontWeight.w700)),
+              Flexible(child: Text(tr('limits.time_limit'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
+              Text(_timeLimitMin > 0 ? '${_timeLimitMin}m (${_timeLimitMin ~/ 60}h ${_timeLimitMin % 60}m)' : tr('limits.no_limit'), style: TextStyle(color: c.green, fontWeight: FontWeight.w700)),
             ],
           ),
           Slider(
@@ -322,17 +319,19 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
 
           const SizedBox(height: 12),
 
-          // 3. Hard Lock vs Gentle Nudge
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Enforce Hard Feed Lock', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(
-              _lock ? 'Automatically exits reels or app when limit is hit' : 'Displays a subtle floating reminder without blocking',
-              style: TextStyle(color: c.text2, fontSize: 12),
+          // 3. Hard lock (opt-in) vs the gentle reminder (default) - only for short-video apps
+          if (widget.isSocial)
+            SwitchListTile(
+              key: const ValueKey('hard-lock'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(tr('limits.hard_lock'), style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                tr(_lock ? 'limits.hard_lock_on' : 'limits.hard_lock_off', {'app': label}),
+                style: TextStyle(color: c.text2, fontSize: 12),
+              ),
+              value: _lock,
+              onChanged: _reelLimit > 0 ? (v) => setState(() => _lock = v) : null,
             ),
-            value: _lock,
-            onChanged: (v) => setState(() => _lock = v),
-          ),
 
           const SizedBox(height: 18),
 
@@ -342,7 +341,7 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                  child: const Text('Cancel'),
+                  child: Text(tr('common.cancel')),
                 ),
               ),
               const SizedBox(width: 12),
@@ -353,7 +352,7 @@ class _AppLimitConfigSheetState extends State<_AppLimitConfigSheet> {
                     Navigator.pop(context);
                   },
                   style: FilledButton.styleFrom(backgroundColor: c.accent, minimumSize: const Size.fromHeight(48)),
-                  child: const Text('Save Boundaries'),
+                  child: Text(tr('limits.save')),
                 ),
               ),
             ],

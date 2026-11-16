@@ -151,6 +151,20 @@
     ],
     "task_title_suffix": [
       {"id": "hinglish", "pattern": "\\s+(?:ka|ki|ke) reminder(?: lagao| laga do| set karo)?$"}
+    ],
+    "phone_device": [
+      {"id": "phone_device.capture_stop", "order": 10, "intent": "capture_stop", "pattern": "^(?:please )?(?:stop|end|finish) (?:the )?(?:video|recording|camera|filming)(?: recording)?(?: now)?$"},
+      {"id": "phone_device.capture_video", "order": 20, "intent": "capture_video", "pattern": "^(?:please )?(?:take|record|shoot|start|make|capture)(?: a| an| the)? (?:(?<camera>front|back|rear|selfie) )?(?:camera )?(?:video|recording|clip)(?: now)?$"},
+      {"id": "phone_device.capture_video_with", "order": 21, "intent": "capture_video", "pattern": "^(?:please )?(?:take|record|shoot|start|make|capture)(?: a| an| the)? (?:camera )?(?:video|recording|clip) (?:with|on|using|from) (?:the |my )?(?<camera>front|back|rear|selfie)(?: camera)?(?: now)?$"},
+      {"id": "phone_device.video_with_camera", "order": 22, "intent": "capture_video", "pattern": "^(?:please )?(?:start )?(?:video|filming) (?:with|on|using) (?:the |my )?(?<camera>front|back|rear|selfie) camera$"},
+      {"id": "phone_device.capture_photo", "order": 30, "intent": "capture_photo", "pattern": "^(?:please )?(?:take|click|capture|snap)(?: a| an| my)? (?:(?<camera>front|back|rear) )?(?:camera )?(?:photo|picture|pic|snap)(?: now)?$"},
+      {"id": "phone_device.capture_photo_with", "order": 31, "intent": "capture_photo", "pattern": "^(?:please )?(?:take|click|capture|snap)(?: a| an| my)? (?:camera )?(?:photo|picture|pic|selfie|snap) (?:with|on|using|from) (?:the |my )?(?<camera>front|back|rear|selfie)(?: camera)?(?: now)?$"},
+      {"id": "phone_device.selfie", "order": 32, "intent": "capture_photo", "pattern": "^(?:please )?(?:take|click|capture|snap)(?: a| an| my)? (?<camera>selfie)(?: now)?$"},
+      {"id": "phone_device.sos_stop", "order": 40, "intent": "sos_stop", "pattern": "^(?:stop|cancel|end|turn off) (?:the )?(?:sos|emergency|alarm|siren)(?: mode| alert| alarm)?$|^i'?m (?:ok|okay|safe|fine) now$|^i am (?:ok|okay|safe|fine) now$"},
+      {"id": "phone_device.sos_call", "order": 50, "intent": "sos_call", "pattern": "^(?:call|dial|phone) (?:the )?(?:emergency(?: number| services)?|ambulance|police|112|911|999)(?: now| please)?$"},
+      {"id": "phone_device.sos", "order": 60, "intent": "sos", "pattern": "^(?:start |trigger |activate )?(?:sos|emergency|emergency mode|emergency alert)(?: please| now)?$|^(?:help me|i need help)(?: please| now)?$"},
+      {"id": "phone_device.meeting_start", "order": 70, "intent": "meeting_start", "pattern": "\\b(?:i'?m|i am|we'?re|we are) (?:in|on|starting) a (?:meeting|call)\\b.{0,30}\\b(?:take|start|record|make)\\b.{0,12}\\bnotes?\\b|\\b(?:take|start|record|make)\\b.{0,12}\\bnotes?\\b.{0,20}\\b(?:i'?m|i am|we'?re|we are) (?:in|on) a (?:meeting|call)\\b|^(?:i'?m|i am) in a meeting$"},
+      {"id": "phone_device.meeting_stop", "order": 80, "intent": "meeting_stop", "pattern": "\\b(?:meeting|call) (?:is )?(?:over|done|finished|ended)\\b|\\bsave (?:the |my )?(?:meeting )?notes\\b|^(?:end|stop|finish) (?:the )?meeting$"}
     ]
   }
 }

@@ -24,6 +24,15 @@ class MeetingRecorder {
   final List<Map<String, dynamic>> segments = []; // {t, who, text}
   final List<Map<String, dynamic>> bookmarks = []; // {t, label}
   DateTime lastSpeech = DateTime.now();
+  /// This meeting's id: the audio file is `<dataDir>/meetings/<id>.m4a` (recorded by Kotlin).
+  String? meetingId;
+  /// Set while the mic service records audio for this meeting.
+  String? audioPath;
+  /// Optional: summary from the audio (+ transcript), e.g. Gemini inline audio with the user's
+  /// own key. null result = use the transcript summary.
+  Future<Map<String, dynamic>?> Function(String transcript)? audioSummarizer;
+  /// Called with the saved note (Markdown vault file, meeting -> tasks).
+  void Function(Map<String, dynamic> note)? onSaved;
   static const windowS = 20;
   static const silenceStopS = 20 * 60;
 
@@ -33,6 +42,7 @@ class MeetingRecorder {
   int elapsed() => started != null && recording ? now().difference(started!).inSeconds : 0;
 
   Map<String, dynamic> state() => {
+        'id': meetingId,
         'recording': recording,
         'title': title,
         'elapsed': elapsed(),
@@ -48,6 +58,10 @@ class MeetingRecorder {
     started = now();
     lastSpeech = now();
     this.title = title;
+    final s = started!;
+    String two(int n) => n.toString().padLeft(2, '0');
+    meetingId = 'mtg_${s.year}${two(s.month)}${two(s.day)}_${two(s.hour)}${two(s.minute)}${two(s.second)}';
+    audioPath = null;
     segments.clear();
     bookmarks.clear();
     onUpdate(state());
@@ -155,12 +169,22 @@ class MeetingRecorder {
       return {'note': null, 'actions': <dynamic>[], 'title': title ?? 'Meeting', 'empty': true};
     }
     Map<String, dynamic>? result;
-    var usedAi = false;
-    try {
-      result = await summarize(tx);
-      usedAi = result != null && result.isNotEmpty;
-    } catch (_) {
-      result = null;
+    var usedAi = false, usedAudio = false;
+    if (audioSummarizer != null && audioPath != null) {
+      try {
+        result = await audioSummarizer!(tx);
+        usedAudio = usedAi = result != null && result.isNotEmpty;
+      } catch (_) {
+        result = null;
+      }
+    }
+    if (!usedAi) {
+      try {
+        result = await summarize(tx);
+        usedAi = result != null && result.isNotEmpty;
+      } catch (_) {
+        result = null;
+      }
     }
     if (result == null || result.isEmpty) result = heuristicNotes();
     final t = (result['title'] as String?)?.isNotEmpty == true
@@ -194,8 +218,15 @@ class MeetingRecorder {
       'duration': duration,
       'started': isoMinutes(st),
       'ai_summary': usedAi,
+      'audio_used': usedAudio,
+      'meeting_id': ?meetingId,
+      'audio': ?audioPath,
+      'participants': result['participants'] ?? <dynamic>[],
       'review_pending': actions.isNotEmpty,
     });
+    try {
+      onSaved?.call(note);
+    } catch (_) {}
     final s = summary.join(' ');
     memory.journalAdd('meeting', "Meeting '$t' (${duration ~/ 60} min): ${s.length > 200 ? s.substring(0, 200) : s}");
     started = null;

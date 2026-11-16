@@ -24,6 +24,7 @@ class RcPrefs(ctx: Context) {
     fun putInt(k: String, v: Int) = sp.edit().putInt(k, v).apply()
     fun putString(k: String, v: String) = sp.edit().putString(k, v).apply()
     fun putBool(k: String, v: Boolean) = sp.edit().putBoolean(k, v).apply()
+    fun remove(k: String) = sp.edit().remove(k).apply()
 
     /** User preferences as JSON (for Flutter). */
     fun prefsJson(): JSONObject {

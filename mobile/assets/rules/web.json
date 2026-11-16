@@ -5,6 +5,7 @@
   },
   "web": {
     "youtube_search": "https://www.youtube.com/results?search_query=",
-    "connectivity_check": "https://www.google.com"
+    "connectivity_check": "https://www.google.com",
+    "connectivity_fallback": "https://1.1.1.1"
   }
 }

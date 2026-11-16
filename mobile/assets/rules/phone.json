@@ -5,6 +5,7 @@
   },
   "android": {
     "_comment": "Phone-specific data for the Android app (core/rules/phone.json, social.json, nudges.json, limits.json; both runtimes read the same files).",
+    "emergency_number": "112",
     "app_links": {
       "web.whatsapp.com": "com.whatsapp",
       "whatsapp.com": "com.whatsapp",

@@ -798,6 +798,19 @@ def delete_all_data():
             shutil.rmtree(p, ignore_errors=True)
             os.makedirs(p, exist_ok=True)
         attention.day, attention._dirty = None, False
+    # copies and leftovers that hold personal data too: "Export my data" files, parked work
+    # contexts, the conversation kept in memory and the nudge history
+    for name in os.listdir(storage.data_dir()):
+        if name.startswith("export-") and name.endswith(".json"):
+            try:
+                os.remove(os.path.join(storage.data_dir(), name))
+            except OSError as e:
+                diag.record("privacy.delete_export", e)
+    for c in list(assistant.contexts.items):
+        assistant.contexts.delete(c["id"])
+    assistant.history.clear()
+    with nudges.lock:
+        nudges.st = {"fired": {}, "pending": {}}
     toast("All personal data deleted", True, "privacy")
 
 
@@ -846,7 +859,7 @@ def _greet(force=False):
     try:
         briefing.reflect()
     except Exception as e:
-        print("[Briefing] reflect failed:", e)
+        diag.record("briefing.reflect", e)
     b = briefing.build()
     briefing.mark_greeted()
     if b["plan"]:
@@ -855,6 +868,15 @@ def _greet(force=False):
     memory.journal_add("greeting", " ".join([b["title"]] + b["lines"]))
     if settings["greeting_voice"]:
         speaker.say(briefing.spoken(b))
+
+
+def _hhmm(value, default):
+    """'9:30', '09:30' or '9.30' -> '09:30' (compared as text with now.strftime('%H:%M'); an
+    unpadded '9:30' used to sort after '18:00', so the wrap-up was offered at the wrong time)."""
+    m = re.match(r"^\s*(\d{1,2})[:.](\d{2})\s*$", str(value or ""))
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return default
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
 def scheduler():
@@ -891,14 +913,14 @@ def scheduler():
                 activity.prune(int(settings["activity_retention_days"]))
                 memory.prune()
                 threading.Thread(target=memory.ensure_vectors, daemon=True).start()
-            end = settings["recap_time"] or memory.profile.get("work_end") or "18:00"
+            end = _hhmm(settings["recap_time"] or memory.profile.get("work_end"), "18:00")
             if wrapup_offered != now.date() and now.strftime("%H:%M") >= end and activity.data and \
                     activity.data.get("last_active") and time.time() - activity.data["last_active"] < appdata.get("timings.recently_active_s"):
                 wrapup_offered = now.date()
                 send_all({"type": "banner", "kind": "wrapup", "title": "Wrapping up for today?",
                           "text": "I can summarise what you did and what's left for tomorrow."})
         except Exception as e:
-            print("[Scheduler]", e)
+            diag.record("scheduler.tick", e)     # keep ticking: reminders must still fire
         time.sleep(10)
 
 

@@ -39,8 +39,18 @@ class OpExecutor(private val ctx: Context) {
     fun runOp(op: JSONObject): Boolean {
         val args = op.optJSONArray("args")
         val kwargs = op.optJSONObject("kwargs") ?: JSONObject()
+        // needs an unlocked phone: the user's own unlock first, then this op (never a stored PIN)
+        if (UnlockActivity.deferIfLocked(ctx, op)) return true
         return try {
             when (op.getString("op")) {
+                // ---- docs/ANDROID_NEXT_PLAN.md §5/§7
+                "meeting_audio" -> if (kwargs.optBoolean("on")) WakeWordService.startRecording(ctx, kwargs.optString("id"), kwargs.optString("path"))
+                                   else { WakeWordService.stopRecording(ctx); true }
+                "capture" -> CaptureActivity.start(ctx, kwargs.optString("mode", "video"), kwargs.optString("camera", "back"), kwargs.optBoolean("auto", true))
+                "capture_stop" -> CaptureActivity.stop()
+                "sos_start" -> SosActivity.start(ctx, kwargs.optString("number", "112"))
+                "sos_stop" -> SosActivity.stop()
+                "sos_call" -> { SosActivity.dial(ctx, kwargs.optString("number", "112")); true }
                 "open_url" -> openUrl(args!!.getString(0), kwargs.optString("package", ""))
                 "launch_app" -> launch(args!!.getString(0))
                 "media" -> media(args!!.getString(0), if (args.length() > 1) args.getInt(1) else 1)
@@ -146,7 +156,14 @@ class OpExecutor(private val ctx: Context) {
 
     /** Android lets the user (not apps) switch Wi-Fi/Bluetooth: open the quick panel for them. */
     private fun panel(name: String): Boolean {
-        val action = when (name) {
+        // Settings.Panel (the quick sheets) is Android 10+; older phones get the full settings screens
+        val action = if (android.os.Build.VERSION.SDK_INT < 29) when (name) {
+            "wifi" -> Settings.ACTION_WIFI_SETTINGS
+            "nfc" -> Settings.ACTION_NFC_SETTINGS
+            "volume" -> Settings.ACTION_SOUND_SETTINGS
+            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+            else -> Settings.ACTION_WIRELESS_SETTINGS
+        } else when (name) {
             "wifi" -> Settings.Panel.ACTION_WIFI
             "internet" -> Settings.Panel.ACTION_INTERNET_CONNECTIVITY
             "nfc" -> Settings.Panel.ACTION_NFC

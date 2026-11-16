@@ -208,6 +208,12 @@ groups in order, each trimmed and with trailing `.` removed; skip if none; text 
 `unfinished` (`any`, trimmed text) — wait for the rest of the sentence. `assistant_yes/no/stop/risky`
 (`any`). `realcount_*` (§4.10). `meeting_*` (`any`) — no-AI meeting notes.
 `task_title_prefix` / `_suffix` (`strip`, in that order, then trim `" ,."`; empty -> original).
+`phone_device` (`first_match`, Android only; Windows has no handler) — camera, SOS and meeting
+phrases. Input: `lower(text)`, every run of `[.,!?;]` -> one space, whitespace collapsed, trimmed.
+The first entry (by `order`) that matches gives `intent` (`capture_video`, `capture_photo`,
+`capture_stop`, `sos`, `sos_stop`, `sos_call`, `meeting_start`, `meeting_stop`); its optional
+named group `camera` is mapped through `slot_values.phone_device.camera` (lower-cased key;
+unmapped -> the word itself; no group -> null).
 
 ### 4.9 Time parser `parse_when(text, now)` -> `(when | null, rest)`
 
@@ -272,16 +278,27 @@ The AI answers `{say, tool, args}` (`say` first so speech can start while stream
 
 JSON Schema draft 2020-12: `memory_fact`, `task`, `note`, `activity_day`, `attention_day`,
 `settings_profile`. Every record has `schema_version` (integer = the schema's `x-schema-version`).
-Records with `x-synced: true` also carry `id`, `updated` (ISO local time), `device`, `deleted`
+Records with `x-synced: true` also carry `id`, `updated` (ISO-8601 in UTC with an explicit
+offset, e.g. `2026-11-16T04:30:00+00:00`; never naive local time, so devices in different
+time zones or across a DST change compare correctly), `device`, `deleted`
 (tombstone; deletions are kept so they sync). Merge rule: newer `updated` wins; on a tie the
 lexically greater `device`. Runtimes must accept and preserve unknown fields.
+
+Shapes both runtimes store (and must read): a meeting note's `transcript` is an array of
+`{t, who, text}` segments (`t` = seconds from the start). Notes written before 2026-11 by the
+Windows engine hold one string there; readers accept both (`src/life/notes.transcript_text`,
+the HUD's `transcriptText`). A memory's `category` is always one of the schema's enum values:
+intent rules that extract memories use those values only (`Works as …` / `Works at …` are
+`fact`), and an unknown category is stored as `fact`.
 
 ## 8. Strings (`i18n/`)
 
 Flat `{key: string}` per language (`manifest.i18n.languages`); `en` is complete and the fallback.
 Keys are stable: never rename, only add (minor bump) or remove (major bump). Placeholders `{name}`
-(letters, digits, `_`); every language has exactly the placeholders of `en`. Lookup: language ->
-`en` -> the key itself. Strings may contain `\n`, and a leading space when they are appended to
+(letters, digits, `_`); every language has exactly the placeholders of `en`. A language may
+omit keys (not yet translated: they show in English) but never has a key `en` lacks; the
+Kotlin/Flutter screen strings (formerly `mobile/assets/i18n/en.ui.json`) are in `en` only for now.
+Lookup: language -> `en` -> the key itself. Strings may contain `\n`, and a leading space when they are appended to
 another string (e.g. `realcount.screen_avg`).
 
 ## 9. Conformance (`conformance/*.json`)
@@ -305,6 +322,7 @@ booleans, integers vs strings matter; object key order does not). Per suite:
 | `unfinished` | `any(unfinished, trim(input))` | `{unfinished}` |
 | `memory` | §4.7 on `input`; `secret` = any(memory_secret) | `{secret, extract: [{key,text,category,importance}], explicit}` |
 | `task_title` | §4.8 title cleaning | `{title}` |
+| `phone_device` | §4.8 `phone_device` | `{intent, camera}` (null = none) |
 
 `now` is a local ISO time without offset; the runtime must use it instead of the clock.
 Python: `engine/tests/test_conformance.py` (prints failing ids). The Dart runtime must run every file;

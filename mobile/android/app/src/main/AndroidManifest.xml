@@ -26,11 +26,20 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- "Take a video / photo" (docs/ANDROID_NEXT_PLAN.md §7): Snapy's own camera screen
+         (CaptureActivity), only while it is visible — no camera foreground service. Asked in context. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Saving the video/photo to the gallery on Android 8-9 (MediaStore needs no permission on 10+) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- Ghost-mode vault (§8): fingerprint / face prompt to open the encrypted vault -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <application
         android:label="Snapy"
-        android:name="${applicationName}"
+        android:name=".SnapyApp"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
         <activity
@@ -65,6 +74,67 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Power / home long-press when the user picks Snapy as the digital assistant
+             (Settings -> Default apps -> Digital assistant; ROLE_ASSISTANT qualifies via ACTION_ASSIST) -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:taskAffinity="live.snapy.app.assist"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <!-- Listening over the lock screen (captions capsule); never dismisses the keyguard itself -->
+        <activity
+            android:name=".ListenActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="live.snapy.app.listen"
+            android:launchMode="singleTask" />
+        <!-- Snapy's camera screen (CameraX): auto-start video/photo, saves to the gallery -->
+        <activity
+            android:name=".CaptureActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="live.snapy.app.capture"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+        <!-- The user's own unlock (requestDismissKeyguard), then the queued action -->
+        <activity
+            android:name=".UnlockActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="live.snapy.app.unlock"
+            android:noHistory="true" />
+        <!-- Offline SOS: strobe + alarm + ICE card over the lock screen -->
+        <activity
+            android:name=".SosActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="live.snapy.app.sos"
+            android:launchMode="singleTask" />
+        <!-- Ghost-mode vault: hosts the system biometric / device-credential prompt -->
+        <activity
+            android:name=".VaultAuthActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
 
         <!-- "Hey Snapy" (opt-in): offline wake word, audio never leaves the phone -->
         <service

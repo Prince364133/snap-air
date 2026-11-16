@@ -26,7 +26,7 @@ void main() {
       for (final p in ['usage', 'overlay', 'counter', 'notifications', 'mic', 'contacts']) 'perm.$p.title',
       for (final k in ['realcount', 'memory', 'tasks', 'notes', 'keys', 'models', 'rules', 'daily_three', 'receipts', 'reports', 'settings', 'chat', 'other'])
         'privacy.kind.$k',
-      'chip.text', 'chip.paused', 'reset.breathe_in', 'reset.hold', 'reset.breathe_out', 'reset.stand', 'reset.water', 'reset.done',
+      'chip.text', 'chip.paused', 'chip.paused_time', 'reset.breathe_in', 'reset.hold', 'reset.breathe_out', 'reset.stand', 'reset.water', 'reset.done', 'reset.finished',
     ];
     final missing = keys.where((k) => !I18n.current.has(k)).toList();
     expect(missing, isEmpty);

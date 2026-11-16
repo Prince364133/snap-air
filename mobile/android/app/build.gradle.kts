@@ -21,7 +21,7 @@ android {
         applicationId = "live.snapy.app"
         // Android 8.0 (the plan's floor; also the ML Kit GenAI Prompt API minimum)
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -60,4 +60,11 @@ dependencies {
     // not shipped in the APK). Latest on Google Maven as of 2026-11: 1.0.0-beta5.
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // "Take a video / photo" (CaptureActivity, docs/ANDROID_NEXT_PLAN.md §7)
+    implementation("androidx.activity:activity-ktx:1.9.3")
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-video:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
 }

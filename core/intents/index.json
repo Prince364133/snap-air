@@ -48,7 +48,8 @@
     "meeting_decision_hint": {"type": "any", "doc": "No-AI meeting notes: a sentence that records a decision."},
     "meeting_mine": {"type": "any", "doc": "An action item the user committed to (said by 'You')."},
     "task_title_prefix": {"type": "strip", "doc": "Removed from the start of a task title."},
-    "task_title_suffix": {"type": "strip", "doc": "Removed from the end of a task title."}
+    "task_title_suffix": {"type": "strip", "doc": "Removed from the end of a task title."},
+    "phone_device": {"type": "first_match", "doc": "Phone camera / SOS / meeting phrases (docs/ANDROID_NEXT_PLAN.md §5, §7) -> intent capture_video | capture_photo | capture_stop | sos | sos_stop | sos_call | meeting_start | meeting_stop; optional named group camera, mapped through slot_values.phone_device.camera. Input: lower-cased, [.,!?;] -> space, whitespace collapsed. Android only (Windows has no handler)."}
   },
   "slot_values": {
     "phone": {
@@ -59,6 +60,10 @@
       "panel_default": "internet",
       "video_call_prefix": "video call",
       "alarm_label": "Snapy"
+    },
+    "phone_device": {
+      "camera": {"front": "front", "selfie": "front", "back": "back", "rear": "back",
+                 "फ्रंट": "front", "सेल्फी": "front", "बैक": "back"}
     },
     "realcount": {
       "period": {"this week": "this_week", "is hafte": "this_week", "week": "this_week",

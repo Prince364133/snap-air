@@ -10,6 +10,7 @@ import '../sync/pair_screen.dart';
 import 'battery_guide.dart';
 import 'chip_settings.dart';
 import 'common.dart';
+import 'diagnostics_page.dart';
 import 'onboarding.dart';
 import 'privacy_page.dart';
 
@@ -48,7 +49,6 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
   String? _keyNote;          // "paste a key first" / "saved"
   String? _helpUrl;
   StreamSubscription? _sub;
-  bool _hasPin = false;
 
   @override
   void initState() {
@@ -91,80 +91,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     } catch (_) {}
     try {
       final p = await SnapyCore.status();
-      final prefs = await SnapyCore.rcPrefs();
-      if (mounted) {
-        setState(() {
-          _perm = p;
-          _hasPin = (prefs['screen_unlock_pin'] as String? ?? '').isNotEmpty;
-        });
-      }
+      if (mounted) setState(() => _perm = p);
     } catch (_) {}
-  }
-
-  Future<void> _configureAutoUnlockPin() async {
-    final prefs = await SnapyCore.rcPrefs();
-    final currentPin = prefs['screen_unlock_pin'] as String? ?? '';
-    final controller = TextEditingController(text: currentPin);
-
-    if (!mounted) return;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Phone Auto-Unlock PIN'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your numerical phone lockscreen PIN so Snapy can perform hands-free tasks when your phone is locked.',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              obscureText: true,
-              maxLength: 6,
-              decoration: InputDecoration(
-                labelText: 'Lockscreen PIN',
-                hintText: '4 to 6 digit PIN',
-                counterText: '',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                prefixIcon: const Icon(Icons.key_rounded),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Stored strictly on-device in Android Keystore.',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          if (currentPin.isNotEmpty)
-            TextButton(
-              onPressed: () async {
-                await SnapyCore.setRcPrefs({'screen_unlock_pin': ''});
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              },
-              child: const Text('Clear PIN', style: TextStyle(color: Colors.red)),
-            ),
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              await SnapyCore.setRcPrefs({'screen_unlock_pin': controller.text.trim()});
-              if (ctx.mounted) Navigator.pop(ctx, true);
-            },
-            child: const Text('Save PIN'),
-          ),
-        ],
-      ),
-    );
-
-    if (saved == true) {
-      _load();
-      if (mounted) toast(context, 'Auto-unlock PIN saved securely');
-    }
   }
 
   Future<void> _test() async {
@@ -328,7 +256,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     return Scaffold(
       appBar: AppBar(title: Text(tr('settings.title')), backgroundColor: c.bg),
       body: ListView(children: [
-        group('AI Brain Intelligence', [
+        group(tr('settings.brain_group'), [
           // Connection Status Banner
           Container(
             width: double.infinity,
@@ -348,12 +276,12 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isConnected ? 'Connected to ${providers[_brain['provider']] ?? _brain['provider']}' : 'Your API is not connected till now',
+                        isConnected ? tr('settings.connected', {'provider': '${providers[_brain['provider']] ?? _brain['provider']}'}) : tr('settings.not_connected'),
                         style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: c.text),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        isConnected ? 'Cloud brain is active for speech and conscious answers.' : 'Add your API key below to enable intelligent speech and AI answers.',
+                        isConnected ? tr('settings.connected_sub') : tr('settings.not_connected_sub'),
                         style: TextStyle(color: c.text2, fontSize: 12),
                       ),
                     ],
@@ -369,7 +297,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                 initialValue: providers.containsKey(_provider) ? _provider : 'gemini',
                 items: providers.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
                 onChanged: (v) => setState(() { _provider = v ?? _provider; _verdict = null; }),
-                decoration: const InputDecoration(labelText: 'AI Provider'),
+                decoration: InputDecoration(labelText: tr('settings.ai_provider')),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -379,8 +307,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: InputDecoration(
-                  labelText: 'Provider API Key',
-                  hintText: 'Paste ${_provider == "gemini" ? "AIzaSy..." : "sk-..."}',
+                  labelText: tr('settings.api_key_label'),
+                  hintText: tr('settings.api_key_paste', {'example': _provider == 'gemini' ? 'AIzaSy...' : 'sk-...'}),
                 ),
               ),
               _keyResult(c),
@@ -391,14 +319,14 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                   icon: _testing
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.network_check, size: 18),
-                  label: const Text('Test Connection'),
+                  label: Text(tr('settings.test_connection')),
                   style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: const Icon(Icons.lock_outline, size: 18),
-                  label: const Text('Save API Key'),
+                  label: Text(tr('settings.save_api_key')),
                   style: FilledButton.styleFrom(
                     backgroundColor: c.accent,
                     minimumSize: const Size(48, 48),
@@ -423,12 +351,12 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             },
           ),
           ListTile(
-            title: const Text('Spoken Language'),
+            title: Text(tr('settings.spoken_language')),
             trailing: DropdownButton<String>(
               value: _voiceLang,
               underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 'auto', child: Text('Auto (Follow Phone)')),
+              items: [
+                DropdownMenuItem(value: 'auto', child: Text(tr('settings.spoken_auto'))),
                 DropdownMenuItem(value: 'en-US', child: Text('English (US)')),
                 DropdownMenuItem(value: 'en-IN', child: Text('English (India)')),
                 DropdownMenuItem(value: 'es', child: Text('Español (Spanish)')),
@@ -455,17 +383,36 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             ),
           ),
         ]),
-        group('Camera Halo & Capsule HUD', [
-          nav(tr('rcset.title'), Icons.tune, const ChipSettingsPage()),
-        ]),
-        group('Device Lock & Hands-Free Automation', [
-          ListTile(
-            leading: const Icon(Icons.lock_open_rounded),
-            title: const Text('Phone Auto-Unlock PIN'),
-            subtitle: Text(_hasPin ? 'PIN configured (Keystore encrypted)' : 'Configure screen unlock for autonomous actions'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _configureAutoUnlockPin,
+        group(tr('settings.meetings'), [
+          // docs/ANDROID_NEXT_PLAN.md §5 data safety: audio leaves the phone only with this on + the user's own Gemini key
+          SwitchListTile(
+            key: const ValueKey('meeting-audio-upload'),
+            title: Text(tr('settings.meeting_audio_upload')),
+            subtitle: Text(tr('settings.meeting_audio_upload_sub')),
+            isThreeLine: true,
+            value: _brain['meeting_audio_upload'] == true,
+            onChanged: (on) async {
+              if (on) {
+                final yes = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(tr('settings.meeting_audio_upload')),
+                    content: Text(tr('settings.meeting_audio_upload_disclosure')),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('common.cancel'))),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('settings.meeting_audio_upload_agree'))),
+                    ],
+                  ),
+                );
+                if (yes != true) return;
+              }
+              setState(() => _brain = {..._brain, 'meeting_audio_upload': on});
+              await _update({'meeting_audio_upload': on});
+            },
           ),
+        ]),
+        group(tr('settings.chip_group'), [
+          nav(tr('rcset.title'), Icons.tune, const ChipSettingsPage()),
         ]),
         group(tr('settings.permissions'), [
           perm(tr('settings.counter'), 'realcount', SnapyCore.openRealCountSettings),
@@ -483,6 +430,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
         ]),
         group(tr('settings.data'), [
           nav(tr('rcset.privacy'), Icons.receipt_long_outlined, const PrivacyReceiptsPage()),
+          nav(tr('diag.title'), Icons.bug_report_outlined, const DiagnosticsPage()),
           ListTile(
             leading: const Icon(Icons.ios_share),
             title: Text(tr('settings.export')),

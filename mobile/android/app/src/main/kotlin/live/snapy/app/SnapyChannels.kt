@@ -29,6 +29,8 @@ import java.io.ByteArrayOutputStream
 object SnapyChannels {
     fun register(engine: FlutterEngine, activity: Activity) {
         val core = CoreBridge.get(activity.applicationContext)
+        // An older build stored the lock-screen PIN in plain prefs. Snapy never stores device credentials: wipe it.
+        RcPrefs(activity).remove("screen_unlock_pin")
         val usage = UsageTracker(activity)
         val messenger = engine.dartExecutor.binaryMessenger
         SecureFiles.register(messenger, activity)          // Keystore-backed secrets (pairing, API keys)
@@ -45,6 +47,8 @@ object SnapyChannels {
         })
 
         MethodChannel(messenger, "snapy/core").setMethodCallHandler { call, result ->
+            // docs/ANDROID_NEXT_PLAN.md §9 (+ the legacy names on the same stores): PhoneServices.kt
+            if (PhoneServices.handle(activity, core, call, result)) return@setMethodCallHandler
             fun str(k: String) = call.argument<String>(k) ?: ""
             when (call.method) {
                 "ready" -> result.success(core.isReady())
@@ -158,13 +162,9 @@ object SnapyChannels {
                         val pm = activity.packageManager
                         val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                         val resolves = pm.queryIntentActivities(mainIntent, 0)
-                        val socialSet = setOf(
-                            "com.instagram.android", "com.google.android.youtube", "com.snapchat.android",
-                            "com.facebook.katana", "com.facebook.lite", "com.zhiliaoapp.musically",
-                            "com.ss.android.ugc.trill", "com.twitter.android", "com.reddit.frontpage",
-                            "com.whatsapp", "in.mohalla.video", "com.eterno.shortvideos"
-                        )
-                        val list = resolves.map { ri ->
+                        // short-video apps = the core catalogue (core/rules android.social_apps), never a hardcoded list
+                        val socialSet = PhoneServices.catalogueShortVideoPackages(activity)
+                        val list = resolves.distinctBy { it.activityInfo.packageName }.map { ri ->
                             val p = ri.activityInfo.packageName
                             val l = ri.loadLabel(pm).toString()
                             mapOf("package" to p, "label" to l, "is_social" to socialSet.contains(p))
@@ -304,87 +304,17 @@ object SnapyChannels {
                     if (perm != null) activity.requestPermissions(arrayOf(perm), 43)
                     result.success(perm != null)
                 }
-                "getInstalledSocialApps" -> {
-                    val pm = activity.packageManager
-                    val known = listOf(
-                        "com.instagram.android" to "Instagram",
-                        "com.google.android.youtube" to "YouTube",
-                        "com.snapchat.android" to "Snapchat",
-                        "com.facebook.katana" to "Facebook",
-                        "com.facebook.lite" to "Facebook Lite",
-                        "com.zhiliaoapp.musically" to "TikTok",
-                        "com.ss.android.ugc.trill" to "TikTok",
-                        "com.reddit.frontpage" to "Reddit",
-                        "in.mohalla.video" to "Moj",
-                        "com.eterno.shortvideos" to "Josh",
-                        "com.twitter.android" to "X (Twitter)",
-                        "com.pinterest" to "Pinterest",
-                        "in.mohalla.sharechat" to "ShareChat",
-                        "video.like" to "Likee"
-                    )
-                    val list = ArrayList<Map<String, Any>>()
-                    val prefs = RcPrefs(activity)
-                    for ((pkg, defaultLabel) in known) {
-                        var isInstalled = false
-                        var appLabel = defaultLabel
-                        try {
-                            val info = pm.getApplicationInfo(pkg, 0)
-                            val l = pm.getApplicationLabel(info).toString()
-                            if (l.isNotEmpty()) appLabel = l
-                            isInstalled = true
-                        } catch (_: Exception) {}
-
-                        val limit = prefs.int("limit_$pkg", 100)
-                        val lock = prefs.bool("lock_$pkg", true)
-                        list.add(mapOf(
-                            "package" to pkg,
-                            "label" to appLabel,
-                            "installed" to isInstalled,
-                            "limit" to limit,
-                            "lock" to lock
-                        ))
-                    }
-                    list.sortWith(compareByDescending<Map<String, Any>> { it["installed"] as Boolean }.thenBy { it["label"] as String })
-                    result.success(list)
-                }
-                "setAppReelLimit" -> {
-                    val pkg = str("package")
-                    val limit = call.argument<Int>("limit") ?: 100
-                    val lock = call.argument<Boolean>("lock") ?: true
-                    val prefs = RcPrefs(activity)
-                    prefs.putInt("limit_$pkg", limit)
-                    prefs.putBool("lock_$pkg", lock)
-                    RealCountController.active?.reload()
-                    result.success(true)
-                }
-                "testGeminiKey" -> Thread {
-                    val key = str("key")
-                    try {
-                        val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models?key=$key")
-                        val conn = url.openConnection() as java.net.HttpURLConnection
-                        conn.requestMethod = "GET"
-                        conn.connectTimeout = 8000
-                        conn.readTimeout = 8000
-                        val code = conn.responseCode
-                        if (code in 200..299) {
-                            activity.runOnUiThread { result.success(mapOf("ok" to true, "message" to "Key verified successfully!")) }
-                        } else {
-                            val err = try { conn.errorStream.bufferedReader().use { it.readText() } } catch (_: Exception) { "HTTP $code" }
-                            var userReason = "Invalid API key ($code)"
-                            if (err.contains("API_KEY_INVALID")) userReason = "The API key entered is invalid."
-                            else if (err.contains("RESOURCE_EXHAUSTED")) userReason = "Quota limit reached for this API key."
-                            else if (err.contains("PERMISSION_DENIED")) userReason = "Permission denied. Check if Gemini API is enabled."
-                            activity.runOnUiThread { result.success(mapOf("ok" to false, "error" to userReason)) }
-                        }
-                    } catch (e: Exception) {
-                        activity.runOnUiThread { result.success(mapOf("ok" to false, "error" to (e.message ?: "Network error. Check connection."))) }
-                    }
-                }.start()
+                // getInstalledSocialApps / setAppReelLimit / testGeminiKey / testApiKey / meeting* /
+                // setProfile / activationModes / setActivationMode / requestAssistantRole / appIcon:
+                // PhoneServices.handle (above) answers them on the shared stores (ReelLimits, the
+                // runtime's test_api_key — the key never goes into a URL here).
                 "toggleTorch" -> {
                     val on = call.argument<Boolean>("on") ?: false
                     try {
                         val cm = activity.getSystemService(android.content.Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
-                        val id = cm.cameraIdList.firstOrNull()
+                        val id = cm.cameraIdList.firstOrNull {
+                            cm.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                        }
                         if (id != null) cm.setTorchMode(id, on)
                         result.success(true)
                     } catch (e: Exception) {
@@ -398,111 +328,32 @@ object SnapyChannels {
                         result.success(false)
                     } else {
                         RcPrefs(activity).putBool(RcPrefs.WAKE_WANTED, on)          // BootReceiver restores it
-                        core.call("update_settings", JSONObject().put("android_wake_word", on).toString()) {
+                        // the same path as Profile's switch: the runtime's activation_modes (also sets
+                        // android_wake_word) -> the act_wake mirror Activation.trigger("wake") checks
+                        core.call("set_activation_mode", "wake", "$on") { r ->
+                            try { Activation.mirror(activity.applicationContext, JSONObject(r)) } catch (_: Exception) { }
                             WakeWordService.enable(activity.applicationContext, on)   // started while Snapy is open
                             result.success(true)
                         }
                     }
                 }
-                // ---- docs/ANDROID_NEXT_PLAN.md §9 methods that live in the core runtime
-                "testApiKey" -> core.call("test_api_key", str("provider"), str("key")) { result.success(jsonToMap(it)) }
-                "meetingStart" -> core.call("meeting_start", call.argument<String>("title") ?: "") { result.success(jsonToMap(it)) }
-                "meetingStop" -> core.call("meeting_stop") { result.success(jsonToMap(it)) }
-                "meetingState" -> core.call("meeting_state") { result.success(jsonToMap(it)) }
                 "profile" -> core.call("profile") { result.success(jsonToMap(it)) }
-                "setProfile" -> {
-                    val p = JSONObject()
-                    for (k in listOf("name", "assistant_name", "ice_notes")) call.argument<String>(k)?.let { p.put(k, it) }
-                    core.call("set_profile", p.toString()) { result.success(jsonToMap(it)) }
-                }
                 "syncNow" -> core.call("sync_kick") { result.success(true) }
-                "activationModes" -> {
-                    val prefs = RcPrefs(activity)
-                    result.success(mapOf(
-                        "wake" to WakeWordService.enabled,
-                        "volume" to prefs.bool("volume_shortcut", true),
-                        "power" to false,
-                        "assistantRole" to isAssistantRole(activity)
-                    ))
-                }
-                "setActivationMode" -> {
-                    val mode = str("mode")
-                    val on = call.argument<Boolean>("on") ?: false
-                    val prefs = RcPrefs(activity)
-                    when (mode) {
-                        "volume" -> prefs.putBool("volume_shortcut", on)
-                        "wake" -> {
-                            RcPrefs(activity).putBool(RcPrefs.WAKE_WANTED, on)
-                            WakeWordService.enable(activity.applicationContext, on)
-                        }
-                    }
-                    result.success(mapOf(
-                        "wake" to WakeWordService.enabled,
-                        "volume" to prefs.bool("volume_shortcut", true),
-                        "power" to false,
-                        "assistantRole" to isAssistantRole(activity)
-                    ))
-                }
-                "requestAssistantRole" -> {
-                    try {
-                        val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        activity.startActivity(intent)
-                        result.success(true)
-                    } catch (_: Exception) {
-                        result.success(false)
-                    }
-                }
-                "appIcon" -> {
-                    val pkg = str("package")
-                    val size = call.argument<Int>("size") ?: 96
-                    Thread {
-                        try {
-                            val pm = activity.packageManager
-                            val icon = pm.getApplicationIcon(pkg)
-                            val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-                            val canvas = android.graphics.Canvas(bmp)
-                            icon.setBounds(0, 0, size, size)
-                            icon.draw(canvas)
-                            val stream = java.io.ByteArrayOutputStream()
-                            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
-                            val bytes = stream.toByteArray()
-                            activity.runOnUiThread { result.success(bytes) }
-                        } catch (_: Exception) {
-                            activity.runOnUiThread { result.success(null) }
-                        }
-                    }.start()
-                }
+                // per-app limits: the reel part goes to the one reel-limit store (ReelLimits + the
+                // runtime's reel_limits, soft unless "hard" is asked); the daily time limit stays in RcPrefs
                 "setAppLimit" -> {
                     val pkg = str("package")
-                    val reelLimit = call.argument<Int>("reelLimit") ?: 100
-                    val timeLimitMin = call.argument<Int>("timeLimitMin") ?: 0
-                    val mode = call.argument<String>("mode") ?: "hard"
-                    val prefs = RcPrefs(activity)
-                    prefs.putInt("limit_$pkg", reelLimit)
-                    prefs.putInt("time_limit_$pkg", timeLimitMin)
-                    prefs.putBool("lock_$pkg", mode == "hard")
-                    RealCountController.active?.reload()
+                    if (pkg.isEmpty()) { result.success(false); return@setMethodCallHandler }
+                    val reelLimit = (call.argument<Int>("reelLimit") ?: 0).coerceAtLeast(0)
+                    val timeLimitMin = (call.argument<Int>("timeLimitMin") ?: 0).coerceAtLeast(0)
+                    val mode = if (call.argument<String>("mode") == "hard") "hard" else "soft"
+                    RcPrefs(activity).putInt("time_limit_$pkg", timeLimitMin)
+                    ReelLimits.set(activity, pkg, reelLimit, mode)
+                    core.call("set_reel_limit", pkg, "$reelLimit", mode) { }
                     result.success(true)
-                }
-                "setUnlockPin" -> {
-                    val pin = str("pin")
-                    RcPrefs(activity).putString("screen_unlock_pin", pin)
-                    result.success(true)
-                }
-                "getUnlockPin" -> {
-                    result.success(RcPrefs(activity).str("screen_unlock_pin", ""))
                 }
                 else -> result.notImplemented()
             }
-        }
-    }
-
-    private fun isAssistantRole(activity: Activity): Boolean {
-        return try {
-            val comp = Settings.Secure.getString(activity.contentResolver, "assistant") ?: return false
-            comp.contains(activity.packageName)
-        } catch (_: Exception) {
-            false
         }
     }
 

@@ -30,6 +30,10 @@ object VoiceController {
 
     fun start(ctx: Context, from: String = "voice") = main.post {
         val app = ctx.applicationContext
+        if (WakeWordService.isRecording) {                     // a meeting owns the mic: next phrase = command
+            WakeWordService.commandNext(app)
+            return@post
+        }
         val core = CoreBridge.get(app)
         core.stopSpeaking()                      // barge-in: the user is talking now
         core.interrupt()
@@ -127,6 +131,7 @@ object VoiceController {
         val e = JSONObject().put("type", "voice").put("state", state).put("text", text).put("level", level.toDouble())
         if (error != null) e.put("error", error)
         core.publish(e)
+        Captions.onVoice(core.appContext, state, text, level)          // the caption capsule under the camera
         if (state != "level") SnapyAccessibilityService.instance?.showVoice(state, text)
     }
 

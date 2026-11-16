@@ -93,7 +93,8 @@ class _ResetPageState extends State<ResetPage> {
               child: const Orb(size: 180),
             ),
             const SizedBox(height: 40),
-            Text(tr('reset.$phase'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
+            // 'reset.done' is the shared button word ("Done"); the closing sentence is reset.finished
+            Text(tr(done ? 'reset.finished' : 'reset.$phase'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
             const Spacer(),
             if (done)
               FilledButton(

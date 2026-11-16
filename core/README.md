@@ -208,6 +208,12 @@ groups in order, each trimmed and with trailing `.` removed; skip if none; text 
 `unfinished` (`any`, trimmed text) — wait for the rest of the sentence. `assistant_yes/no/stop/risky`
 (`any`). `realcount_*` (§4.10). `meeting_*` (`any`) — no-AI meeting notes.
 `task_title_prefix` / `_suffix` (`strip`, in that order, then trim `" ,."`; empty -> original).
+`phone_device` (`first_match`, Android only; Windows has no handler) — camera, SOS and meeting
+phrases. Input: `lower(text)`, every run of `[.,!?;]` -> one space, whitespace collapsed, trimmed.
+The first entry (by `order`) that matches gives `intent` (`capture_video`, `capture_photo`,
+`capture_stop`, `sos`, `sos_stop`, `sos_call`, `meeting_start`, `meeting_stop`); its optional
+named group `camera` is mapped through `slot_values.phone_device.camera` (lower-cased key;
+unmapped -> the word itself; no group -> null).
 
 ### 4.9 Time parser `parse_when(text, now)` -> `(when | null, rest)`
 
@@ -289,8 +295,10 @@ intent rules that extract memories use those values only (`Works as …` / `Work
 
 Flat `{key: string}` per language (`manifest.i18n.languages`); `en` is complete and the fallback.
 Keys are stable: never rename, only add (minor bump) or remove (major bump). Placeholders `{name}`
-(letters, digits, `_`); every language has exactly the placeholders of `en`. Lookup: language ->
-`en` -> the key itself. Strings may contain `\n`, and a leading space when they are appended to
+(letters, digits, `_`); every language has exactly the placeholders of `en`. A language may
+omit keys (not yet translated: they show in English) but never has a key `en` lacks; the
+Kotlin/Flutter screen strings (formerly `mobile/assets/i18n/en.ui.json`) are in `en` only for now.
+Lookup: language -> `en` -> the key itself. Strings may contain `\n`, and a leading space when they are appended to
 another string (e.g. `realcount.screen_avg`).
 
 ## 9. Conformance (`conformance/*.json`)
@@ -314,6 +322,7 @@ booleans, integers vs strings matter; object key order does not). Per suite:
 | `unfinished` | `any(unfinished, trim(input))` | `{unfinished}` |
 | `memory` | §4.7 on `input`; `secret` = any(memory_secret) | `{secret, extract: [{key,text,category,importance}], explicit}` |
 | `task_title` | §4.8 title cleaning | `{title}` |
+| `phone_device` | §4.8 `phone_device` | `{intent, camera}` (null = none) |
 
 `now` is a local ISO time without offset; the runtime must use it instead of the clock.
 Python: `engine/tests/test_conformance.py` (prints failing ids). The Dart runtime must run every file;

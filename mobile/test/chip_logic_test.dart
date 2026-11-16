@@ -12,7 +12,8 @@ void main() {
   test('chip text: screen time today + total reels', () {
     expect(tr('chip.text', {'time': formatDuration((5 * 60 + 16) * 60000), 'reels': '42'}), '5h 16m · ▶ 42');
     expect(formatDuration(59 * 60000), '59m');
-    expect(tr('chip.paused', {'time': '1h 0m'}), '1h 0m · counter paused');
+    expect(tr('chip.paused_time', {'time': '1h 0m'}), '1h 0m · counter paused');
+    expect(tr('chip.paused'), 'Counter paused');                 // the shared key (all languages)
   });
 
   test('amber at the soft limit with a ring filling toward it — never red', () {

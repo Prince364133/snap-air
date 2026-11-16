@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../i18n/i18n.dart';
 import '../sync/pair_screen.dart';
 import 'app_limits_page.dart';
+import 'tools_cards.dart';
 
 /// Tools Tab:
 ///  1. App & Reel Limits (Dedicated page fetching real device apps with real icons).
@@ -50,6 +51,10 @@ class ToolsTab extends StatelessWidget {
 
             // 2. Distraction-Free Focus Mode Card
             const FocusModeCard(),
+
+            const SizedBox(height: 7),
+            const MeetingCard(),
+            const QuickActionsCard(),
 
             const SizedBox(height: 14),
 
@@ -336,7 +341,7 @@ class _FocusModeCardState extends State<FocusModeCard> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text('Ambient timer active around camera ring', style: TextStyle(color: c.text2, fontSize: 12)),
+                    Text(tr('tools.focus_ambient'), style: TextStyle(color: c.text2, fontSize: 12)),
                   ],
                 ),
               ),
@@ -347,7 +352,7 @@ class _FocusModeCardState extends State<FocusModeCard> {
                     child: OutlinedButton(
                       onPressed: _showFullscreenFocusDialog,
                       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
-                      child: const Text('View Blocker'),
+                      child: Text(tr('tools.focus_view_blocker')),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -355,7 +360,7 @@ class _FocusModeCardState extends State<FocusModeCard> {
                     child: FilledButton.tonal(
                       onPressed: _stopFocus,
                       style: FilledButton.styleFrom(foregroundColor: c.red, minimumSize: const Size.fromHeight(44)),
-                      child: const Text('End Focus'),
+                      child: Text(tr('tools.focus_end')),
                     ),
                   ),
                 ],
@@ -390,7 +395,7 @@ class _FocusModeCardState extends State<FocusModeCard> {
               FilledButton.icon(
                 onPressed: _startFocus,
                 icon: const Icon(Icons.play_arrow_rounded),
-                label: Text('Start $_selectedMinutes-Minute Focus Session'),
+                label: Text(tr('tools.focus_start_n', {'min': '$_selectedMinutes'})),
                 style: FilledButton.styleFrom(
                   backgroundColor: c.accent,
                   minimumSize: const Size.fromHeight(46),
@@ -477,17 +482,17 @@ class _FullscreenFocusDialogState extends State<_FullscreenFocusDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Deep Focus in Progress',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20),
+              Text(
+                tr('tools.focus_in_progress'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20),
               ),
               const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
-                  'Distraction feeds are blocked. Maintain your flow state.',
+                  tr('tools.focus_blocker_line'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ),
               const Spacer(),
@@ -499,7 +504,7 @@ class _FullscreenFocusDialogState extends State<_FullscreenFocusDialog> {
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                child: const Text('End Focus Session', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                child: Text(tr('tools.focus_end_session'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
               ),
             ],
           ),

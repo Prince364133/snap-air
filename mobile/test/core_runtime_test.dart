@@ -413,7 +413,7 @@ void main() {
       expect(idx['index'], 1);
       final key = jsonDecode(await rt.call('test_api_key', ['gemini', ''])) as Map;
       expect(key['code'], 'invalid_key');
-      expect(key['help_url'], 'https://aistudio.google.com');
+      expect(key['help_url'], 'https://aistudio.google.com/apikey');
       expect(SnapyRuntime.mapKeyError('Google Gemini: API key not valid. Please pass a valid API key.').$1, 'invalid_key');
       expect(SnapyRuntime.mapKeyError('RESOURCE_EXHAUSTED quota').$1, 'quota');
       final p = jsonDecode(await rt.call('set_profile', [jsonEncode({'name': 'Asha', 'assistant_name': 'Meera'})])) as Map;

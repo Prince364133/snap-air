@@ -48,8 +48,11 @@ import kotlin.math.abs
 /**
  * Real Count.
  *  - Shows the Snapy pill in the status-bar row, beside the camera cut-out, over every app.
- *  - Counts reels/shorts: a full-screen vertical page change in a short-video app, kept on
- *    screen at least `android.min_reel_dwell_ms` (quick flicks don't count).
+ *  - Forwards scroll events to THE reel counter (RealCountController -> ReelCounter, mirror of
+ *    lib/realcount/reel_counter.dart): catalogue short-video apps only, full-screen pager,
+ *    page change (ViewPager2-safe), min dwell. It never counts by itself.
+ *  - Hard lock (opt-in per app): ReelLockController bounces ONLY the short-video feed (Back).
+ *  - Volume Up+Down / accessibility button -> Activation (no key filtering).
  *  - Greets you when you open a social app with today's numbers.
  *  - Performs Back / Home / Recents / Notifications / Lock / Screenshot for voice commands.
  * Everything is deterministic, rule-based and on-device (Google Play accessibility policy).
@@ -60,123 +63,109 @@ class SnapyAccessibilityService : AccessibilityService() {
     private lateinit var usage: UsageTracker
     private val main = Handler(Looper.getMainLooper())
 
-    private var socialApps = mapOf(
-        "com.instagram.android" to JSONObject().put("label", "Instagram").put("short_video", "Reels"),
-        "com.google.android.youtube" to JSONObject().put("label", "YouTube").put("short_video", "Shorts"),
-        "com.snapchat.android" to JSONObject().put("label", "Snapchat").put("short_video", "Spotlight"),
-        "com.facebook.katana" to JSONObject().put("label", "Facebook").put("short_video", "Reels"),
-        "com.facebook.lite" to JSONObject().put("label", "Facebook Lite").put("short_video", "Reels"),
-        "com.zhiliaoapp.musically" to JSONObject().put("label", "TikTok").put("short_video", "Videos"),
-        "com.ss.android.ugc.trill" to JSONObject().put("label", "TikTok").put("short_video", "Videos"),
-        "com.twitter.android" to JSONObject().put("label", "X").put("short_video", null),
-        "com.reddit.frontpage" to JSONObject().put("label", "Reddit").put("short_video", null),
-        "com.whatsapp" to JSONObject().put("label", "WhatsApp").put("short_video", null),
-        "in.mohalla.video" to JSONObject().put("label", "Moj").put("short_video", "Videos"),
-        "com.eterno.shortvideos" to JSONObject().put("label", "Josh").put("short_video", "Videos")
-    )
-    private var minDwellMs = 700L
+    /** The catalogue (core rules android.social_apps): no package-name guessing. */
+    @Volatile private var socialApps = mapOf<String, JSONObject>()
+    @Volatile private var longVideoApps = setOf<String>()
     private var refreshMs = 60_000L
     private var viewTypes = JSONObject()                 // Android class -> matcher type (app.json)
     private var lastNodes = listOf<AccessibilityNodeInfo>()
 
     private var currentPkg = ""
-    private var lastReelAt = HashMap<String, Long>()
-    private var lastIndex = HashMap<String, Int>()
-    private var reelTimeFrom = 0L
     private var todayMs = 0L
     private var appMs = mapOf<String, Long>()
+    private val timeNoticeDay = HashMap<String, String>()
 
-    /** Camera Punch-Hole Halo Ring & Dropped Capsule Strip (RealCountController). */
+    /** Camera Punch-Hole Halo Ring & Dropped Capsule Strip + THE reel counter (RealCountController). */
     private var rc: RealCountController? = null
+    /** Hard lock / deflector (ReelLockController). */
+    private var lock: ReelLockController? = null
+    private var buttonCallback: Any? = null
 
+    /**
+     * Every step is guarded on its own: an exception here used to crash the process, and Android
+     * then leaves a crashed accessibility service unbound (shown as OFF on ColorOS) until the user
+     * re-enables it. A failing step is recorded (CrashLog) and the rest still starts.
+     */
     override fun onServiceConnected() {
         instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         store = RealCountStore(this)
         usage = UsageTracker(this)
-        loadConfig()
-        ChipService.stop(this)                           // the counter's own chip replaces the fallback one
-        rc = RealCountController(this, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, counting = true,
-            externalCounter = true, showChip = true).also { it.start() }
-        tick()
+        safe("prefs") { RcPrefs(this).putLong(A11yHealth.PREF_CONNECTED_AT, System.currentTimeMillis()) }
+        safe("config") { loadConfig() }
+        safe("chip_service") { ChipService.stop(this) }      // the counter's own chip replaces the fallback one
+        safe("reel_lock") { lock = ReelLockController(this).also { ReelLockController.active = it } }
+        // ONE counting path: the controller counts (ReelCounter); this service only forwards events
+        safe("counter") {
+            rc = RealCountController(this, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, counting = true,
+                externalCounter = false, showChip = true).also { it.start() }
+        }
+        safe("shortcut") { registerShortcut() }
+        safe("tick") { tick() }
     }
 
-    /** Social apps and thresholds come from the shared app.json (no hardcoding). */
+    private inline fun safe(step: String, block: () -> Unit) {
+        try { block() } catch (t: Throwable) {
+            if (t is VirtualMachineError) throw t
+            CrashLog.record(this, "a11y.$step", t)
+        }
+    }
+
+    /**
+     * Volume Up + Down (held) and the accessibility button -> Activation.trigger.
+     * Snapy is the target of Android's accessibility shortcut; because this service declares
+     * flagRequestAccessibilityButton and targets Android 11+, AOSP
+     * (AccessibilityManagerService.performAccessibilityShortcutTargetService) calls this
+     * callback instead of toggling the service off ("Held volume keys… turned off" no longer
+     * happens), and turns the service on if it was off. No key-event filtering (ColorOS kills
+     * services that filter keys).
+     */
+    private fun registerShortcut() {
+        try {
+            val cb = object : android.accessibilityservice.AccessibilityButtonController.AccessibilityButtonCallback() {
+                override fun onClicked(controller: android.accessibilityservice.AccessibilityButtonController) {
+                    Activation.trigger(this@SnapyAccessibilityService, "volume")
+                }
+            }
+            accessibilityButtonController.registerAccessibilityButtonCallback(cb, main)
+            buttonCallback = cb
+        } catch (_: Throwable) { }
+    }
+
+    /** Social apps and thresholds come from the shared core rules (no hardcoding). */
     private fun loadConfig() {
         Thread {
             try {
-                val core = CoreBridge.get(this)
-                val apps = JSONArray(core.configNow("android.social_apps"))
+                val apps = CoreConfig.value(this, "android.social_apps") as? JSONArray ?: JSONArray()
                 val m = HashMap<String, JSONObject>()
-                for (i in 0 until apps.length()) apps.getJSONObject(i).let { m[it.getString("package")] = it }
+                for (i in 0 until apps.length()) apps.optJSONObject(i)?.let { m[it.optString("package")] = it }
                 socialApps = m
-                minDwellMs = core.configNow("android.min_reel_dwell_ms").toLongOrNull() ?: minDwellMs
-                refreshMs = (core.configNow("android.screen_time_refresh_s").toLongOrNull() ?: 60) * 1000
-                viewTypes = JSONObject(core.configNow("android.view_types"))
+                // long-video watching is tracked in the apps the rules name (else: every catalogue
+                // short-video app; only YouTube-style players produce 35 s+ watches)
+                val lv = CoreConfig.value(this, "android.realcount.long_video_apps") as? JSONArray
+                longVideoApps = if (lv != null) (0 until lv.length()).map { lv.optString(it) }.toSet()
+                                else m.filterValues { !it.isNull("short_video") }.keys
+                refreshMs = ((CoreConfig.value(this, "android.screen_time_refresh_s") as? Number)?.toLong() ?: 60) * 1000
+                viewTypes = CoreConfig.value(this, "android.view_types") as? JSONObject ?: JSONObject()
             } catch (_: Exception) { }
         }.start()
     }
 
     // ------------------------------------------------------------------ hardware shortcuts
-    private var volUpTime = 0L
-    private var volDownTime = 0L
-    private var lastVolTrigger = 0L
+    /** Only reached on builds where key filtering is allowed (canRequestFilterKeyEvents=true);
+     *  the shipped config keeps it off. Consumes only the Volume Up+Down combo. */
+    private val combo = VolumeCombo()
+    private val comboFire = Runnable { if (combo.poll(android.os.SystemClock.uptimeMillis())) Activation.trigger(this, "volume") }
 
     override fun onKeyEvent(event: android.view.KeyEvent): Boolean {
-        val prefs = RcPrefs(this)
-        if (!prefs.bool("volume_shortcut", true)) return super.onKeyEvent(event)
-
-        val now = System.currentTimeMillis()
-        if (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) {
-            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-                if (volUpTime == 0L) volUpTime = now
-            } else if (event.action == android.view.KeyEvent.ACTION_UP) {
-                volUpTime = 0L
-            }
-        } else if (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-                if (volDownTime == 0L) volDownTime = now
-            } else if (event.action == android.view.KeyEvent.ACTION_UP) {
-                volDownTime = 0L
-            }
-        }
-        if (volUpTime > 0L && volDownTime > 0L && (now - minOf(volUpTime, volDownTime) >= 2000L)) {
-            if (now - lastVolTrigger > 2500L) {
-                lastVolTrigger = now
-                volUpTime = 0L
-                volDownTime = 0L
-                try {
-                    val vib = if (Build.VERSION.SDK_INT >= 31) {
-                        (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
-                    } else {
-                        @Suppress("DEPRECATION")
-                        getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                    }
-                    if (Build.VERSION.SDK_INT >= 26) {
-                        vib?.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vib?.vibrate(120)
-                    }
-                } catch (_: Exception) {}
-
-                // Toggle Snapy Power ON / OFF
-                val currentEnabled = prefs.bool("chip_enabled", true)
-                val newState = !currentEnabled
-                prefs.update(JSONObject().put("chip_enabled", newState))
-                if (newState) {
-                    showPillPublic()
-                    RealCountController.active?.reload()
-                    Toast.makeText(this, "Snapy Powered ON · Camera halo active", Toast.LENGTH_SHORT).show()
-                } else {
-                    hidePillPublic()
-                    RealCountController.active?.reload()
-                    Toast.makeText(this, "Snapy Powered OFF · Camera halo paused", Toast.LENGTH_SHORT).show()
-                }
-            }
-            return true
-        }
-        return super.onKeyEvent(event)
+        val up = event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+        if (!up && event.keyCode != android.view.KeyEvent.KEYCODE_VOLUME_DOWN) return false   // never other keys
+        if (!Activation.modeOn(this, "volume")) return false
+        val down = event.action == android.view.KeyEvent.ACTION_DOWN
+        val consume = combo.onKey(up = up, down = down, t = event.eventTime)
+        main.removeCallbacks(comboFire)
+        combo.fireAt?.let { at -> main.postAtTime(comboFire, at) }
+        return consume
     }
 
     // ------------------------------------------------------------------ events
@@ -185,7 +174,7 @@ class SnapyAccessibilityService : AccessibilityService() {
     private var videoCountedForSession = false
 
     private fun checkLongVideoProgress(pkg: String, e: AccessibilityEvent) {
-        if (pkg != "com.google.android.youtube" && !pkg.contains("facebook")) return
+        if (pkg !in longVideoApps) return
         val now = System.currentTimeMillis()
         if (pkg != currentVideoPkg) {
             currentVideoPkg = pkg
@@ -193,118 +182,103 @@ class SnapyAccessibilityService : AccessibilityService() {
             videoCountedForSession = false
             return
         }
-
-        // If user tapped a video title/thumbnail, start a new long video watch window
-        if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            val desc = "${e.contentDescription ?: ""} ${e.text.joinToString()}".lowercase()
-            if (desc.contains("video") || desc.contains("watch") || desc.contains("play")) {
-                currentVideoStart = now
-                videoCountedForSession = false
-            }
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {          // a tap on a video starts a new watch
+            currentVideoStart = now
+            videoCountedForSession = false
         }
-
-        // Count as long video if watched continuously for at least 35 seconds outside of fast short scrolls
+        // a long video: watched 35 s+ with no reel counted meanwhile
         if (!videoCountedForSession && currentVideoStart > 0L && (now - currentVideoStart) >= 35_000L) {
-            val lastReelTime = lastReelAt[pkg] ?: 0L
-            if (now - lastReelTime >= 30_000L) {
+            if (now - (rc?.lastReelAt(pkg) ?: 0L) >= 30_000L) {
                 videoCountedForSession = true
                 store.addLongVideo(pkg)
             }
         }
     }
 
-    override fun onAccessibilityEvent(e: AccessibilityEvent) {
+    /** Never throws: a bad event (an app's odd node tree) must not kill the service. */
+    override fun onAccessibilityEvent(e: AccessibilityEvent) = safe("event") { handleEvent(e) }
+
+    private fun handleEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
         if (pkg == packageName) return // never intercept or count events inside Snapy itself
-        checkLongVideoProgress(pkg, e)
         when (e.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> { onWindow(pkg); rc?.onWindow(pkg, e.className?.toString() ?: "") }
-            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) { rc?.onScrollEvent(pkg); onScroll(pkg, e) }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                onWindow(pkg)
+                rc?.onWindow(pkg, e.className?.toString() ?: "")
+                lock?.onWindow(pkg)
+            }
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) {
+                lock?.onScroll(pkg, e)                                      // bounce first: the 150 ms budget
+                forwardScroll(pkg, e)
+            }
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> lock?.onClick(pkg)
         }
+        // after onWindow: an app switch has already credited the previous long video
+        checkLongVideoProgress(pkg, e)
+    }
+
+    /** The scroll, measured, to the one counter (RealCountController -> ReelCounter). */
+    private fun forwardScroll(pkg: String, e: AccessibilityEvent) {
+        val app = socialApps[pkg]
+        val shortVideo = app != null && !app.isNull("short_video")
+        rc?.onScrollEvent(pkg)
+        if (!shortVideo) return
+        val src = e.source
+        val dm = resources.displayMetrics
+        val r = Rect()
+        src?.getBoundsInScreen(r)
+        val key = if (src != null && e.fromIndex < 0) ReelCounter.itemKey(src, dm.widthPixels, dm.heightPixels) else ""
+        rc?.onScroll(ReelScroll(
+            pkg = pkg,
+            shortVideoApp = true,
+            heightFraction = if (src != null) r.height().toDouble() / dm.heightPixels else 0.0,
+            widthFraction = if (src != null) r.width().toDouble() / dm.widthPixels else 0.0,
+            sourceId = src?.viewIdResourceName ?: "",
+            fromIndex = e.fromIndex, toIndex = e.toIndex, itemCount = e.itemCount,
+            scrollDeltaY = if (Build.VERSION.SDK_INT >= 28) e.scrollDeltaY else 0,
+            screenHeight = dm.heightPixels,
+            itemKey = key,
+            nowMs = System.currentTimeMillis(),
+        ))
     }
 
     fun showPillPublic() = main.post { rc?.reload() }
     fun hidePillPublic() = main.post { rc?.hidePublic() }
 
-    private var appSessionStart = 0L
-
-    private fun isShortVideoApp(pkg: String): Boolean {
-        val p = pkg.lowercase()
-        return p.contains("instagram") ||
-               p.contains("youtube") ||
-               p.contains("facebook") ||
-               p.contains("tiktok") ||
-               p.contains("musically") ||
-               p.contains("snapchat") ||
-               p.contains("reddit") ||
-               p.contains("moj") ||
-               p.contains("josh") ||
-               (socialApps[pkg]?.opt("short_video") != null)
-    }
+    /** The keyboard's package: its window is not an app switch (else scrolls in the app under it are dropped). */
+    private fun imePkg(): String = try {
+        android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)?.substringBefore('/') ?: ""
+    } catch (_: Exception) { "" }
 
     private fun onWindow(pkg: String) {
-        if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui") return
+        if (pkg == currentPkg || pkg == packageName || pkg == "com.android.systemui" || pkg == imePkg()) return
         val now = System.currentTimeMillis()
-        if (currentVideoPkg.isNotEmpty() && !videoCountedForSession && currentVideoStart > 0L && (now - currentVideoStart) >= 35_000L) {
+        // leaving a long-video app: credit the watch only if no reel was counted meanwhile (same rule as below)
+        if (currentVideoPkg.isNotEmpty() && !videoCountedForSession && currentVideoStart > 0L && (now - currentVideoStart) >= 35_000L &&
+            now - (rc?.lastReelAt(currentVideoPkg) ?: 0L) >= 30_000L) {
             store.addLongVideo(currentVideoPkg)
         }
-        currentVideoPkg = if (pkg == "com.google.android.youtube" || pkg.contains("facebook")) pkg else ""
+        currentVideoPkg = if (pkg in longVideoApps) pkg else ""
         currentVideoStart = if (currentVideoPkg.isNotEmpty()) now else 0L
         videoCountedForSession = false
-
-        flushReelTime()
         currentPkg = pkg
-        appSessionStart = now
 
-        // Check per-app daily time limit (e.g. 30m, 1h)
-        val prefs = RcPrefs(this)
-        val timeLimitMin = prefs.int("time_limit_$pkg", 0)
-        val lockEnabled = prefs.bool("lock_$pkg", true)
-        if (lockEnabled && timeLimitMin > 0) {
-            val usedTodayMs = appMs[pkg] ?: 0L
-            if (usedTodayMs >= timeLimitMin * 60_000L) {
-                performGlobalAction(GLOBAL_ACTION_HOME)
-                val label = socialApps[pkg]?.optString("label") ?: pkg
-                main.post {
-                    Toast.makeText(this@SnapyAccessibilityService, "⏳ $label time limit reached for today ($timeLimitMin min limit). Stay focused!", Toast.LENGTH_LONG).show()
+        // Per-app daily time limit (opt-in, set in Tools): a gentle note under the camera once a
+        // day — never Home, never the whole app (the hard lock only ever bounces the reels feed).
+        val timeLimitMin = RcPrefs(this).int("time_limit_$pkg", 0)
+        if (timeLimitMin > 0 && (appMs[pkg] ?: 0L) >= timeLimitMin * 60_000L) {
+            val day = ReelLockLogic.dayKey(now)
+            if (timeNoticeDay[pkg] != day) {
+                timeNoticeDay[pkg] = day
+                val label = socialApps[pkg]?.optString("label")?.takeIf { it.isNotBlank() }
+                    ?: try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
+                val p = mapOf("app" to label, "min" to "$timeLimitMin")
+                val text = Strings.t(this, "limits.time_reached", p).let {
+                    if (it == "limits.time_reached") "⏳ $label: your $timeLimitMin-minute limit for today is up." else it
                 }
+                CameraCapsule.status.show(this, text, CameraCapsule.AMBER, 5000)
             }
         }
-    }
-
-    private fun onScroll(pkg: String, e: AccessibilityEvent) {
-        if (!isShortVideoApp(pkg)) return
-        val now = System.currentTimeMillis()
-        val last = lastReelAt[pkg] ?: 0L
-        if (now - last < 500L) return                      // at least 500ms dwell between swipes
-        if (rc?.shouldCount(pkg, e.source?.viewIdResourceName ?: "") == false) return
-
-        lastReelAt[pkg] = now
-        if (reelTimeFrom == 0L) reelTimeFrom = now
-        store.addReel(pkg)
-        rc?.onReelCounted()
-
-        // Check per-app reel limit and lock if reached
-        val prefs = RcPrefs(this)
-        val limit = prefs.int("limit_$pkg", prefs.int("reel_limit", 100))
-        val lockEnabled = prefs.bool("lock_$pkg", true)
-        val currentReels = store.reels(pkg)
-        if (lockEnabled && limit > 0 && currentReels >= limit) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            val label = socialApps[pkg]?.optString("label") ?: pkg
-            main.post {
-                Toast.makeText(this@SnapyAccessibilityService, "🚫 $label reels locked for today ($currentReels/$limit reached). Stay focused!", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    /** Time inside short-video feeds: from the first reel until leaving the app (idle gaps capped). */
-    private fun flushReelTime() {
-        if (reelTimeFrom == 0L || currentPkg.isEmpty()) return
-        val end = (lastReelAt[currentPkg] ?: reelTimeFrom) + 60_000            // up to 1 min on the last reel
-        store.addReelTime(currentPkg, (minOf(end, System.currentTimeMillis()) - reelTimeFrom).coerceAtLeast(0))
-        reelTimeFrom = 0L
-        store.save()
     }
 
     private fun tick() {
@@ -317,10 +291,6 @@ class SnapyAccessibilityService : AccessibilityService() {
         }.start()
         main.postDelayed({ tick() }, refreshMs)
     }
-
-
-
-
 
     private fun openSheet() {
         startActivity(Intent(this, SheetActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -433,11 +403,15 @@ class SnapyAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onDestroy() {
-        flushReelTime()
-        rc?.stop()
+        try { (buttonCallback as? android.accessibilityservice.AccessibilityButtonController.AccessibilityButtonCallback)
+            ?.let { accessibilityButtonController.unregisterAccessibilityButtonCallback(it) } } catch (_: Throwable) { }
+        if (ReelLockController.active === lock) ReelLockController.active = null
+        lock = null
+        safe("stop") { rc?.stop() }
         rc = null
         instance = null
-        ChipService.startIfWanted(applicationContext)    // keep a chip via "Display over other apps" if allowed
+        safe("prefs") { RcPrefs(this).putLong(A11yHealth.PREF_DISCONNECTED_AT, System.currentTimeMillis()) }
+        safe("chip_fallback") { ChipService.startIfWanted(applicationContext) }   // keep a chip via "Display over other apps" if allowed
         super.onDestroy()
     }
 

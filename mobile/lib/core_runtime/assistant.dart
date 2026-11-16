@@ -369,14 +369,17 @@ class Assistant {
       return;
     }
     final actions = res['actions'] as List;
-    final mine = actions.where((a) => (a as Map)['mine'] == true).length;
+    final note = res['note'] as Map?;
+    // the runtime's onSaved hook already turned the user's own action items into tasks
+    final added = [for (final a in (note?['actions'] as List?) ?? actions) if ((a as Map)['task_id'] != null) a].length;
+    final others = actions.length - added;
     var m = 'Your notes for “${res['title']}” are ready';
-    if (actions.isNotEmpty) {
-      m += '. I found ${actions.length} action item${actions.length != 1 ? 's' : ''}${mine > 0 ? ', $mine for you' : ''} — review them in Notes before I add them to your tasks.';
+    if (added > 0) m += '. I added $added task${added != 1 ? 's' : ''} for you with reminders';
+    if (others > 0) {
+      m += '${added > 0 ? ', and' : '. I found'} $others other action item${others != 1 ? 's' : ''} to review in Notes.';
     } else {
       m += '.';
     }
-    final note = res['note'] as Map?;
     if (note != null) emit({'type': 'ui_action', 'action': 'open_note', 'id': note['id']});
     reply(m, lang, speak, {'tool': 'meeting', 'open_tab': 'notes'});
     setState('idle');

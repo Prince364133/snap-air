@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 class CoreBridge private constructor(private val ctx: Context) {
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
     private val executor by lazy { OpExecutor(ctx) }
-    private val speech by lazy { Speech(ctx) }
+    private val speech by lazy { Speech(ctx) { Captions.speechDone(); publish(JSONObject().put("type", "speak_done")) } }
     private val contacts by lazy { Contacts(ctx) }
     private var channel: MethodChannel? = null
     @Volatile private var ready = false
@@ -100,6 +100,9 @@ class CoreBridge private constructor(private val ctx: Context) {
         queue.clear()
         pending.forEach { it() }
         Thread { val apps = installedApps().toString(); call("set_apps", apps) { } }.start()
+        // the runtime's device-only settings -> the Kotlin mirrors read on hot paths
+        call("reel_limits_config") { r -> try { ReelLimits.replaceAll(ctx, JSONObject(r)) } catch (_: Exception) { } }
+        call("activation_modes") { r -> try { Activation.mirror(ctx, JSONObject(r)) } catch (_: Exception) { } }
     }
 
     private fun onEvents(batch: String) {
@@ -112,7 +115,10 @@ class CoreBridge private constructor(private val ctx: Context) {
     private fun route(e: JSONObject) {
         when (e.optString("type")) {
             "op" -> executor.runOp(e)
-            "speak" -> speech.speak(e.optString("text"), e.optString("lang", "en"))
+            "speak" -> { speech.speak(e.optString("text"), e.optString("lang", "en")); Captions.onSpeak(ctx, e.optString("text")) }
+            // a meeting's Markdown in the vault: sealed with the biometric-bound key in Ghost mode
+            "vault_file" -> GhostVault.sealIfEnabled(ctx, e.optString("path"))
+            "activation_modes" -> Activation.mirror(ctx, e)
             "speak_stop" -> speech.stop()
             "reminders" -> { Reminders.ensureChannel(ctx); Reminders.sync(ctx, e.optJSONArray("items") ?: JSONArray()) }
         }
@@ -135,6 +141,8 @@ class CoreBridge private constructor(private val ctx: Context) {
 
     // ---------------------------------------------------------------- API (unchanged for callers)
     fun isReady() = ready
+
+    val appContext: Context get() = ctx
 
     /** Flutter screens subscribe to the brain's events (JSON list per batch). */
     fun addListener(l: (String) -> Unit) = listeners.add(l)
@@ -175,6 +183,12 @@ class CoreBridge private constructor(private val ctx: Context) {
 
     // ---------------------------------------------------------------- voice
     fun stopSpeaking() = speech.stop()
+
+    /** Speak, then [done] on the main thread (the wake greeting before listening). */
+    fun speakThen(text: String, done: () -> Unit) {
+        Captions.onSpeak(ctx, text)
+        speech.speak(text, Strings.lang(ctx), done)
+    }
 
     /** Recognizer locale, wake phrases, pause timing ({} until the brain is up). */
     fun voiceConfig(done: (JSONObject) -> Unit) = call("voice_config") { done(try { JSONObject(it) } catch (_: Exception) { JSONObject() }) }

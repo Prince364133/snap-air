@@ -34,7 +34,7 @@ class HomePage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 8, 4),
             child: Row(children: [
-              Text('Snapy', style: Theme.of(context).textTheme.headlineMedium),
+              Text(tr('app.name'), style: Theme.of(context).textTheme.headlineMedium),
               const Spacer(),
               IconButton(
                 tooltip: tr('home.settings'),

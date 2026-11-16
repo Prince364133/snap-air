@@ -66,13 +66,11 @@ class RealCountController(
             if (AudioNoteRecorder.isRecording) {
                 val f = AudioNoteRecorder.stop(ctx)
                 if (f != null) {
-                    Toast.makeText(ctx, "✓ Audio note saved to Conscious Vault", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, Strings.t(ctx, "chip.note_saved"), Toast.LENGTH_SHORT).show()
                 }
             } else {
                 val ok = AudioNoteRecorder.start(ctx)
-                if (ok) {
-                    Toast.makeText(ctx, "🎙 Taking audio note silently...", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(ctx, Strings.t(ctx, if (ok) "chip.note_recording" else "chip.note_failed"), Toast.LENGTH_SHORT).show()
             }
         }
         override fun onLongPress() = quickActions()
@@ -167,6 +165,7 @@ class RealCountController(
         }
         rules = RealCountRules(merged)
         engine = NudgeEngine(rules)
+        counter.rules = ReelCounterRules.from(minDwellMs, merged)
     }
 
     private fun showChipIfWanted() {
@@ -177,24 +176,14 @@ class RealCountController(
     }
 
     // ------------------------------------------------------------------ events from the host
-    private fun isShortVideoApp(pkg: String): Boolean {
-        val p = pkg.lowercase()
-        return p.contains("instagram") ||
-               p.contains("youtube") ||
-               p.contains("facebook") ||
-               p.contains("tiktok") ||
-               p.contains("musically") ||
-               p.contains("snapchat") ||
-               p.contains("reddit") ||
-               p.contains("moj") ||
-               p.contains("josh") ||
-               (socialApps[pkg]?.opt("short_video") != null)
-    }
+    /** A short-video app of the catalogue (core rules android.social_apps, short_video set). */
+    private fun isShortVideoApp(pkg: String): Boolean = socialApps[pkg]?.let { !it.isNull("short_video") } == true
 
     fun onWindow(pkg: String, cls: String) {
         if (pkg == ctx.packageName || pkg == "com.android.systemui" || pkg == imePkg) return     // keyboard isn't an app switch
         if (pkg == currentPkg) { if (cls.isNotEmpty()) currentClass = cls; return }
         flushReelTime()
+        counter.reset(currentPkg)                                          // left the feed: a fresh run
         currentPkg = pkg
         currentClass = cls
         val now = System.currentTimeMillis()
@@ -230,6 +219,15 @@ class RealCountController(
     fun setReelFeedMode(pkg: String, reels: Int) = chip.setReelFeedMode(pkg, reels)
     fun setAppFeedMode(pkg: String, ms: Long) = chip.setAppFeedMode(pkg, ms)
 
+    /** The one reel counter (ReelCounter.kt, mirror of lib/realcount/reel_counter.dart). */
+    private val counter = ReelCounter()
+    /** The island chip is on screen (it shows its own subtitle for voice states). */
+    val chipShown get() = chip.isShown
+    /** Snapy's spoken reply in the chip's subtitle; false when the chip isn't shown. */
+    fun subtitle(text: String): Boolean { if (!chip.isShown) return false; main.post { chip.showFloatingSubtitle(text) }; return true }
+    /** Soundwave halo: the chip ring follows the mic level while listening / recording. */
+    fun micLevel(level: Float) = chip.micLevel(level)
+
     /** Any scroll event from the app in front (health check: events are arriving). */
     fun onScrollEvent(pkg: String) { lastEventAt[pkg] = System.currentTimeMillis() }
 
@@ -246,55 +244,32 @@ class RealCountController(
         decide(NudgeTrigger.REEL_COUNTED)
     }
 
-    /** A scroll event in the foreground app (accessibility host with its own counting). */
-    fun onScroll(pkg: String, fromIndex: Int, toIndex: Int, itemCount: Int, deltaY: Int, srcHeight: Int, sourceId: String) {
-        if (!counting || externalCounter || pkg != currentPkg) return
-        val app = socialApps[pkg] ?: return
-        val now = System.currentTimeMillis()
-        lastEventAt[pkg] = now                                              // health: events are arriving
-        if (app.isNull("short_video")) return
-        if (now < prefs.long(RcPrefs.PAUSED_UNTIL)) return                  // "pause counting 1 h"
-        val screenH = ctx.resources.displayMetrics.heightPixels
-        if (srcHeight in 1 until (screenH * 0.6).toInt()) return            // only the full-screen pager
-        if (!ChipLogic.countsAsFeed(rules, pkg, currentClass, sourceId, prefs.bool("creator_mode"))) return
-        val pageChanged = when {
-            fromIndex >= 0 && toIndex >= 0 && itemCount > 1 -> {
-                val prev = lastIndex[pkg]
-                lastIndex[pkg] = fromIndex
-                prev != null && prev != fromIndex
-            }
-            Build.VERSION.SDK_INT >= 28 -> kotlin.math.abs(deltaY) >= 20
-            else -> false
-        }
-        if (!pageChanged) return
-        if (now - (lastReelAt[pkg] ?: 0L) < minDwellMs) return             // a flick past, not a watch
-        lastReelAt[pkg] = now
+    /**
+     * THE reel counter (the accessibility service only forwards measured scroll events):
+     * ReelCounter decides (catalogue app, full-screen pager, feed ids, creator screens,
+     * page change incl. ViewPager2's -1 indices via the visible item's identity, dwell).
+     * Mirror of lib/realcount/reel_counter.dart.
+     */
+    fun onScroll(e: ReelScroll) {
+        if (!counting || externalCounter || e.pkg != currentPkg) return
+        lastEventAt[e.pkg] = e.nowMs                                         // health: events are arriving
+        if (e.nowMs < prefs.long(RcPrefs.PAUSED_UNTIL)) return               // "pause counting 1 h"
+        if (prefs.bool("creator_mode") && !ChipLogic.countsAsFeed(rules, e.pkg, currentClass, e.sourceId, true)) return
+        val d = counter.onScroll(e.copy(windowClass = currentClass, shortVideoApp = isShortVideoApp(e.pkg)))
+        if (d != ReelDecision.COUNTED) return
+        val now = e.nowMs
+        lastReelAt[e.pkg] = now
         if (reelTimeFrom == 0L) reelTimeFrom = now
-        store.addReel(pkg)
+        store.addReel(e.pkg)
         session.reel(now, rules.i("nudges.session_gap_min", 10) * 60000L)
-        chip.setReelFeedMode(pkg, store.totalReels())
+        chip.setReelFeedMode(e.pkg, store.totalReels())
         render()
         decide(NudgeTrigger.REEL_COUNTED)
-
-        val limit = prefs.int("limit_$pkg", prefs.int("reel_limit", 100))
-        val lockEnabled = prefs.bool("lock_$pkg", true)
-        val currentReels = store.reels(pkg)
-        if (lockEnabled && limit > 0 && currentReels >= limit) {
-            val svc = ctx as? AccessibilityService
-            svc?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-            val label = app.optString("label", pkg)
-            main.post {
-                cards.show(
-                    "Reel Limit Reached",
-                    "🚫 $label reels locked for today ($currentReels/$limit reached). Stay focused, boss!",
-                    emptyList(),
-                    chipBottom(),
-                    5000,
-                    bigText = true
-                ) {}
-            }
-        }
+        ReelLockController.active?.onReelCounted(e.pkg)                    // 80% deflector / hard lock
     }
+
+    /** When the last reel was counted in [pkg] (long-video detection). */
+    fun lastReelAt(pkg: String): Long = lastReelAt[pkg] ?: 0L
 
     fun onVoice(state: String, text: String) {
         listening = state == "listening" || state == "partial" || state == "thinking"
@@ -464,7 +439,7 @@ class RealCountController(
         val reels = if (counting) "${store.totalReels()}" else "—"
         val f = fraction()
         val tone = ChipLogic.tone(f, rules.d("chip.amber_at", 1.0), engine.isBedtime(now), paused)
-        val full = if (paused) "Counter paused · $time" else "$time · 🎞 $reels"
+        val full = if (paused) Strings.t(ctx, "chip.paused_time", mapOf("time" to time)) else "$time · 🎞 $reels"
         // split around the camera gap: time on the left, the rest on the right
         val left = if (full.startsWith(time)) time else full
         val right = if (full.startsWith(time)) full.removePrefix(time).trim() else ""
@@ -551,15 +526,10 @@ class RealCountController(
     }
 
     fun launchSocialApp(targetPkg: String) {
-        val target = if (targetPkg.isNotEmpty() && isPackageInstalled(targetPkg)) {
-            targetPkg
-        } else if (isPackageInstalled("com.instagram.android")) {
-            "com.instagram.android"
-        } else if (isPackageInstalled("com.google.android.youtube")) {
-            "com.google.android.youtube"
-        } else {
-            ctx.packageName
-        }
+        // the asked app, else the first installed short-video app of the catalogue (no hardcoded packages)
+        val target = targetPkg.takeIf { it.isNotEmpty() && isPackageInstalled(it) }
+            ?: socialApps.values.filter { !it.isNull("short_video") }.map { it.optString("package") }.firstOrNull { isPackageInstalled(it) }
+            ?: ctx.packageName
         try {
             val intent = ctx.packageManager.getLaunchIntentForPackage(target)
             if (intent != null) {

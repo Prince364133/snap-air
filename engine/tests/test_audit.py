@@ -338,6 +338,46 @@ class AiCommandConfirmTests(unittest.TestCase):
         self.assertIsNone(a.pending)                                # everyday commands still just run
 
 
+# ---------------------------------------------------------------- A-11/A-12 engine wiring (main.py)
+class EngineWiringTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib
+        import sys
+        cls.main = sys.modules.get("main") or importlib.import_module("main")
+
+    def test_recap_time_is_normalised(self):
+        h = self.main._hhmm
+        self.assertEqual(h("9:30", "18:00"), "09:30")
+        self.assertEqual(h("18.45", "18:00"), "18:45")
+        for bad in ("", None, "25:00", "soon", "9"):
+            self.assertEqual(h(bad, "18:00"), "18:00", bad)
+
+    def test_delete_all_data_removes_exports_and_contexts(self):
+        from src import storage
+        m = self.main
+        exp = os.path.join(storage.data_dir(), "export-2026-11-01.json")
+        with open(exp, "w", encoding="utf-8") as f:
+            json.dump({"memories": ["secret"]}, f)
+        m.assistant.contexts.items = [{"id": "c1", "name": "work", "windows": []}]
+        m.assistant.history.append({"role": "user", "content": "private"})
+        m.delete_all_data()
+        self.assertFalse(os.path.exists(exp))
+        self.assertEqual(m.assistant.contexts.items, [])
+        self.assertEqual(m.assistant.history, [])
+
+    def test_installer_runs_only_after_verification(self):
+        m = self.main
+        ran = []
+        with mock.patch("requests.get", return_value=FakeResp(b"MZ-not-really", length=13)), \
+                mock.patch("src.setup_assets.verify_installer", side_effect=RuntimeError("bad signature")), \
+                mock.patch.object(m.subprocess, "run", side_effect=lambda *a, **k: ran.append(a)),                 mock.patch.object(m, "models_payload", return_value={}), mock.patch.object(m, "toast"):
+            m._ollama_install.update(status=None)
+            m.install_ollama()
+        self.assertEqual(ran, [])                                   # never executed
+        self.assertEqual(m._ollama_install["status"], "error")
+
+
 # ---------------------------------------------------------------- C-01..C-04 shared core data
 class CoreDataTests(unittest.TestCase):
     def test_memory_rule_categories_are_in_the_schema_enum(self):

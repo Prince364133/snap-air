@@ -6,6 +6,7 @@ import '../core/next_api.dart';
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
 import '../main.dart';
+import 'a11y_health_card.dart';
 import 'app_system_icon.dart';
 import 'assistant_panel.dart';
 import 'common.dart';
@@ -40,6 +41,8 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   int _chartMode = 0; // 0 = Reels, 1 = Long Videos, 2 = Screen Time
   int _weekOffset = 0; // 0 = current week, -1 = previous, etc.
   bool _chipActive = true;
+  A11yHealth? _health;          // is the Reel counter really running (SnapyApp.kt A11yHealth)
+  bool _restricted = false;     // Android 13+ restricted settings (sideloaded APK)
   StreamSubscription? _sub;
 
   @override
@@ -71,11 +74,20 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
         t = await SnapyCore.today();
       }
       final active = await SnapyCore.isChipActive();
+      final health = await NextApi.a11yHealth();
+      var restricted = false;
+      if (health != null && health.off) {
+        try {
+          restricted = await SnapyCore.isRestrictedSettings();
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() {
           _perm = p;
           _today = t;
           _chipActive = active;
+          _health = health;
+          _restricted = restricted;
           _loadingUsage = false;
         });
       }
@@ -375,6 +387,10 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
               ),
 
               const SizedBox(height: 16),
+
+              // 1b. The Reel counter was stopped by the phone (or blocked as a sideloaded app)
+              if (A11yHealthCard.wanted(_health, _restricted))
+                A11yHealthCard(health: _health!, restricted: _restricted, onSideloadGuide: () => _showRestrictedSettingsGuide(context)),
 
               // 2. Missing Permissions Warning Banner (removed when all granted)
               if (missingPerms.isNotEmpty) ...[

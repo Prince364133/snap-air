@@ -218,12 +218,11 @@ class CloudLLM:
         if time.time() - t < 60:
             return ok
         try:
-            url = appdata.get("web.connectivity_check") or "https://www.google.com"
-            requests.head(url, timeout=2)
+            requests.head(appdata.get("web.connectivity_check"), timeout=2)
             ok = True
         except requests.RequestException:
             try:
-                requests.head("https://1.1.1.1", timeout=2)
+                requests.head(appdata.get("web.connectivity_fallback"), timeout=2)
                 ok = True
             except Exception as e:                    # noqa: BLE001 - offline is an answer, not an error
                 diag.record("cloud.online_check", e, quiet=True)
