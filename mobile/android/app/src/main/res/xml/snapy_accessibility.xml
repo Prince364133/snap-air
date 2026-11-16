@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Real Count: reads which app is open and counts full-screen short-video swipes.
      Not an accessibility tool (isAccessibilityTool=false): declared to Google Play with a prominent disclosure. -->
-<!-- Volume Up+Down: Snapy is the target of Android's accessibility shortcut. With
-     flagRequestAccessibilityButton (targetSdk > 29) the shortcut calls the button callback instead of
-     toggling the service. No key-event filtering (canRequestFilterKeyEvents stays false: ColorOS kills
-     services that filter keys). typeViewClicked: the reel lock re-checks the feed after a tap. -->
+<!-- DON'T add flagRequestAccessibilityButton. For targetSdk >= 30, Android Settings then treats
+     the service as "shortcut-only" (AccessibilityServiceFragmentType INVISIBLE_TOGGLE): the page
+     shows only "Shortcut" and "App info", with NO on/off switch, and the service runs only while a
+     shortcut is assigned. Without it, the page has the normal switch.
+     No key-event filtering either (canRequestFilterKeyEvents stays false: ColorOS kills services
+     that filter keys). So Snapy must NOT be the target of the volume-key accessibility shortcut:
+     on a normal service that shortcut toggles the service off. Hands-free activation is the wake
+     word, the digital-assistant gesture and the notification/tile instead.
+     typeViewClicked: the reel lock re-checks the feed after a tap. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeViewScrolled|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestAccessibilityButton"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canRequestFilterKeyEvents="false"
     android:canPerformGestures="false"

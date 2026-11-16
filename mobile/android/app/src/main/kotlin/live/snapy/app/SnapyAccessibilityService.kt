@@ -102,6 +102,7 @@ class SnapyAccessibilityService : AccessibilityService() {
         }
         safe("shortcut") { registerShortcut() }
         safe("tick") { tick() }
+        safe("wake") { WakeWordService.ensureRunning(this) }   // the phone killed Snapy: "Hey Snapy" back too
     }
 
     private inline fun safe(step: String, block: () -> Unit) {

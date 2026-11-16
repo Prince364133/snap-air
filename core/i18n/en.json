@@ -423,7 +423,8 @@
   "notif.chip_title": "Snapy chip is on",
   "notif.chip_text": "Shows your screen time over other apps. Turn off in Snapy → Chip & nudges.",
   "notif.wake_title": "Turn “Hey Snapy” back on?",
-  "notif.wake_text": "Your phone restarted. Tap to listen for “Hey Snapy” again.",
+  "notif.wake_text": "Android stopped listening in the background. Tap to listen for “Hey Snapy” again.",
+  "wake.model_failed": "Couldn’t download the “Hey Snapy” voice model. Snapy will try again when you’re online.",
 
   "nav.home": "Home",
   "nav.tools": "Tools",

@@ -347,18 +347,6 @@ class _ProfileTabState extends State<ProfileTab> {
                     onChanged: (v) => _setMode('wake', v ?? false),
                   ),
                   CheckboxListTile(
-                    secondary: const Icon(Icons.volume_up_outlined),
-                    title: Text(tr('profile.volume')),
-                    subtitle: Text(tr('profile.volume_sub')),
-                    value: _modes.volume,
-                    onChanged: (v) => _setMode('volume', v ?? false),
-                  ),
-                  if (_modes.volumeNeedsSetup)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: VolumeShortcutGuide(modes: _modes, assistant: a['assistant'] ?? 'Snapy'),
-                    ),
-                  CheckboxListTile(
                     secondary: const Icon(Icons.power_settings_new),
                     title: Text(tr('profile.power')),
                     subtitle: Text(tr('profile.power_sub', a)),
@@ -457,37 +445,6 @@ class _ProfileTabState extends State<ProfileTab> {
           },
         ),
       ),
-    );
-  }
-}
-
-/// How to make Snapy the target of Android's volume-key accessibility shortcut (§4): the
-/// service must be on and chosen under its "shortcut" option. Snapy can't set this itself.
-class VolumeShortcutGuide extends StatelessWidget {
-  final ActivationModes modes;
-  final String assistant;
-  const VolumeShortcutGuide({super.key, required this.modes, required this.assistant});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SnapyColors.of(context);
-    final a = {'assistant': assistant};
-    return Container(
-      key: const ValueKey('volume-shortcut-guide'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(tr(modes.shortcut ? 'profile.volume_setup_target' : 'profile.volume_setup_service', a),
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        Text(tr('profile.volume_steps', a), style: TextStyle(color: c.text2, fontSize: 13)),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () => SnapyCore.openRealCountSettings().catchError((_) {}),
-          icon: const Icon(Icons.accessibility_new),
-          label: Text(tr('profile.volume_open')),
-        ),
-      ]),
     );
   }
 }

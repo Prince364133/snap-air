@@ -2,6 +2,7 @@
 //   VolumeCombo   -> Activation.kt (VolumeCombo)         volume Up+Down held 2800 ms
 //   CaptionClock  -> Captions.kt (CaptionClock)          caption capsule timing
 //   SosMachine    -> SosActivity.kt (SosMachine, Morse)  SOS states + torch strobe pattern
+//   wakeMatches   -> WakeMatch.kt                        did the offline recogniser hear the wake word
 // Kept free of Flutter/IO so test/phone_services_test.dart pins the behaviour both follow.
 
 /// Volume Up + Down held together for [holdMs] -> one activation. Only the combo is consumed:
@@ -169,4 +170,17 @@ class SosMachine {
   }();
 
   static int get _sosLength => _sos.length;
+}
+
+/// Did the offline recogniser (Vosk, grammar mode) hear a wake phrase? Mirror of WakeMatch.kt.
+/// Vosk returns only the phrases' words plus "[unk]" for anything else ("hey snappy [unk] [unk]"
+/// for "Hey Snapy, open YouTube"): "[unk]" is ignored and a whole phrase must be present as words.
+bool wakeMatches(String? heard, List<String> phrases) {
+  final words = (heard ?? '').toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty && w != '[unk]').toList();
+  if (words.isEmpty) return false;
+  final text = ' ${words.join(' ')} ';
+  return phrases.any((p) {
+    final w = p.toLowerCase().trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
+    return w.isNotEmpty && text.contains(' ${w.join(' ')} ');
+  });
 }

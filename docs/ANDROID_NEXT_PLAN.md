@@ -221,3 +221,6 @@ Static compile review of every Kotlin file and the manifest (nothing compiled he
 | Core intent domain `phone_device` (en / hinglish / devanagari, slot map `phone_device.camera`) + 46 conformance cases (Python + Dart runners) | `core/intents`, `core/conformance/phone_device.json` |
 
 Still device-only: everything in the list above, plus the volume-key shortcut target read (`accessibility_shortcut_target_service` may be unreadable on some OEMs → the guide just shows), `startService` → microphone FGS from the background on Android 14+, and the crash guard on real crashes.
+
+### 12.2 Fix: accessibility switch missing (2026-11-16)
+`flagRequestAccessibilityButton` (added for the volume-key shortcut) made Android Settings show Snapy Metrics Collection as a shortcut-only service: just "Shortcut" and "App info", no on/off switch, and the service ran only while a shortcut was assigned. The flag is removed. Volume Up+Down activation is dropped: on a normal service the accessibility shortcut toggles the service, and key filtering gets the service killed on ColorOS. Activation is now the wake word, the digital-assistant gesture, and the notification/tile. The volume mode defaults to off and is no longer offered in onboarding or Profile.

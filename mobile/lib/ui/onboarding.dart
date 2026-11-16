@@ -11,7 +11,6 @@ import '../realcount/oem.dart' show oemOf;
 import 'main_scaffold.dart';
 import 'orb.dart';
 import 'profile_store.dart';
-import 'profile_tab.dart' show VolumeShortcutGuide;
 
 /// One permission card: why we ask, how to grant it, and what to tap in Settings.
 class PermCard {
@@ -80,7 +79,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
   String _oem = 'other';
   int _sdk = 0;
   final Map<String, bool> _modes = {'wake': false, 'volume': false, 'power': false};
-  ActivationModes? _act;        // shortcut / shortcutTarget for the volume-key setup steps
   bool _saving = false;
 
   bool get _intro => widget.isInitialSetup;
@@ -112,9 +110,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState s) {
     if (s == AppLifecycleState.resumed) {
       _refresh(); // back from Android Settings
-      NextApi.activationModes().then((m) {
-        if (mounted && m != null) setState(() => _act = m);
-      });
     }
   }
 
@@ -139,7 +134,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
     setState(() {
       if (_name.text.isEmpty && p.name.isNotEmpty) _name.text = p.name;
       if (p.assistantName.isNotEmpty) _assistant.text = p.assistantName;
-      _act = m;
       if (m != null) {
         for (final k in _modes.keys.toList()) {
           _modes[k] = m.of(k);
@@ -428,19 +422,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> with WidgetsBindingObse
       if (card.id == 'mic') ...[
         const SizedBox(height: 16),
         Text(tr('onb.mic.modes', a), style: t.titleMedium),
-        for (final m in ['wake', 'volume', 'power'])
+        // no volume-key mode: Snapy must not be the accessibility-shortcut target (it would hide
+        // the service's on/off switch or toggle the Reel counter off; see snapy_accessibility.xml)
+        for (final m in ['wake', 'power'])
           CheckboxListTile(
             key: ValueKey('mode-$m'),
             contentPadding: EdgeInsets.zero,
             value: _modes[m],
             onChanged: (v) => _setMode(m, v ?? false),
             title: Text(tr('onb.mode.$m', a)),
-          ),
-        // the volume keys reach Snapy only once it is Android's accessibility-shortcut target
-        if (_modes['volume'] == true && (_act == null || _act!.shortcutTarget != true))
-          VolumeShortcutGuide(
-            modes: ActivationModes(volume: true, shortcut: _act?.shortcut ?? (_status['realcount'] ?? false), shortcutTarget: _act?.shortcutTarget),
-            assistant: _assistantName,
           ),
       ],
       const SizedBox(height: 16),

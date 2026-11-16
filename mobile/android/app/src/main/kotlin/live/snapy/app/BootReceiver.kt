@@ -31,22 +31,31 @@ class BootReceiver : BroadcastReceiver() {
             try { WakeWordService.enable(ctx, true) } catch (_: Exception) { }
             return
         }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, Strings.t(ctx, "notif.wake_title"), NotificationManager.IMPORTANCE_LOW))
-        }
-        val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_IMMUTABLE)
-        nm.notify(9, NotificationCompat.Builder(ctx, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(Strings.t(ctx, "notif.wake_title"))
-            .setContentText(Strings.t(ctx, "notif.wake_text"))
-            .setAutoCancel(true)
-            .setContentIntent(open)
-            .build())
+        postWakeResume(ctx)
     }
 
-    companion object { private const val CHANNEL = "snapy_boot" }
+    companion object {
+        private const val CHANNEL = "snapy_boot"
+
+        /** "Tap to turn “Hey Snapy” back on": opening Snapy restarts it from the foreground (MainActivity). */
+        fun postWakeResume(ctx: Context) {
+            try {
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (nm.getNotificationChannel(CHANNEL) == null) {
+                    nm.createNotificationChannel(NotificationChannel(CHANNEL, Strings.t(ctx, "notif.wake_title"), NotificationManager.IMPORTANCE_LOW))
+                }
+                val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_IMMUTABLE)
+                nm.notify(9, NotificationCompat.Builder(ctx, CHANNEL)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(Strings.t(ctx, "notif.wake_title"))
+                    .setContentText(Strings.t(ctx, "notif.wake_text"))
+                    .setAutoCancel(true)
+                    .setContentIntent(open)
+                    .build())
+            } catch (_: Throwable) { }
+        }
+    }
 }

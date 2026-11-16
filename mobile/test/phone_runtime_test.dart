@@ -57,7 +57,7 @@ void main() {
 
   test('activation modes: defaults, wake mirrors android_wake_word, event', () async {
     final m = jsonDecode(await rt.call('activation_modes', [])) as Map;
-    expect(m, {'wake': false, 'volume': true, 'power': true});
+    expect(m, {'wake': false, 'volume': false, 'power': true});
     final m2 = jsonDecode(await rt.call('set_activation_mode', ['wake', 'true'])) as Map;
     expect(m2['wake'], true);
     expect(rt.settings.get('android_wake_word'), true);

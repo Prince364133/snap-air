@@ -109,20 +109,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('profile: volume shortcut on but Snapy not the shortcut target -> setup steps', (tester) async {
+  testWidgets('profile: no volume-key mode (it would remove the Reel counter switch)', (tester) async {
     await tester.pumpWidget(app(const ProfileTab()));
     await tester.pump();
-    final guide = find.byKey(const ValueKey('volume-shortcut-guide'), skipOffstage: false);
-    expect(guide, findsOneWidget);
-    await tester.ensureVisible(find.text('Open Accessibility settings'));
-    await tester.tap(find.text('Open Accessibility settings'));
-    await tester.pump();
-    expect(fake.named('openRealCountSettings'), isNotEmpty);
-
-    fake.modes = {...fake.modes, 'shortcut': true, 'shortcutTarget': true};
-    await tester.pumpWidget(app(const SizedBox()));
-    await tester.pumpWidget(app(const ProfileTab()));
-    await tester.pump();
+    expect(find.byIcon(Icons.volume_up_outlined, skipOffstage: false), findsNothing);
     expect(find.byKey(const ValueKey('volume-shortcut-guide'), skipOffstage: false), findsNothing);
     await tester.pump(const Duration(seconds: 5));
   });

@@ -74,8 +74,15 @@ class WakeWordService : Service(), RecognitionListener {
                 ACTION_PAUSE -> { startInForeground(); if (recorder == null) { speech?.stop(); speech = null } }
                 else -> {
                     if (recorder != null) { startInForeground(); return START_STICKY }          // recording owns the mic
-                    if (!enabled) { stopSelfSafely(); return START_NOT_STICKY }                  // sticky restart with wake off
-                    startInForeground()
+                    // a sticky restart after the phone killed Snapy: `enabled` is gone with the old
+                    // process, the user's choice is in prefs
+                    if (!enabled && RcPrefs(this).bool(RcPrefs.WAKE_WANTED)) enabled = true
+                    if (!enabled) { stopSelfSafely(); return START_NOT_STICKY }                  // wake word is off
+                    try { startInForeground() } catch (e: Exception) {
+                        // Android refuses a microphone service started from the background: ask for one tap
+                        BootReceiver.postWakeResume(this)
+                        return START_NOT_STICKY
+                    }
                     Thread { try { startListening() } catch (t: Throwable) { android.util.Log.e(TAG, "startListening failed") } }.start()
                 }
             }
@@ -219,48 +226,82 @@ class WakeWordService : Service(), RecognitionListener {
     // ------------------------------------------------------------------ wake-word mode
     @Synchronized
     private fun startListening() {
-        if (speech != null || VoiceController.active || recorder != null) return
-        val core = CoreBridge.get(this)
-        val cfg = JSONObject(core.configNowCall("voice_config"))
-        val m = model ?: loadModel(cfg.optJSONObject("wake_model") ?: return)?.also { model = it } ?: return
-        // grammar mode: only the wake phrases (+ "[unk]") can be recognised -> cheap and few false wakes
-        val grammar = JSONArray(cfg.optJSONArray("wake_phrases")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: listOf("hey snappy"))
-            .put("[unk]")
-        val rec = Recognizer(m, 16000f, grammar.toString())
-        speech = SpeechService(rec, 16000f).also { it.startListening(this) }
+        if (speech != null || VoiceController.active || recorder != null || !enabled) return
+        try {
+            val core = CoreBridge.get(this)
+            val cfg = JSONObject(core.configNowCall("voice_config"))
+            val spec = cfg.optJSONObject("wake_model") ?: return
+            val m = model ?: loadModel(spec)?.also { model = it }
+            if (m == null) { retryListening(); return }                              // no model yet (offline?)
+            val list = phrases(cfg).ifEmpty { listOf("hey snappy", "snappy") }
+            wakePhrases = list
+            // grammar mode: only the wake phrases (+ "[unk]") can be recognised -> cheap and few false wakes
+            val grammar = JSONArray(list).put("[unk]")
+            val rec = Recognizer(m, 16000f, grammar.toString())
+            speech = SpeechService(rec, 16000f).also { it.startListening(this) }
+            retryMs = 1000L
+        } catch (t: Throwable) {
+            android.util.Log.e(TAG, "startListening failed: ${t.javaClass.simpleName}")
+            speech = null
+            retryListening()
+        }
+    }
+
+    /** Listening ended by an error/timeout, or the model isn't there yet: try again, backing off to 60 s. */
+    private var retryMs = 1000L
+    private fun retryListening() {
+        val wait = retryMs
+        retryMs = (retryMs * 2).coerceAtMost(60_000L)
+        main.postDelayed({
+            if (enabled && recorder == null && speech == null && !VoiceController.active) Thread { startListening() }.start()
+        }, wait)
     }
 
     /** Downloads the 36 MB model once (progress goes to the app as a "setup" event). */
     private fun loadModel(spec: JSONObject): Model? {
-        val dir = File(filesDir, "snapy/models/" + spec.getString("folder"))
-        if (!File(dir, "am").exists() && !File(dir, "conf").exists()) {
-            val core = CoreBridge.get(this)
-            try {
-                val conn = URL(spec.getString("url")).openConnection() as HttpURLConnection
-                val total = conn.contentLengthLong
-                var done = 0L
-                ZipInputStream(object : java.io.FilterInputStream(conn.inputStream) {
-                    override fun read(b: ByteArray, off: Int, len: Int): Int {
-                        val n = super.read(b, off, len)
-                        if (n > 0) { done += n; if (done % (512 * 1024) < n) progress(core, done, total) }
-                        return n
-                    }
-                }).use { zip ->
-                    var e = zip.nextEntry
-                    while (e != null) {
-                        val out = File(dir.parentFile, e.name)
-                        if (!out.canonicalPath.startsWith(dir.parentFile!!.canonicalPath)) throw SecurityException("bad zip entry")
-                        if (e.isDirectory) out.mkdirs() else { out.parentFile?.mkdirs(); out.outputStream().use { zip.copyTo(it) } }
-                        e = zip.nextEntry
-                    }
-                }
-                progress(core, total, total)
-            } catch (ex: Exception) {
-                core.publish(JSONObject().put("type", "toast").put("text", "Couldn't download the wake-word model: ${ex.message}"))
-                return null
-            }
+        val folder = spec.getString("folder")
+        val dir = File(filesDir, "snapy/models/$folder")
+        if (File(dir, ".complete").exists() || (dir.exists() && !File(dir.parentFile, "$folder.part").exists() && File(dir, "am").exists())) {
+            try { return Model(dir.absolutePath) } catch (_: Throwable) { dir.deleteRecursively() }   // broken: fetch again
         }
-        return try { Model(dir.absolutePath) } catch (_: Exception) { null }
+        val core = CoreBridge.get(this)
+        // extract into <folder>.part, then rename: an interrupted download never looks finished
+        val tmp = File(filesDir, "snapy/models/$folder.part")
+        tmp.deleteRecursively(); tmp.mkdirs()
+        try {
+            val conn = URL(spec.getString("url")).openConnection() as HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
+            val total = conn.contentLengthLong
+            var done = 0L
+            ZipInputStream(object : java.io.FilterInputStream(conn.inputStream) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val n = super.read(b, off, len)
+                    if (n > 0) { done += n; if (done % (512 * 1024) < n) progress(core, done, total) }
+                    return n
+                }
+            }).use { zip ->
+                var e = zip.nextEntry
+                while (e != null) {
+                    // entries are "<folder>/..."; keep the part under it
+                    val rel = e.name.substringAfter('/', e.name)
+                    val out = File(tmp, rel)
+                    if (!out.canonicalPath.startsWith(tmp.canonicalPath)) throw SecurityException("bad zip entry")
+                    if (e.isDirectory) out.mkdirs() else { out.parentFile?.mkdirs(); out.outputStream().use { zip.copyTo(it) } }
+                    e = zip.nextEntry
+                }
+            }
+            File(tmp, ".complete").writeText("ok")
+            dir.deleteRecursively()
+            if (!tmp.renameTo(dir)) throw java.io.IOException("rename failed")
+            progress(core, total, total)
+        } catch (ex: Exception) {
+            tmp.deleteRecursively()
+            core.publish(JSONObject().put("type", "toast").put("text",
+                Strings.t(this, "wake.model_failed").let { if (it == "wake.model_failed") "Couldn't download the “Hey Snapy” voice model. Snapy will try again when you're online." else it }))
+            return null
+        }
+        return try { Model(dir.absolutePath) } catch (_: Throwable) { dir.deleteRecursively(); null }
     }
 
     private fun progress(core: CoreBridge, done: Long, total: Long) = core.publish(JSONObject().put("type", "setup")
@@ -271,12 +312,12 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onPartialResult(hypothesis: String?) = check(hypothesis, "partial")
     override fun onResult(hypothesis: String?) = check(hypothesis, "text")
     override fun onFinalResult(hypothesis: String?) = check(hypothesis, "text")
-    override fun onError(e: Exception?) { speech = null }
-    override fun onTimeout() { speech = null }
+    override fun onError(e: Exception?) { speech?.shutdown(); speech = null; retryListening() }
+    override fun onTimeout() { speech?.shutdown(); speech = null; retryListening() }
 
     private fun check(json: String?, key: String) {
         val heard = try { JSONObject(json ?: "{}").optString(key) } catch (_: Exception) { "" }
-        if (heard.isBlank() || heard == "[unk]" || heard.contains("[unk]")) return
+        if (!WakeMatch.matches(heard, wakePhrases)) return
         speech?.stop(); speech = null
         Activation.trigger(this, "wake")                  // "Hey Snapy" -> greeting + one spoken turn
     }
@@ -307,7 +348,15 @@ class WakeWordService : Service(), RecognitionListener {
         @Volatile var isRecording = false; private set
         @Volatile private var commandPending = false
 
+        /**
+         * The user's choice, saved for the service (sticky restarts), the boot receiver and the
+         * activation gate (Activation.modeOn "wake"): one switch, so "listening but ignoring the
+         * wake word" can't happen.
+         */
         fun enable(ctx: Context, on: Boolean) {
+            val prefs = RcPrefs(ctx)
+            prefs.putBool(RcPrefs.WAKE_WANTED, on)
+            prefs.putBool("act_wake", on)
             enabled = on
             val i = Intent(ctx, WakeWordService::class.java)
             if (on) {
@@ -316,12 +365,22 @@ class WakeWordService : Service(), RecognitionListener {
                     return
                 }
                 try { ctx.startForegroundService(i) } catch (e: Exception) {
+                    // not allowed from here (background): keep the choice, ask for one tap
                     android.util.Log.e(TAG, "startForegroundService failed: ${e.javaClass.simpleName}")
-                    enabled = false
+                    BootReceiver.postWakeResume(ctx)
                 }
             } else if (!isRecording) {
                 try { ctx.stopService(i) } catch (_: Exception) {}
             }
+        }
+
+        /** Wanted but not running (the phone killed it): start again, or post the one-tap notice. */
+        fun ensureRunning(ctx: Context) {
+            if (running || !RcPrefs(ctx).bool(RcPrefs.WAKE_WANTED)) return
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+            enabled = true
+            try { ctx.startForegroundService(Intent(ctx, WakeWordService::class.java)) }
+            catch (_: Exception) { BootReceiver.postWakeResume(ctx) }
         }
 
         /** Meeting audio on (op "meeting_audio" from the runtime). Works while Snapy is visible

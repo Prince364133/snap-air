@@ -7,6 +7,26 @@ import 'package:snapy/core_runtime/phone_services.dart';
 import 'package:snapy/core_runtime/runtime.dart';
 
 void main() {
+  group('wakeMatches (mirror of WakeMatch.kt)', () {
+    const phrases = ['hey snappy', 'snappy', 'hi snappy', 'okay snappy', 'hey meera'];
+    test('the wake word alone', () {
+      expect(wakeMatches('hey snappy', phrases), isTrue);
+      expect(wakeMatches('  Hey   SNAPPY ', phrases), isTrue);
+    });
+    test('wake word followed by a command (Vosk: [unk] for the rest)', () {
+      expect(wakeMatches('hey snappy [unk] [unk]', phrases), isTrue);
+      expect(wakeMatches('[unk] snappy [unk]', phrases), isTrue);
+    });
+    test('never on noise, "hey" alone, or a dropped unknown name', () {
+      expect(wakeMatches('', phrases), isFalse);
+      expect(wakeMatches(null, phrases), isFalse);
+      expect(wakeMatches('[unk]', phrases), isFalse);
+      expect(wakeMatches('hey', phrases), isFalse);           // "hey meera" with "meera" not in the model
+      expect(wakeMatches('hey [unk]', phrases), isFalse);
+      expect(wakeMatches('snappyish', ['snappy']), isFalse);  // whole words only
+    });
+  });
+
   group('VolumeCombo (2800 ms)', () {
     test('fires once when both keys are held 2800 ms, consumes only after firing', () {
       final c = VolumeCombo();

@@ -553,7 +553,8 @@ class SnapyRuntime {
   }
 
   // ---- activation modes (device-only: settings `activation_modes`; wake mirrors android_wake_word)
-  static const activationDefaults = {'wake': false, 'volume': true, 'power': true};
+  // volume off: the accessibility-shortcut route hides the service switch (snapy_accessibility.xml)
+  static const activationDefaults = {'wake': false, 'volume': false, 'power': true};
 
   Map<String, dynamic> activationModes() {
     final m = Map<String, dynamic>.from((settings.get('activation_modes') as Map?) ?? const {});

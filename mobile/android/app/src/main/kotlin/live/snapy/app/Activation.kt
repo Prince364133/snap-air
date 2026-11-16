@@ -42,7 +42,7 @@ object Activation {
     @Volatile private var lastAt = 0L
 
     fun modeOn(ctx: Context, mode: String): Boolean = when (mode) {
-        "wake" -> RcPrefs(ctx).bool("act_wake", false)
+        "wake" -> RcPrefs(ctx).bool("act_wake", false) || RcPrefs(ctx).bool(RcPrefs.WAKE_WANTED)
         "volume", "shortcut" -> RcPrefs(ctx).bool("act_volume", true)
         "power" -> RcPrefs(ctx).bool("act_power", true)
         else -> true
