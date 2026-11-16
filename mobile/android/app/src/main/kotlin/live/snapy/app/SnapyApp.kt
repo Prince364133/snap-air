@@ -75,9 +75,25 @@ object CrashLog {
         return frames.none { it.className == "android.app.ActivityThread" && it.methodName in startup }
     }
 
-    /** Never throws. Keeps the newest [KEEP] reports. */
+    /** Same fault (place + exception + top frame) -> when it was last written. */
+    private val lastWritten = HashMap<String, Long>()
+    private const val REPEAT_MS = 60_000L
+
+    /**
+     * Never throws. Keeps the newest [KEEP] reports. A fault that repeats (e.g. on every
+     * accessibility event) is written at most once a minute, so it can't turn into disk I/O
+     * on every event.
+     */
     fun record(ctx: Context, where: String, t: Throwable) {
         try {
+            val sig = "$where|${t.javaClass.name}|${t.stackTrace.firstOrNull()}"
+            val now = android.os.SystemClock.elapsedRealtime()
+            synchronized(lastWritten) {
+                val prev = lastWritten[sig]
+                if (prev != null && now - prev < REPEAT_MS) return
+                lastWritten[sig] = now
+                if (lastWritten.size > 64) lastWritten.clear()
+            }
             Log.e(TAG, where, t)
             val dir = File(ctx.filesDir, "diag").apply { mkdirs() }
             val sw = StringWriter()

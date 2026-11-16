@@ -203,3 +203,21 @@ Events on `snapy/events`:
 | §9 methods | Done | `PhoneServices.kt` (first handler on `snapy/core`) + runtime `call()` |
 
 Device-verification list: bounce latency (`ReelLockController.lastLatencyMs`) on Instagram Reels / YouTube Shorts and DMs still usable; ViewPager2 item identity on current app versions; accessibility-shortcut callback on ColorOS/OneUI/HyperOS; MediaCodec AAC on low-end chips; CameraX over the lock screen; BiometricPrompt + time-bound RSA key on Android 9–10.
+
+### 12.1 Review & fix (2026-11-16)
+
+Static compile review of every Kotlin file and the manifest (nothing compiled here: no Gradle), plus runtime fixes. Not device-verified.
+
+| Fix / item | Where |
+|---|---|
+| Legacy `snapy/core` branches shadowed by PhoneServices removed (hardcoded app lists, `testGeminiKey` with the key in a URL, `lock_`/`limit_` prefs); `setAppLimit` writes the one reel-limit store, soft unless asked; `setWakeWord` goes through `set_activation_mode` (the `act_wake` mirror was never set, so "Hey Snapy" was ignored by `Activation.trigger`) | `SnapyChannels.kt` |
+| Meeting mic: no `startForegroundService` without RECORD_AUDIO (crash "did not call startForeground"); `startService` when the FGS already runs; Vosk model looked up once (it blocked the audio loop every 100 ms); encoder EOS timeout | `WakeWordService.kt`, `MeetingAudioRecorder.kt`, `PhoneServices.kt` |
+| Keyboard window no longer an app switch (reel scrolls were dropped); long video credited on leave only without a reel meanwhile | `SnapyAccessibilityService.kt` |
+| Capsule turns touchable when the lock line follows a deflector bubble ("5 more" tap was dead); `Display.getCutout` API-29 guard; `Settings.Panel` fallback on 8–9; SOS copy from i18n + no-ringtone guard; crash-guard no longer treats its own frame as "our code" | `CameraCapsule.kt`, `ChipOverlay.kt`, `OpExecutor.kt`, `SosActivity.kt`, `SnapyApp.kt` |
+| App limits page: catalogue + `reelLimits` store, off by default, soft default, hard lock opt-in with "only the reels/shorts feed is blocked, DMs and the rest of the app keep working" | `app_limits_page.dart` |
+| Volume-shortcut setup guide (activationModes `shortcut` / `shortcutTarget`), `meeting_audio_upload` switch with disclosure, Reel-counter health card (A11yHealth, brand steps), Diagnostics (crash reports, copy/clear) | `profile_tab.dart`, `onboarding.dart`, `settings_page.dart`, `a11y_health_card.dart`, `diagnostics_page.dart`, `next_api.dart`, `PhoneServices.kt` |
+| Strings: en.ui.json + Kotlin/runtime keys moved to `core/i18n/en.json` (other languages fall back to English for them; parity test now "subset + same placeholders"); conflicts resolved as `chip.paused_time`, `reset.finished` | `core/i18n`, `core/README.md` §8 |
+| Catalogue 18 short-video apps; `android.emergency_number`, `android.realcount.reel_lock`, `android.realcount.long_video_apps` | `core/rules/social.json`, `phone.json` |
+| Core intent domain `phone_device` (en / hinglish / devanagari, slot map `phone_device.camera`) + 46 conformance cases (Python + Dart runners) | `core/intents`, `core/conformance/phone_device.json` |
+
+Still device-only: everything in the list above, plus the volume-key shortcut target read (`accessibility_shortcut_target_service` may be unreadable on some OEMs → the guide just shows), `startService` → microphone FGS from the background on Android 14+, and the crash guard on real crashes.
