@@ -206,8 +206,6 @@
         <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="google.navigation"/></intent>
         <intent><action android:name="android.intent.action.SET_ALARM"/></intent>
         <intent><action android:name="android.intent.action.SET_TIMER"/></intent>
-        <package android:name="com.whatsapp"/>
-        <package android:name="com.whatsapp.w4b"/>
         <!-- Android speech recognition (talking to Snapy) -->
         <intent>
             <action android:name="android.speech.RecognitionService"/>

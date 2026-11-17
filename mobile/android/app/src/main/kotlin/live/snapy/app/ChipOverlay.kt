@@ -315,7 +315,7 @@ class LivingOrbView(context: Context) : View(context) {
  *  - Native package icon for Snapchat, TikTok, Facebook, etc.
  */
 class ReelIconView(context: Context) : View(context) {
-    var appPackage: String = "com.instagram.android"
+    var appPackage: String = ""
         set(value) {
             field = value
             invalidate()
@@ -346,9 +346,8 @@ class ReelIconView(context: Context) : View(context) {
             val r = minOf(w, h)
             val corner = r * 0.28f
 
-            if (!isReelMode) {
-                // Real installed application launcher icon (works for any app: WhatsApp, Telegram, Camera, Games, etc.)
-                var drawn = false
+            var drawn = false
+            if (appPackage.isNotEmpty()) {
                 try {
                     val pm = context.packageManager
                     val icon = pm.getApplicationIcon(appPackage)
@@ -362,95 +361,21 @@ class ReelIconView(context: Context) : View(context) {
                     canvas.restore()
                     drawn = true
                 } catch (_: Exception) {}
-
-                if (!drawn) {
-                    bgPaint.shader = null
-                    bgPaint.color = 0xFF28C8FF.toInt()
-                    canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-                    val circleR = r * 0.28f
-                    canvas.drawCircle(w / 2f, h / 2f, circleR, whiteFill)
-                }
-                return
             }
 
-            if (appPackage.contains("instagram")) {
-                // Instagram Sunset Gradient: #F58529 -> #DD2A7B -> #8134AF
-                bgPaint.shader = LinearGradient(
-                    0f, h, w, 0f,
-                    intArrayOf(0xFFF58529.toInt(), 0xFFDD2A7B.toInt(), 0xFF8134AF.toInt()),
-                    floatArrayOf(0f, 0.5f, 1f),
-                    Shader.TileMode.CLAMP
-                )
+            if (!drawn) {
+                bgPaint.shader = LinearGradient(0f, 0f, w, h, 0xFF28C8FF.toInt(), 0xFF007AFF.toInt(), Shader.TileMode.CLAMP)
                 canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-
-                // Clapper top separator
-                strokePaint.strokeWidth = r * 0.08f
-                val clapperY = h * 0.30f
-                canvas.drawLine(w * 0.16f, clapperY, w * 0.84f, clapperY, strokePaint)
-
-                // Clapper diagonal slashes
-                strokePaint.strokeWidth = r * 0.06f
-                canvas.drawLine(w * 0.32f, clapperY, w * 0.40f, h * 0.12f, strokePaint)
-                canvas.drawLine(w * 0.58f, clapperY, w * 0.66f, h * 0.12f, strokePaint)
-
-                // Center Play triangle
-                val playPath = Path().apply {
-                    val cx = w * 0.52f
-                    val cy = h * 0.62f
-                    val sz = r * 0.18f
-                    moveTo(cx - sz * 0.7f, cy - sz)
-                    lineTo(cx + sz, cy)
-                    lineTo(cx - sz * 0.7f, cy + sz)
-                    close()
-                }
-                canvas.drawPath(playPath, whiteFill)
-            } else if (appPackage.contains("youtube")) {
-                // YouTube Shorts Red
-                bgPaint.shader = null
-                bgPaint.color = 0xFFFF0000.toInt()
-                canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-
-                // Play Triangle
                 val playPath = Path().apply {
                     val cx = w * 0.53f
                     val cy = h * 0.50f
-                    val sz = r * 0.24f
+                    val sz = r * 0.22f
                     moveTo(cx - sz * 0.8f, cy - sz)
                     lineTo(cx + sz, cy)
                     lineTo(cx - sz * 0.8f, cy + sz)
                     close()
                 }
                 canvas.drawPath(playPath, whiteFill)
-            } else {
-                var drawn = false
-                try {
-                    val pm = context.packageManager
-                    val icon = pm.getApplicationIcon(appPackage)
-                    val path = Path().apply {
-                        addRoundRect(0f, 0f, w, h, corner, corner, Path.Direction.CW)
-                    }
-                    canvas.save()
-                    canvas.clipPath(path)
-                    icon.setBounds(0, 0, w.toInt(), h.toInt())
-                    icon.draw(canvas)
-                    canvas.restore()
-                    drawn = true
-                } catch (_: Exception) {}
-
-                if (!drawn) {
-                    bgPaint.shader = LinearGradient(0f, 0f, w, h, 0xFFFF9500.toInt(), 0xFFFF5E3A.toInt(), Shader.TileMode.CLAMP)
-                    canvas.drawRoundRect(0f, 0f, w, h, corner, corner, bgPaint)
-                    val playPath = Path().apply {
-                        val cx = w * 0.53f
-                        val cy = h * 0.50f
-                        val sz = r * 0.22f
-                        moveTo(cx - sz * 0.8f, cy - sz)
-                        lineTo(cx + sz, cy)
-                        lineTo(cx - sz * 0.8f, cy + sz)
-                        close()
-                    }
-                    canvas.drawPath(playPath, whiteFill)
-                }
             }
         } catch (t: Throwable) {
             android.util.Log.e("ReelIconView", "Draw error", t)
@@ -528,7 +453,7 @@ class ChipOverlay(
     private var noteText: TextView? = null
 
     private var isSocialActive = false
-    private var activeSocialPkg = "com.instagram.android"
+    private var activeSocialPkg = ""
     private var activeAppPkg = ""
     private var currentAppMs = 0L
     private var appSessionStartMs = 0L

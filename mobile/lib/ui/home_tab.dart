@@ -82,6 +82,21 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
         } catch (_) {}
       }
       final active = await SnapyCore.isChipActive();
+      // Dynamically import all installed applications and labels from the user's device
+      try {
+        final installed = await SnapyCore.getInstalledApps();
+        if (installed.isNotEmpty) {
+          final map = <String, String>{};
+          for (final a in installed) {
+            final pkg = a['package'] as String?;
+            final label = a['label'] as String?;
+            if (pkg != null && label != null && label.isNotEmpty) {
+              map[pkg] = label;
+            }
+          }
+          SnapyCore.registerAppLabels(map);
+        }
+      } catch (_) {}
       final health = await NextApi.a11yHealth();
       var restricted = false;
       if (health != null && health.off) {
@@ -786,7 +801,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   }
 
   Widget _buildAppUsageRow(SnapyColors c, String pkg, int ms, int maxMs, ({int reels, int reelMs, int longVideos})? stat) {
-    final label = _prettyAppLabel(pkg);
+    final label = _appLabel(pkg);
     // Dynamic fallback: if not yet cached, resolve asynchronously from device PackageManager without blocking UI
     if (!SnapyCore.hasCachedAppLabel(pkg)) {
       SnapyCore.getAppLabel(pkg).then((l) {
@@ -878,9 +893,5 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     return palette[pkg.hashCode.abs() % palette.length];
   }
 
-  String _prettyAppLabel(String pkg) {
-    final fromToday = _today?.labels[pkg];
-    if (fromToday != null && fromToday.isNotEmpty) return fromToday;
-    return SnapyCore.cachedAppLabel(pkg);
-  }
+  String _appLabel(String pkg) => _today?.labels[pkg] ?? SnapyCore.cachedAppLabel(pkg);
 }
