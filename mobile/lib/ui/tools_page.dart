@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/snapy_core.dart';
 import '../core/theme.dart';
+import 'app_system_icon.dart';
 import 'reset_page.dart';
 
 class ToolsPage extends StatefulWidget {
@@ -168,30 +169,9 @@ class _ToolsPageState extends State<ToolsPage> {
                       final lock = app['lock'] as bool? ?? true;
                       final isInstalled = app['installed'] as bool? ?? false;
 
-                      Color badgeColor = c.accent;
-                      if (pkg.contains('instagram')) {
-                        badgeColor = const Color(0xFFDD2A7B);
-                      } else if (pkg.contains('youtube')) {
-                        badgeColor = const Color(0xFFFF0000);
-                      } else if (pkg.contains('snapchat')) {
-                        badgeColor = const Color(0xFFFFD600);
-                      } else if (pkg.contains('facebook')) {
-                        badgeColor = const Color(0xFF1877F2);
-                      } else if (pkg.contains('tiktok')) {
-                        badgeColor = const Color(0xFF00F2FE);
-                      } else if (pkg.contains('reddit')) {
-                        badgeColor = const Color(0xFFFF4500);
-                      }
-
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          backgroundColor: badgeColor.withValues(alpha: 0.18),
-                          child: Text(
-                            label.isNotEmpty ? label[0] : 'S',
-                            style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                        leading: AppSystemIcon(package: pkg, size: 40, cornerRadius: 10),
                         title: Row(
                           children: [
                             Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),

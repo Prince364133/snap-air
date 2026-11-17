@@ -59,39 +59,36 @@ class _AppSystemIconState extends State<AppSystemIcon> {
     }
 
     final pkg = widget.package.toLowerCase();
-    Color bg = const Color(0xFF28C8FF).withValues(alpha: 0.18);
-    IconData icon = Icons.apps_rounded;
-    if (pkg.contains('instagram')) {
-      bg = const Color(0xFFDD2A7B).withValues(alpha: 0.22);
-      icon = Icons.camera_alt_outlined;
-    } else if (pkg.contains('youtube')) {
-      bg = const Color(0xFFFF0000).withValues(alpha: 0.22);
-      icon = Icons.play_arrow_rounded;
-    } else if (pkg.contains('whatsapp')) {
-      bg = const Color(0xFF25D366).withValues(alpha: 0.22);
-      icon = Icons.chat_bubble_outline;
-    } else if (pkg.contains('facebook')) {
-      bg = const Color(0xFF1877F2).withValues(alpha: 0.22);
-      icon = Icons.facebook;
-    } else if (pkg.contains('snapchat')) {
-      bg = const Color(0xFFFFFC00).withValues(alpha: 0.25);
-      icon = Icons.photo_camera_outlined;
-    } else if (pkg.contains('chrome')) {
-      bg = const Color(0xFF4285F4).withValues(alpha: 0.22);
-      icon = Icons.public;
-    } else if (pkg.contains('twitter') || pkg.contains('x.android')) {
-      bg = const Color(0xFF1DA1F2).withValues(alpha: 0.22);
-      icon = Icons.tag;
-    }
+    const palette = [
+      Color(0xFF28C8FF),
+      Color(0xFFDD2A7B),
+      Color(0xFFFF453A),
+      Color(0xFF30D158),
+      Color(0xFFFF9F0A),
+      Color(0xFFBF5AF2),
+      Color(0xFF5E5CE6),
+      Color(0xFF64D2FF),
+    ];
+    final color = palette[pkg.hashCode.abs() % palette.length];
+    final label = SnapyCore.cachedAppLabel(widget.package);
+    final initial = label.isNotEmpty ? label[0].toUpperCase() : 'A';
 
     return Container(
       width: s,
       height: s,
       decoration: BoxDecoration(
-        color: bg,
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(r),
       ),
-      child: Icon(icon, size: s * 0.58, color: Colors.white70),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: color,
+          fontSize: s * 0.48,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }

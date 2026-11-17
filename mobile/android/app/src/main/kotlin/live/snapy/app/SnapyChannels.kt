@@ -200,6 +200,37 @@ object SnapyChannels {
                         activity.runOnUiThread { result.success(null) }
                     }
                 }.start()
+                "getAppLabel" -> Thread {
+                    val pkg = str("package")
+                    if (pkg.isEmpty()) {
+                        activity.runOnUiThread { result.success("") }
+                        return@Thread
+                    }
+                    val label = try {
+                        val pm = activity.packageManager
+                        val ai = pm.getApplicationInfo(pkg, 0)
+                        pm.getApplicationLabel(ai).toString()
+                    } catch (_: Throwable) {
+                        try {
+                            val pm = activity.packageManager
+                            val intent = pm.getLaunchIntentForPackage(pkg)
+                            val ri = if (intent != null) pm.resolveActivity(intent, 0) else null
+                            ri?.loadLabel(pm)?.toString()
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    } ?: run {
+                        val lastPart = pkg.substringAfterLast('.')
+                        if (lastPart.isNotEmpty()) {
+                            lastPart.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                        } else pkg
+                    }
+                    activity.runOnUiThread {
+                        if (!activity.isFinishing && !activity.isDestroyed) {
+                            result.success(label)
+                        }
+                    }
+                }.start()
                 "today" -> Thread {
                     try {
                         val t = usage.today()

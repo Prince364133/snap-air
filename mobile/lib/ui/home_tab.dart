@@ -74,6 +74,9 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
       List<int> weekMins = const [];
       if (p['usage'] == true) {
         t = await SnapyCore.today();
+        if (t.labels.isNotEmpty) {
+          SnapyCore.registerAppLabels(t.labels);
+        }
         try {
           weekMins = await SnapyCore.getWeeklyScreenTime(_weekOffset);
         } catch (_) {}
@@ -783,7 +786,13 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   }
 
   Widget _buildAppUsageRow(SnapyColors c, String pkg, int ms, int maxMs, ({int reels, int reelMs, int longVideos})? stat) {
-    final label = _today?.labels[pkg] ?? _prettyAppLabel(pkg);
+    final label = _prettyAppLabel(pkg);
+    // Dynamic fallback: if not yet cached, resolve asynchronously from device PackageManager without blocking UI
+    if (!SnapyCore.hasCachedAppLabel(pkg)) {
+      SnapyCore.getAppLabel(pkg).then((l) {
+        if (mounted && l.isNotEmpty && l != label) setState(() {});
+      });
+    }
     final ratio = maxMs > 0 ? (ms / maxMs).clamp(0.05, 1.0) : 0.05;
     final timeStr = formatMs(ms);
 
@@ -847,15 +856,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
           child: LinearProgressIndicator(
             value: ratio,
             backgroundColor: c.hair,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              pkg.contains('instagram')
-                  ? const Color(0xFFDD2A7B)
-                  : pkg.contains('youtube')
-                      ? const Color(0xFFFF0000)
-                      : pkg.contains('whatsapp')
-                          ? const Color(0xFF25D366)
-                          : c.accent,
-            ),
+            valueColor: AlwaysStoppedAnimation<Color>(_appColor(pkg, c)),
             minHeight: 6,
           ),
         ),
@@ -863,20 +864,23 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     );
   }
 
+  Color _appColor(String pkg, SnapyColors c) {
+    const palette = [
+      Color(0xFF28C8FF),
+      Color(0xFFDD2A7B),
+      Color(0xFFFF453A),
+      Color(0xFF30D158),
+      Color(0xFFFF9F0A),
+      Color(0xFFBF5AF2),
+      Color(0xFF5E5CE6),
+      Color(0xFF64D2FF),
+    ];
+    return palette[pkg.hashCode.abs() % palette.length];
+  }
+
   String _prettyAppLabel(String pkg) {
-    if (pkg.contains('instagram')) return 'Instagram';
-    if (pkg.contains('youtube')) return 'YouTube';
-    if (pkg.contains('whatsapp')) return pkg.contains('w4b') ? 'WhatsApp Business' : 'WhatsApp';
-    if (pkg.contains('facebook')) return 'Facebook';
-    if (pkg.contains('chrome')) return 'Chrome';
-    if (pkg.contains('snapchat')) return 'Snapchat';
-    if (pkg.contains('deskclock') || pkg.contains('alarmclock') || pkg.endsWith('.clock')) return 'Clock';
-    if (pkg.contains('rapido')) return 'Rapido';
-    if (pkg.contains('snapy')) return 'Snapy';
-    if (pkg.contains('phonepe')) return 'PhonePe';
-    if (pkg.contains('twitter') || pkg.contains('x.android')) return 'X (Twitter)';
-    if (pkg.contains('tiktok') || pkg.contains('musically')) return 'TikTok';
-    final parts = pkg.split('.');
-    return parts.isNotEmpty ? parts.last[0].toUpperCase() + parts.last.substring(1) : pkg;
+    final fromToday = _today?.labels[pkg];
+    if (fromToday != null && fromToday.isNotEmpty) return fromToday;
+    return SnapyCore.cachedAppLabel(pkg);
   }
 }

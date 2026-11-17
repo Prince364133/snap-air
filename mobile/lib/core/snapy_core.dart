@@ -142,6 +142,46 @@ class SnapyCore {
   /// In-memory cache for fast, flicker-free app icon rendering.
   static final Map<String, Uint8List?> _iconCache = {};
 
+  /// In-memory cache for dynamic app labels queried directly from the device PackageManager.
+  static final Map<String, String> _labelCache = {};
+
+  /// Checks if a package has a cached label in memory.
+  static bool hasCachedAppLabel(String package) =>
+      _labelCache.containsKey(package) && _labelCache[package]!.isNotEmpty;
+
+  /// Retrieves genuine application label for an installed package directly from Android PackageManager.
+  static Future<String> getAppLabel(String package) async {
+    if (package.isEmpty) return '';
+    if (_labelCache.containsKey(package) && _labelCache[package]!.isNotEmpty) {
+      return _labelCache[package]!;
+    }
+    try {
+      final label = await _ch.invokeMethod<String>('getAppLabel', {'package': package});
+      if (label != null && label.isNotEmpty) {
+        _labelCache[package] = label;
+        return label;
+      }
+    } catch (_) {}
+    final last = package.split('.').last;
+    final fallback = last.isNotEmpty ? last[0].toUpperCase() + last.substring(1) : package;
+    _labelCache[package] = fallback;
+    return fallback;
+  }
+
+  /// Synchronously returns a known label from cache or formats cleanly without hardcoded strings.
+  static String cachedAppLabel(String package) {
+    if (_labelCache.containsKey(package) && _labelCache[package]!.isNotEmpty) {
+      return _labelCache[package]!;
+    }
+    final last = package.split('.').last;
+    return last.isNotEmpty ? last[0].toUpperCase() + last.substring(1) : package;
+  }
+
+  /// Pre-populates the label cache from a map (e.g. from Today or getInstalledApps).
+  static void registerAppLabels(Map<String, String> labels) {
+    _labelCache.addAll(labels);
+  }
+
   /// Retrieves genuine system application icon bytes (PNG) for an installed package.
   static Future<Uint8List?> getAppIcon(String package) async {
     if (package.isEmpty) return null;

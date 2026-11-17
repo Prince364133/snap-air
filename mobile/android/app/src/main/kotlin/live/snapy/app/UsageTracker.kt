@@ -120,24 +120,50 @@ class UsageTracker(private val ctx: Context) {
             android.util.Log.e("UsageTracker", "Error reading events for opens", t)
         }
 
-        // 3. Resolve genuine application labels from Android PackageManager
+        // 3. Resolve genuine application labels dynamically from Android PackageManager for all installed apps
+        val installedLabels = HashMap<String, String>()
+        try {
+            val installed = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.getInstalledApplications(android.content.pm.PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledApplications(0)
+            }
+            for (app in installed) {
+                try {
+                    installedLabels[app.packageName] = pm.getApplicationLabel(app).toString()
+                } catch (_: Throwable) {}
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("UsageTracker", "Could not bulk-query installed applications", t)
+        }
+
         for (pkg in perApp.keys) {
-            try {
-                val ai = pm.getApplicationInfo(pkg, 0)
-                labels[pkg] = pm.getApplicationLabel(ai).toString()
-            } catch (_: Exception) {
-                labels[pkg] = when {
-                    pkg.contains("instagram") -> "Instagram"
-                    pkg.contains("youtube") -> "YouTube"
-                    pkg.contains("whatsapp") -> if (pkg.contains("w4b")) "WhatsApp Business" else "WhatsApp"
-                    pkg.contains("chrome") -> "Chrome"
-                    pkg.contains("deskclock") || pkg.contains("alarmclock") -> "Clock"
-                    pkg.contains("rapido") -> "Rapido"
-                    pkg.contains("snapy") -> "Snapy"
-                    pkg.contains("phonepe") -> "PhonePe"
-                    else -> pkg.substringAfterLast('.')
+            var label = installedLabels[pkg]
+            if (label.isNullOrEmpty()) {
+                try {
+                    val ai = pm.getApplicationInfo(pkg, 0)
+                    label = pm.getApplicationLabel(ai).toString()
+                } catch (_: Throwable) {
+                    try {
+                        val launchIntent = pm.getLaunchIntentForPackage(pkg)
+                        if (launchIntent != null) {
+                            val ri = pm.resolveActivity(launchIntent, 0)
+                            if (ri != null) {
+                                label = ri.loadLabel(pm).toString()
+                            }
+                        }
+                    } catch (_: Throwable) {}
                 }
             }
+            // Clean dynamic fallback if app was uninstalled or system internal (zero hardcoding)
+            if (label.isNullOrBlank()) {
+                val lastPart = pkg.substringAfterLast('.')
+                label = if (lastPart.isNotEmpty()) {
+                    lastPart.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                } else pkg
+            }
+            labels[pkg] = label
         }
 
         val totalMs = perApp.values.sum()
