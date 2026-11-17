@@ -251,11 +251,14 @@ class RealCountController(
      * Mirror of lib/realcount/reel_counter.dart.
      */
     fun onScroll(e: ReelScroll) {
-        if (!counting || externalCounter || e.pkg != currentPkg) return
+        if (!counting || externalCounter) { ReelDebug.add(e, "skip:not_counting"); return }
+        if (e.pkg != currentPkg) { ReelDebug.add(e, "skip:not_current($currentPkg)"); return }
         lastEventAt[e.pkg] = e.nowMs                                         // health: events are arriving
-        if (e.nowMs < prefs.long(RcPrefs.PAUSED_UNTIL)) return               // "pause counting 1 h"
-        if (prefs.bool("creator_mode") && !ChipLogic.countsAsFeed(rules, e.pkg, currentClass, e.sourceId, true)) return
-        val d = counter.onScroll(e.copy(windowClass = currentClass, shortVideoApp = isShortVideoApp(e.pkg)))
+        if (e.nowMs < prefs.long(RcPrefs.PAUSED_UNTIL)) { ReelDebug.add(e, "skip:paused"); return }   // "pause counting 1 h"
+        if (prefs.bool("creator_mode") && !ChipLogic.countsAsFeed(rules, e.pkg, currentClass, e.sourceId, true)) { ReelDebug.add(e, "skip:creator"); return }
+        val ev = e.copy(windowClass = currentClass, shortVideoApp = isShortVideoApp(e.pkg))
+        val d = counter.onScroll(ev)
+        ReelDebug.add(ev, d.name.lowercase())
         if (d != ReelDecision.COUNTED) return
         val now = e.nowMs
         lastReelAt[e.pkg] = now

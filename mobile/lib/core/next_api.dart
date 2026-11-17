@@ -260,6 +260,9 @@ class NextApi {
 
   static Future<bool> clearCrashReports() async => (await _invoke('clearCrashReports')) == true;
 
+  /// The Reel counter's last scroll events and decisions (ids, sizes, indices; no content).
+  static Future<String> reelDebug() async => '${await _invoke('reelDebug') ?? ''}';
+
   // ------------------------------------------------------------------ events
   /// voice / speak / reel_lock / meeting / activation events from `snapy/events` (never errors).
   static Stream<Map<String, dynamic>> events({Set<String> types = const {'voice', 'speak', 'reel_lock', 'meeting', 'activation'}}) {

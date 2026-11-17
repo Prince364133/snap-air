@@ -18,7 +18,9 @@
         "simple_mode_size": "large",
         "height_dp": 26,
         "camera_gap_dp": 8,
-        "touch_padding_dp": 10,
+        "touch_padding_dp": 18,
+        "min_touch_dp": 64,
+        "badge_gap_dp": 1,
         "wide_cutout_fraction": 0.25,
         "amber_at": 1.0,
         "card_ms": 6000

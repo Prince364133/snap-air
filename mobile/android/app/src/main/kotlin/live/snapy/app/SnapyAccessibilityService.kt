@@ -208,9 +208,18 @@ class SnapyAccessibilityService : AccessibilityService() {
                 rc?.onWindow(pkg, e.className?.toString() ?: "")
                 lock?.onWindow(pkg)
             }
-            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == currentPkg) {
-                lock?.onScroll(pkg, e)                                      // bounce first: the 150 ms budget
-                forwardScroll(pkg, e)
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                // only the app on screen can be scrolled: if a system popup / OEM floating window
+                // moved "current" away, the scroll brings it back (else every reel was dropped)
+                if (pkg != currentPkg && socialApps.containsKey(pkg)) {
+                    onWindow(pkg)
+                    rc?.onWindow(pkg, "")
+                    lock?.onWindow(pkg)
+                }
+                if (pkg == currentPkg) {
+                    safe("lock") { lock?.onScroll(pkg, e) }                 // bounce first: the 150 ms budget
+                    safe("count") { forwardScroll(pkg, e) }                 // a lock failure never stops counting
+                }
             }
             AccessibilityEvent.TYPE_VIEW_CLICKED -> lock?.onClick(pkg)
         }
@@ -237,6 +246,7 @@ class SnapyAccessibilityService : AccessibilityService() {
             sourceId = src?.viewIdResourceName ?: "",
             fromIndex = e.fromIndex, toIndex = e.toIndex, itemCount = e.itemCount,
             scrollDeltaY = if (Build.VERSION.SDK_INT >= 28) e.scrollDeltaY else 0,
+            scrollDeltaX = if (Build.VERSION.SDK_INT >= 28) e.scrollDeltaX else 0,
             screenHeight = dm.heightPixels,
             itemKey = key,
             nowMs = System.currentTimeMillis(),

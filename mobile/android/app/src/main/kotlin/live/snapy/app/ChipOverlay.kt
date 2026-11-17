@@ -791,8 +791,10 @@ class ChipOverlay(
         try {
             val cutout = getCutout()
             val dm = ctx.resources.displayMetrics
-            val pad = dp(rules.d("chip.touch_padding_dp", 10.0).toFloat())
-            val minHit = dp(48f)
+            // a fingertip-sized area around the camera, in the shared rules (core/rules/limits.json)
+            val pad = dp(rules.d("chip.touch_padding_dp", 18.0).toFloat())
+            val minHit = dp(rules.d("chip.min_touch_dp", 64.0).toFloat())
+            val badgeGap = dp(rules.d("chip.badge_gap_dp", 1.0).toFloat())
 
             // the ring (outer size) around the lens
             val (ringW, ringH) = when (cutout.shape) {
@@ -819,27 +821,31 @@ class ChipOverlay(
                 }
             }
 
-            // tap area: ring + padding, centred on the lens; the window starts where it starts
-            val hitW = maxOf(ringW + 2 * pad, minHit)
+            // tap area: the whole top row of this window (ring + padding, at least a fingertip),
+            // centred on the lens; a tap anywhere on or around the camera opens the strip
+            val winW = maxOf(ringW + 2 * pad, minHit, dp(88f))                 // also room for the badge
             val hitH = maxOf(ringH + 2 * pad, minHit)
-            val winW = maxOf(hitW, dp(88f))                                  // room for the badge underneath
             p.x = (ringCx - winW / 2).coerceIn(0, (dm.widthPixels - winW).coerceAtLeast(0))
             p.y = (ringCy - hitH / 2).coerceAtLeast(0)
             p.width = winW
             p.height = WindowManager.LayoutParams.WRAP_CONTENT
 
-            // the hit box sits over the lens even when the window is pinned to an edge
-            haloContainer?.layoutParams = LinearLayout.LayoutParams(hitW, hitH).apply {
-                gravity = Gravity.START
-                leftMargin = (ringCx - hitW / 2 - p.x).coerceIn(0, (winW - hitW).coerceAtLeast(0))
-            }
-            val boxLeft = p.x + ((ringCx - hitW / 2 - p.x).coerceIn(0, (winW - hitW).coerceAtLeast(0)))
+            haloContainer?.layoutParams = LinearLayout.LayoutParams(winW, hitH).apply { gravity = Gravity.START }
+            // the ring exactly on the lens, even when the window is pinned to a screen edge
+            val ringTop = ringCy - ringH / 2 - p.y
             cameraHalo?.layoutParams = FrameLayout.LayoutParams(ringW, ringH, Gravity.TOP or Gravity.START).apply {
-                leftMargin = ringCx - ringW / 2 - boxLeft
-                topMargin = ringCy - ringH / 2 - p.y
+                leftMargin = ringCx - ringW / 2 - p.x
+                topMargin = ringTop
             }
+            // the badge sits [badgeGap] under the ring, over the lower part of the tap area (it opens
+            // the strip too), not under the whole tap area (that left a ~10 dp gap)
+            val belowRing = hitH - (ringTop + ringH)
             socialBadge?.let { badge ->
-                (badge.layoutParams as? LinearLayout.LayoutParams)?.let { lpB -> lpB.gravity = Gravity.CENTER_HORIZONTAL; badge.layoutParams = lpB }
+                (badge.layoutParams as? LinearLayout.LayoutParams)?.let { lpB ->
+                    lpB.gravity = Gravity.CENTER_HORIZONTAL
+                    lpB.topMargin = badgeGap - belowRing
+                    badge.layoutParams = lpB
+                }
             }
 
             y = p.y

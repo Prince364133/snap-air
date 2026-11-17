@@ -148,6 +148,7 @@ object PhoneServices {
             "a11yHealth" -> Thread { post(result, try { A11yHealth.state(ctx) } catch (_: Throwable) { mapOf("state" to "off") }) }.start()
             "crashReports" -> Thread { post(result, CrashLog.reports(ctx).map { (f, t) -> mapOf("file" to f, "text" to t) }) }.start()
             "clearCrashReports" -> Thread { CrashLog.clear(ctx); post(result, true) }.start()
+            "reelDebug" -> result.success(ReelDebug.dump())
             // ---------------------------------------------------------------- profile (+ ice_notes, avatar)
             "setProfile" -> {
                 val p = JSONObject()

@@ -170,9 +170,10 @@
     },
     "realcount": {
       "reel_detection": {
-        "_comment": "A reel/short is counted when a full-screen vertical feed changes page. feed_min_height_fraction: the scrolled view must be at least this tall (fraction of the screen); page_scroll_fraction: on API 28+ without item indices, a scroll of at least this fraction of the screen height is a page change.",
+        "_comment": "A reel/short is counted when a full-screen vertical feed changes page. feed_min_height_fraction: the scrolled view must be at least this tall (fraction of the screen); page_scroll_fraction: on API 28+ without item indices, a scroll of at least this fraction of the screen height is a page change. swipe_gap_ms: when the app reports neither (Instagram ViewPager2), a burst of scroll events after this much quiet is one swipe = one page.",
         "feed_min_height_fraction": 0.6,
-        "page_scroll_fraction": 0.5
+        "page_scroll_fraction": 0.5,
+        "swipe_gap_ms": 450
       },
       "creator": {
         "_comment": "Screens that are creating/messaging, not consuming (window class or view id contains a keyword). feed_view_ids, when listed, are the only scroll sources that count. Check on current app versions.",

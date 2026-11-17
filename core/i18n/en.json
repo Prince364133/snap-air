@@ -424,6 +424,9 @@
   "notif.chip_text": "Shows your screen time over other apps. Turn off in Snapy → Chip & nudges.",
   "notif.wake_title": "Turn “Hey Snapy” back on?",
   "notif.wake_text": "Android stopped listening in the background. Tap to listen for “Hey Snapy” again.",
+  "diag.reel_events": "Reel counter: last scroll events",
+  "diag.reel_events_sub": "Open a reels feed, swipe a few times, come back here, then Copy. Only view ids, sizes and decisions — no content.",
+  "diag.reel_events_none": "No scroll events yet. Is Snapy Metrics Collection on?",
   "wake.model_failed": "Couldn’t download the “Hey Snapy” voice model. Snapy will try again when you’re online.",
 
   "nav.home": "Home",

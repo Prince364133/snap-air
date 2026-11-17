@@ -11,29 +11,50 @@ void main() {
     creatorKeywords: const ['camera', 'direct', 'composer'],
   );
 
-  ReelScroll reel(int t, {String key = '', int from = -1, int to = -1, int count = -1, double h = 1.0, String id = pager, String pkg = ig, bool short = true, int dy = 0}) =>
+  ReelScroll reel(int t, {String key = '', int from = -1, int to = -1, int count = -1, double h = 1.0, String id = pager, String pkg = ig, bool short = true, int dy = 0, int dx = 0}) =>
       ReelScroll(pkg: pkg, shortVideoApp: short, heightFraction: h, widthFraction: 1, sourceId: id, fromIndex: from, toIndex: to, itemCount: count,
-          scrollDeltaY: dy, screenHeight: 2400, itemKey: key, nowMs: t);
+          scrollDeltaY: dy, scrollDeltaX: dx, screenHeight: 2400, itemKey: key, nowMs: t);
 
-  test('ViewPager2 with -1 indices: counted once per new item (by the visible item identity)', () {
+  test('Instagram ViewPager2 (-1 indices, deltaY 0, same labels on every reel): one count per swipe', () {
     final c = ReelCounter(rules);
     final got = [
-      c.onScroll(reel(0, key: 'A')), // first item: baseline
-      c.onScroll(reel(200, key: 'A')), // same item, more scroll events
-      c.onScroll(reel(1500, key: 'B')), // A watched 1.5 s -> counted
-      c.onScroll(reel(1600, key: 'B')),
-      c.onScroll(reel(4000, key: 'C')), // B watched -> counted
+      // swipe 1: a burst of events -> the reel that was showing counts once
+      c.onScroll(reel(0, key: 'Like Comment Share')),
+      c.onScroll(reel(100, key: 'Like Comment Share')),
+      c.onScroll(reel(200, key: 'Like Comment Share')),
+      // watching, then swipe 2
+      c.onScroll(reel(5000, key: 'Like Comment Share')),
+      c.onScroll(reel(5150, key: 'Like Comment Share')),
+      // swipe 3, no labels readable at all
+      c.onScroll(reel(9000)),
+      c.onScroll(reel(9100)),
     ];
-    expect(got.where((d) => d == ReelDecision.counted).length, 2);
+    expect(got.where((d) => d == ReelDecision.counted).length, 3);
     expect(got[1], ReelDecision.sameItem);
+    expect(got[2], ReelDecision.sameItem);
+  });
+
+  test('one long fling through several items is one burst: counted once', () {
+    final c = ReelCounter(rules);
+    var n = 0;
+    for (var t = 0; t <= 1000; t += 100) {
+      if (c.onScroll(reel(t, key: 'k$t')) == ReelDecision.counted) n++;
+    }
+    expect(n, 1);
   });
 
   test('flicks under the dwell are not counted', () {
     final c = ReelCounter(rules);
-    c.onScroll(reel(0, key: 'A'));
-    expect(c.onScroll(reel(300, key: 'B')), ReelDecision.flick);
-    expect(c.onScroll(reel(500, key: 'C')), ReelDecision.flick);
-    expect(c.onScroll(reel(2000, key: 'D')), ReelDecision.counted);
+    expect(c.onScroll(reel(0)), ReelDecision.counted); // the reel showing on opening
+    expect(c.onScroll(reel(600)), ReelDecision.flick); // next swipe after 0.6 s
+    expect(c.onScroll(reel(1200)), ReelDecision.flick);
+    expect(c.onScroll(reel(3000)), ReelDecision.counted);
+  });
+
+  test('sideways swipes (camera / DMs) and sources of unknown size are not counted', () {
+    final c = ReelCounter(rules);
+    expect(c.onScroll(reel(0, dx: 900, dy: 0)), ReelDecision.notFeed);
+    expect(c.onScroll(reel(2000, h: 0)), ReelDecision.sameItem, reason: 'a ticker / view without bounds');
   });
 
   test('item indices when the app reports them', () {
@@ -72,17 +93,19 @@ void main() {
     expect(c.onScroll(reel(2000, key: 'B', pkg: 'com.facebook.orca', short: false, id: '')), ReelDecision.notFeed);
   });
 
-  test('no index, no identity: a page-sized scroll (API 28+)', () {
+  test('no index: one count per burst, even with a page-sized move inside it', () {
     final c = ReelCounter(const ReelCounterRules());
-    expect(c.onScroll(reel(0, id: '', pkg: 'app.short', dy: 40)), ReelDecision.sameItem);
-    expect(c.onScroll(reel(1200, id: '', pkg: 'app.short', dy: 1300)), ReelDecision.counted);
+    expect(c.onScroll(reel(0, id: '', pkg: 'app.short', dy: 40)), ReelDecision.counted);
+    expect(c.onScroll(reel(200, id: '', pkg: 'app.short', dy: 1300)), ReelDecision.sameItem, reason: 'same swipe');
+    expect(c.onScroll(reel(1500, id: '', pkg: 'app.short', dy: 1300)), ReelDecision.counted);
   });
 
   test('leaving the feed resets the run', () {
     final c = ReelCounter(rules);
     c.onScroll(reel(0, key: 'A'));
     c.reset(ig);
-    expect(c.onScroll(reel(5000, key: 'B')), ReelDecision.sameItem, reason: 'a fresh baseline, not a count');
+    expect(c.onScroll(reel(5000, key: 'B')), ReelDecision.counted, reason: 'a fresh run: the reel showing on return counts at the first swipe');
+    expect(c.onScroll(reel(5100, key: 'B')), ReelDecision.sameItem);
   });
 
   test('rules from the merged android config', () {

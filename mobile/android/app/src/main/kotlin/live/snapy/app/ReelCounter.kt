@@ -23,6 +23,7 @@ data class ReelScroll(
     val toIndex: Int = -1,
     val itemCount: Int = -1,
     val scrollDeltaY: Int = 0,
+    val scrollDeltaX: Int = 0,
     val screenHeight: Int = 0,
     val itemKey: String = "",
     val nowMs: Long,
@@ -33,6 +34,7 @@ data class ReelCounterRules(
     val minHeightFraction: Double = 0.6,
     val minWidthFraction: Double = 0.9,
     val pageScrollFraction: Double = 0.5,
+    val swipeGapMs: Long = 450,
     val feedViewIds: Map<String, List<String>> = emptyMap(),
     val creatorKeywords: List<String> = emptyList(),
     val appKeywords: Map<String, List<String>> = emptyMap(),
@@ -52,6 +54,7 @@ data class ReelCounterRules(
                 minHeightFraction = det?.optDouble("feed_min_height_fraction", 0.6) ?: 0.6,
                 minWidthFraction = det?.optDouble("feed_min_width_fraction", 0.9) ?: 0.9,
                 pageScrollFraction = det?.optDouble("page_scroll_fraction", 0.5) ?: 0.5,
+                swipeGapMs = det?.optLong("swipe_gap_ms", 450L) ?: 450L,
                 feedViewIds = ids,
                 creatorKeywords = strs(creator, "keywords"),
                 appKeywords = kw,
@@ -63,7 +66,7 @@ data class ReelCounterRules(
 enum class ReelDecision { NOT_FEED, SAME_ITEM, FLICK, COUNTED }
 
 class ReelCounter(@Volatile var rules: ReelCounterRules = ReelCounterRules()) {
-    private class Feed { var lastIndex = -1; var lastKey = ""; var shownAt = 0L }
+    private class Feed { var lastIndex = -1; var lastKey = ""; var shownAt = 0L; var lastEventAt: Long? = null; var burstCounted = false }
     private val feeds = HashMap<String, Feed>()
 
     fun reset(pkg: String? = null) { if (pkg == null) feeds.clear() else feeds.remove(pkg) }
@@ -75,13 +78,18 @@ class ReelCounter(@Volatile var rules: ReelCounterRules = ReelCounterRules()) {
         val ids = rules.feedViewIds[e.pkg] ?: emptyList()
         if (ids.isNotEmpty() && e.sourceId.isNotEmpty() && e.sourceId !in ids) return false
         if (e.fromIndex >= 0 && e.toIndex >= 0 && e.toIndex - e.fromIndex > 1) return false
+        if (kotlin.math.abs(e.scrollDeltaX) > kotlin.math.abs(e.scrollDeltaY)) return false   // sideways: camera / DMs
         val hay = "${e.windowClass.lowercase()} ${e.sourceId.lowercase()}"
         return (rules.creatorKeywords + (rules.appKeywords[e.pkg] ?: emptyList())).none { it.isNotEmpty() && hay.contains(it.lowercase()) }
     }
 
     fun onScroll(e: ReelScroll): ReelDecision {
         if (!isFeed(e)) return ReelDecision.NOT_FEED
-        val f = feeds.getOrPut(e.pkg) { Feed().also { it.shownAt = e.nowMs } }
+        // a new run: the reel showing when the user opened the feed counts at the first swipe
+        val f = feeds.getOrPut(e.pkg) { Feed().also { it.shownAt = e.nowMs - rules.minDwellMs } }
+        val last = f.lastEventAt
+        val quiet = last == null || e.nowMs - last >= rules.swipeGapMs
+        f.lastEventAt = e.nowMs
         val changed: Boolean
         if (e.fromIndex >= 0 && e.itemCount > 1) {
             changed = f.lastIndex >= 0 && f.lastIndex != e.fromIndex
@@ -89,13 +97,16 @@ class ReelCounter(@Volatile var rules: ReelCounterRules = ReelCounterRules()) {
             f.lastIndex = e.fromIndex
             if (e.itemKey.isNotEmpty()) f.lastKey = e.itemKey
             if (first) { f.shownAt = e.nowMs; return ReelDecision.SAME_ITEM }
-        } else if (e.itemKey.isNotEmpty()) {
-            changed = f.lastKey.isNotEmpty() && f.lastKey != e.itemKey
-            val first = f.lastKey.isEmpty()
-            f.lastKey = e.itemKey
-            if (first) { f.shownAt = e.nowMs; return ReelDecision.SAME_ITEM }
         } else {
-            changed = e.screenHeight > 0 && kotlin.math.abs(e.scrollDeltaY) >= e.screenHeight * rules.pageScrollFraction
+            // Instagram's ViewPager2: -1 indices, deltaY 0, and the same Like/Comment/Share labels on
+            // every reel (the identity hash never changes) -> one swipe = one burst of events
+            if (e.heightFraction <= 0) return ReelDecision.SAME_ITEM          // size unknown: maybe a ticker
+            if (quiet) f.burstCounted = false
+            val keyChanged = e.itemKey.isNotEmpty() && f.lastKey.isNotEmpty() && f.lastKey != e.itemKey
+            if (e.itemKey.isNotEmpty()) f.lastKey = e.itemKey
+            val pageSized = e.screenHeight > 0 && kotlin.math.abs(e.scrollDeltaY) >= e.screenHeight * rules.pageScrollFraction
+            changed = !f.burstCounted && (quiet || keyChanged || pageSized)
+            if (changed) f.burstCounted = true
         }
         if (!changed) return ReelDecision.SAME_ITEM
         val dwelled = e.nowMs - f.shownAt
@@ -129,4 +140,25 @@ class ReelCounter(@Volatile var rules: ReelCounterRules = ReelCounterRules()) {
             } catch (_: Exception) { "" }
         }
     }
+}
+
+/**
+ * The last scroll events the counter saw and what it decided, for Settings -> Diagnostics, so a
+ * miss on a real phone can be diagnosed from facts, not guesses. Only package, view id, sizes,
+ * indices and the decision: never text, captions or what was on screen. In memory only.
+ */
+object ReelDebug {
+    private const val KEEP = 60
+    private val lines = ArrayDeque<String>()
+
+    @Synchronized fun add(e: ReelScroll, outcome: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(e.nowMs))
+        lines.addLast("$t ${e.pkg} id=${e.sourceId.substringAfter(":id/").ifEmpty { "-" }} " +
+            "h=${"%.2f".format(java.util.Locale.US, e.heightFraction)} w=${"%.2f".format(java.util.Locale.US, e.widthFraction)} " +
+            "idx=${e.fromIndex}..${e.toIndex}/${e.itemCount} dy=${e.scrollDeltaY} dx=${e.scrollDeltaX} " +
+            "key=${if (e.itemKey.isEmpty()) "-" else "y"} cls=${e.windowClass.substringAfterLast('.').ifEmpty { "-" }} -> $outcome")
+        while (lines.size > KEEP) lines.removeFirst()
+    }
+
+    @Synchronized fun dump(): String = lines.joinToString("\n")
 }
