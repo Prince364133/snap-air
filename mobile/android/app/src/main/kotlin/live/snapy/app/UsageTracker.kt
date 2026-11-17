@@ -62,9 +62,6 @@ class UsageTracker(private val ctx: Context) {
                     val ms = usageStats.totalTimeInForeground
                     if (ms > 0) {
                         perApp[pkg] = ms
-                        if (Build.VERSION.SDK_INT >= 28 && usageStats.appLaunchCount > 0) {
-                            opens[pkg] = usageStats.appLaunchCount
-                        }
                     }
                 }
             }
