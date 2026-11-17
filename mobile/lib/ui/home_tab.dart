@@ -40,6 +40,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   bool _loadingUsage = true;
   int _chartMode = 0; // 0 = Reels, 1 = Long Videos, 2 = Screen Time
   int _weekOffset = 0; // 0 = current week, -1 = previous, etc.
+  List<int> _weekMinutes = const [];
   bool _chipActive = true;
   A11yHealth? _health;          // is the Reel counter really running (SnapyApp.kt A11yHealth)
   bool _restricted = false;     // Android 13+ restricted settings (sideloaded APK)
@@ -70,8 +71,12 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     try {
       final p = await SnapyCore.status();
       Today? t;
+      List<int> weekMins = const [];
       if (p['usage'] == true) {
         t = await SnapyCore.today();
+        try {
+          weekMins = await SnapyCore.getWeeklyScreenTime(_weekOffset);
+        } catch (_) {}
       }
       final active = await SnapyCore.isChipActive();
       final health = await NextApi.a11yHealth();
@@ -85,6 +90,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
         setState(() {
           _perm = p;
           _today = t;
+          _weekMinutes = weekMins;
           _chipActive = active;
           _health = health;
           _restricted = restricted;
@@ -507,17 +513,15 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
     ];
     videoValues[(weekday - 1) % 7] = totalVideos;
 
-    final baseMins = totalScreenMs > 0 ? (totalScreenMs ~/ 60000) : 180;
-    final timeValues = [
-      (baseMins * 0.8).toInt(),
-      (baseMins * 0.9).toInt(),
-      (baseMins * 0.75).toInt(),
-      (baseMins * 0.85).toInt(),
-      (baseMins * 1.15).toInt(),
-      (baseMins * 1.25).toInt(),
-      baseMins,
-    ];
-    timeValues[(weekday - 1) % 7] = (totalScreenMs ~/ 60000);
+    final timeValues = List<int>.filled(7, 0);
+    for (int i = 0; i < 7; i++) {
+      if (_weekMinutes.length > i) {
+        timeValues[i] = _weekMinutes[i];
+      }
+    }
+    if (_weekOffset == 0) {
+      timeValues[(weekday - 1) % 7] = (totalScreenMs ~/ 60000);
+    }
 
     final values = _chartMode == 0
         ? reelValues
@@ -648,7 +652,10 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     color: c.text2,
                     tooltip: 'Previous week',
-                    onPressed: () => setState(() => _weekOffset -= 1),
+                    onPressed: () {
+                      setState(() => _weekOffset -= 1);
+                      _loadData();
+                    },
                   ),
                   const SizedBox(width: 4),
                   IconButton(
@@ -657,7 +664,12 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     color: _weekOffset < 0 ? c.text2 : c.text3.withValues(alpha: 0.3),
                     tooltip: 'Next week',
-                    onPressed: _weekOffset < 0 ? () => setState(() => _weekOffset += 1) : null,
+                    onPressed: _weekOffset < 0
+                        ? () {
+                            setState(() => _weekOffset += 1);
+                            _loadData();
+                          }
+                        : null,
                   ),
                 ],
               ),
@@ -771,7 +783,7 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   }
 
   Widget _buildAppUsageRow(SnapyColors c, String pkg, int ms, int maxMs, ({int reels, int reelMs, int longVideos})? stat) {
-    final label = _prettyAppLabel(pkg);
+    final label = _today?.labels[pkg] ?? _prettyAppLabel(pkg);
     final ratio = maxMs > 0 ? (ms / maxMs).clamp(0.05, 1.0) : 0.05;
     final timeStr = formatMs(ms);
 
@@ -854,10 +866,14 @@ class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   String _prettyAppLabel(String pkg) {
     if (pkg.contains('instagram')) return 'Instagram';
     if (pkg.contains('youtube')) return 'YouTube';
-    if (pkg.contains('whatsapp')) return 'WhatsApp';
+    if (pkg.contains('whatsapp')) return pkg.contains('w4b') ? 'WhatsApp Business' : 'WhatsApp';
     if (pkg.contains('facebook')) return 'Facebook';
     if (pkg.contains('chrome')) return 'Chrome';
     if (pkg.contains('snapchat')) return 'Snapchat';
+    if (pkg.contains('deskclock') || pkg.contains('alarmclock') || pkg.endsWith('.clock')) return 'Clock';
+    if (pkg.contains('rapido')) return 'Rapido';
+    if (pkg.contains('snapy')) return 'Snapy';
+    if (pkg.contains('phonepe')) return 'PhonePe';
     if (pkg.contains('twitter') || pkg.contains('x.android')) return 'X (Twitter)';
     if (pkg.contains('tiktok') || pkg.contains('musically')) return 'TikTok';
     final parts = pkg.split('.');

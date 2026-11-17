@@ -205,6 +205,12 @@ class SnapyCore {
   static Future<bool> toggleTorch(bool on) async {
     return (await _ch.invokeMethod<bool>('toggleTorch', {'on': on})) ?? false;
   }
+
+  /// Retrieves daily screen time minutes for Monday..Sunday of the requested week.
+  static Future<List<int>> getWeeklyScreenTime([int offsetWeeks = 0]) async {
+    final res = await _ch.invokeMethod<List>('getWeeklyScreenTime', {'offset': offsetWeeks});
+    return (res ?? []).map((e) => (e as num).toInt()).toList();
+  }
 }
 
 /// One day of Real Count.
@@ -213,7 +219,8 @@ class Today {
   final Map<String, int> perAppMs;
   final Map<String, int> opens;
   final Map<String, ({int reels, int reelMs, int longVideos})> reels;
-  Today(this.screenMs, this.perAppMs, this.opens, this.reels);
+  final Map<String, String> labels;
+  Today(this.screenMs, this.perAppMs, this.opens, this.reels, [this.labels = const {}]);
 
   int get totalReels => reels.values.fold(0, (a, b) => a + b.reels);
   int get totalLongVideos => reels.values.fold(0, (a, b) => a + b.longVideos);
@@ -221,6 +228,8 @@ class Today {
   factory Today.fromJson(Map<String, dynamic> j) {
     Map<String, int> ints(dynamic m) =>
         m is Map ? m.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) : <String, int>{};
+    Map<String, String> strs(dynamic m) =>
+        m is Map ? m.map((k, v) => MapEntry(k.toString(), v.toString())) : <String, String>{};
     final apps = ((j['realcount'] as Map?)?['apps'] as Map?) ?? const {};
     return Today(
       (j['screen_ms'] as num?)?.toInt() ?? 0,
@@ -233,6 +242,7 @@ class Today {
             reelMs: (v['reel_ms'] as num?)?.toInt() ?? 0,
             longVideos: (v['long_videos'] as num?)?.toInt() ?? 0,
           ))),
+      strs(j['labels']),
     );
   }
 }

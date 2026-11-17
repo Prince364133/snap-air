@@ -208,10 +208,13 @@ object SnapyChannels {
                         t.perApp.entries.sortedByDescending { it.value }.take(30).forEach { perApp.put(it.key, it.value) }
                         val opensObj = JSONObject()
                         t.opens.forEach { (k, v) -> opensObj.put(k, v) }
+                        val labelsObj = JSONObject()
+                        t.labels.forEach { (k, v) -> labelsObj.put(k, v) }
                         val out = JSONObject()
                             .put("screen_ms", t.totalMs)
                             .put("per_app_ms", perApp)
                             .put("opens", opensObj)
+                            .put("labels", labelsObj)
                             .put("realcount", rc)
                         activity.runOnUiThread {
                             if (!activity.isFinishing && !activity.isDestroyed) {
@@ -222,8 +225,27 @@ object SnapyChannels {
                         android.util.Log.e("SnapyChannels", "Error calculating today usage", t)
                         activity.runOnUiThread {
                             if (!activity.isFinishing && !activity.isDestroyed) {
-                                val empty = JSONObject().put("screen_ms", 0L).put("per_app_ms", JSONObject()).put("opens", JSONObject()).put("realcount", JSONObject())
+                                val empty = JSONObject().put("screen_ms", 0L).put("per_app_ms", JSONObject()).put("opens", JSONObject()).put("labels", JSONObject()).put("realcount", JSONObject())
                                 result.success(empty.toString())
+                            }
+                        }
+                    }
+                }.start()
+                "getWeeklyScreenTime" -> Thread {
+                    try {
+                        val offset = call.argument<Int>("offset") ?: 0
+                        val list = usage.week(offset)
+                        val mins = list.map { (it / 60000L).toInt() }
+                        activity.runOnUiThread {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                result.success(mins)
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.e("SnapyChannels", "Error calculating weekly usage", t)
+                        activity.runOnUiThread {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                result.success(List(7) { 0 })
                             }
                         }
                     }
