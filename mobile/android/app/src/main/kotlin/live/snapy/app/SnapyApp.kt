@@ -31,6 +31,7 @@ class SnapyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        AppForeground.install(this)
         guardMainLooper()
     }
 

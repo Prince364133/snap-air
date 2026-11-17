@@ -193,8 +193,10 @@
           "com.instagram.android": {
             "feed_view_ids": [
               "com.instagram.android:id/clips_viewer_view_pager",
+              "clips_viewer_view_pager",
               "com.instagram.android:id/list",
               "list",
+              "com.instagram.android:id/swipeable_tab_view_pager",
               "swipeable_tab_view_pager"
             ],
             "keywords": [
@@ -206,7 +208,8 @@
           },
           "com.google.android.youtube": {
             "feed_view_ids": [
-              "com.google.android.youtube:id/reel_recycler"
+              "com.google.android.youtube:id/reel_recycler",
+              "reel_recycler"
             ],
             "keywords": [
               "upload",

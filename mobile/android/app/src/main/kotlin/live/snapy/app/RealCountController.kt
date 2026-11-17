@@ -168,16 +168,26 @@ class RealCountController(
         counter.rules = ReelCounterRules.from(minDwellMs, merged)
     }
 
-    private fun isSettingsOrSecurityApp(pkg: String): Boolean =
-        pkg == "com.android.settings" ||
-        pkg == "com.google.android.permissioncontroller" ||
-        pkg.contains("safecenter") ||
-        pkg.contains("securitypermission") ||
-        pkg == "com.android.packageinstaller"
+    private fun isSettingsOrSecurityApp(pkg: String): Boolean {
+        if (pkg.isEmpty()) return true
+        val lower = pkg.lowercase()
+        return lower.contains("settings") ||
+            lower.contains("permission") ||
+            lower.contains("safecenter") ||
+            lower.contains("security") ||
+            lower.contains("packageinstaller") ||
+            lower.contains("accessibility") ||
+            lower.contains("permcenter") ||
+            lower.contains("oppoguardelf") ||
+            lower == "com.android.systemui"
+    }
 
     private fun showChipIfWanted() {
         if (!showChip || !prefs.bool("chip_enabled")) { chip.remove(); return }
-        if (currentPkg == ctx.packageName || isSettingsOrSecurityApp(currentPkg)) { chip.remove(); return }
+        if (currentPkg.isEmpty() || currentPkg == ctx.packageName || isSettingsOrSecurityApp(currentPkg)) {
+            chip.remove()
+            return
+        }
         chip.show(rules)
         render()
         applyVisibility()
@@ -206,6 +216,10 @@ class RealCountController(
         inAppSince = if (app != null && !app.isNull("short_video")) now else 0L
         game = isGame(pkg)
         val isSocial = isShortVideoApp(pkg)
+
+        if (showChip && !chip.isShown) {
+            showChipIfWanted()
+        }
 
         // 1. Live dynamic color palette extraction from launcher icon (zero hardcoding)
         val palette = AppPaletteExtractor.extract(ctx, pkg)

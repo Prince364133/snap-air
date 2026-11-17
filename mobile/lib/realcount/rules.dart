@@ -65,11 +65,21 @@ class RealCountRules {
       // These need checking on current app versions (they change with app updates).
       'apps': {
         'com.instagram.android': {
-          'feed_view_ids': ['com.instagram.android:id/clips_viewer_view_pager'],
+          'feed_view_ids': [
+            'com.instagram.android:id/clips_viewer_view_pager',
+            'clips_viewer_view_pager',
+            'com.instagram.android:id/list',
+            'list',
+            'com.instagram.android:id/swipeable_tab_view_pager',
+            'swipeable_tab_view_pager',
+          ],
           'keywords': ['direct', 'camera', 'creation', 'clips_editor'],
         },
         'com.google.android.youtube': {
-          'feed_view_ids': ['com.google.android.youtube:id/reel_recycler'],
+          'feed_view_ids': [
+            'com.google.android.youtube:id/reel_recycler',
+            'reel_recycler',
+          ],
           'keywords': ['upload', 'camera', 'editor'],
         },
       },

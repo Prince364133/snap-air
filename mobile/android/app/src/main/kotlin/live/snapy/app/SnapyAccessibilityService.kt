@@ -102,7 +102,6 @@ class SnapyAccessibilityService : AccessibilityService() {
         }
         safe("shortcut") { registerShortcut() }
         safe("tick") { tick() }
-        safe("wake") { if (AppForeground.isForeground) WakeWordService.ensureRunning(this) }   // only start mic FGS when app is visible in foreground
     }
 
     private inline fun safe(step: String, block: () -> Unit) {
