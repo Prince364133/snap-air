@@ -120,8 +120,20 @@ class ReelCounter {
     if (e.heightFraction > 0 && e.heightFraction < rules.minHeightFraction) return false;
     if (e.widthFraction > 0 && e.widthFraction < rules.minWidthFraction) return false;
     final ids = rules.feedViewIds[e.pkg] ?? const [];
-    if (ids.isNotEmpty && e.sourceId.isNotEmpty && !ids.contains(e.sourceId)) return false;
-    if (e.fromIndex >= 0 && e.toIndex >= 0 && e.toIndex - e.fromIndex > 1) return false; // 3+ items visible: a list
+    final isKnownId = ids.isNotEmpty && e.sourceId.isNotEmpty
+        ? () {
+            final simpleId = e.sourceId.split(':id/').last.split('/').last;
+            return ids.any((id) {
+                  final simpleRuleId = id.split(':id/').last.split('/').last;
+                  return e.sourceId == id || simpleId == simpleRuleId;
+                }) ||
+                simpleId.contains('clips') ||
+                simpleId.contains('reel');
+          }()
+        : false;
+    if (ids.isNotEmpty && e.sourceId.isNotEmpty && !isKnownId) return false;
+    final maxSpread = isKnownId ? 4 : 1;
+    if (e.fromIndex >= 0 && e.toIndex >= 0 && e.toIndex - e.fromIndex > maxSpread) return false;
     if (e.scrollDeltaX.abs() > e.scrollDeltaY.abs()) return false; // sideways (camera / DMs), not the next reel
     final hay = '${e.windowClass.toLowerCase()} ${e.sourceId.toLowerCase()}';
     for (final w in [...rules.creatorKeywords, ...?rules.appKeywords[e.pkg]]) {

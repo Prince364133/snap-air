@@ -102,7 +102,7 @@ class SnapyAccessibilityService : AccessibilityService() {
         }
         safe("shortcut") { registerShortcut() }
         safe("tick") { tick() }
-        safe("wake") { WakeWordService.ensureRunning(this) }   // the phone killed Snapy: "Hey Snapy" back too
+        safe("wake") { if (AppForeground.isForeground) WakeWordService.ensureRunning(this) }   // only start mic FGS when app is visible in foreground
     }
 
     private inline fun safe(step: String, block: () -> Unit) {
@@ -201,7 +201,13 @@ class SnapyAccessibilityService : AccessibilityService() {
 
     private fun handleEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
-        if (pkg == packageName) return // never intercept or count events inside Snapy itself
+        if (pkg == packageName) {
+            if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                currentPkg = pkg
+                rc?.onWindow(pkg, e.className?.toString() ?: "")
+            }
+            return
+        }
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 onWindow(pkg)

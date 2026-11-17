@@ -168,8 +168,16 @@ class RealCountController(
         counter.rules = ReelCounterRules.from(minDwellMs, merged)
     }
 
+    private fun isSettingsOrSecurityApp(pkg: String): Boolean =
+        pkg == "com.android.settings" ||
+        pkg == "com.google.android.permissioncontroller" ||
+        pkg.contains("safecenter") ||
+        pkg.contains("securitypermission") ||
+        pkg == "com.android.packageinstaller"
+
     private fun showChipIfWanted() {
         if (!showChip || !prefs.bool("chip_enabled")) { chip.remove(); return }
+        if (currentPkg == ctx.packageName || isSettingsOrSecurityApp(currentPkg)) { chip.remove(); return }
         chip.show(rules)
         render()
         applyVisibility()
@@ -180,12 +188,19 @@ class RealCountController(
     private fun isShortVideoApp(pkg: String): Boolean = socialApps[pkg]?.let { !it.isNull("short_video") } == true
 
     fun onWindow(pkg: String, cls: String) {
-        if (pkg == ctx.packageName || pkg == "com.android.systemui" || pkg == imePkg) return     // keyboard isn't an app switch
+        if (pkg == "com.android.systemui" || pkg == imePkg) return     // keyboard isn't an app switch
         if (pkg == currentPkg) { if (cls.isNotEmpty()) currentClass = cls; return }
         flushReelTime()
         counter.reset(currentPkg)                                          // left the feed: a fresh run
         currentPkg = pkg
         currentClass = cls
+
+        if (pkg == ctx.packageName || isSettingsOrSecurityApp(pkg)) {
+            chip.remove()
+            applyVisibility()
+            return
+        }
+
         val now = System.currentTimeMillis()
         val app = socialApps[pkg]
         inAppSince = if (app != null && !app.isNull("short_video")) now else 0L

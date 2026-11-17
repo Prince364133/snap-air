@@ -192,7 +192,10 @@
         "apps": {
           "com.instagram.android": {
             "feed_view_ids": [
-              "com.instagram.android:id/clips_viewer_view_pager"
+              "com.instagram.android:id/clips_viewer_view_pager",
+              "com.instagram.android:id/list",
+              "list",
+              "swipeable_tab_view_pager"
             ],
             "keywords": [
               "direct",

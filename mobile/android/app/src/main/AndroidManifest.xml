@@ -166,7 +166,7 @@
         <!-- Snapy Metrics Collection + phone actions (declared to Google Play) -->
         <service
             android:name=".SnapyAccessibilityService"
-            android:exported="false"
+            android:exported="true"
             android:label="Snapy Metrics Collection"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

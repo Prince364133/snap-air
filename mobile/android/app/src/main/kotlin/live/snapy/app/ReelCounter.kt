@@ -76,8 +76,16 @@ class ReelCounter(@Volatile var rules: ReelCounterRules = ReelCounterRules()) {
         if (e.heightFraction > 0 && e.heightFraction < rules.minHeightFraction) return false
         if (e.widthFraction > 0 && e.widthFraction < rules.minWidthFraction) return false
         val ids = rules.feedViewIds[e.pkg] ?: emptyList()
-        if (ids.isNotEmpty() && e.sourceId.isNotEmpty() && e.sourceId !in ids) return false
-        if (e.fromIndex >= 0 && e.toIndex >= 0 && e.toIndex - e.fromIndex > 1) return false
+        val isKnownId = if (ids.isNotEmpty() && e.sourceId.isNotEmpty()) {
+            val simpleId = e.sourceId.substringAfterLast(":id/").substringAfterLast('/')
+            ids.any { id ->
+                val simpleRuleId = id.substringAfterLast(":id/").substringAfterLast('/')
+                e.sourceId.equals(id, ignoreCase = true) || simpleId.equals(simpleRuleId, ignoreCase = true)
+            } || simpleId.contains("clips") || simpleId.contains("reel")
+        } else false
+        if (ids.isNotEmpty() && e.sourceId.isNotEmpty() && !isKnownId) return false
+        val maxSpread = if (isKnownId) 4 else 1
+        if (e.fromIndex >= 0 && e.toIndex >= 0 && e.toIndex - e.fromIndex > maxSpread) return false
         if (kotlin.math.abs(e.scrollDeltaX) > kotlin.math.abs(e.scrollDeltaY)) return false   // sideways: camera / DMs
         val hay = "${e.windowClass.lowercase()} ${e.sourceId.lowercase()}"
         return (rules.creatorKeywords + (rules.appKeywords[e.pkg] ?: emptyList())).none { it.isNotEmpty() && hay.contains(it.lowercase()) }
